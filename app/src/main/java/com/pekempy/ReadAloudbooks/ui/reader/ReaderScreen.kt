@@ -326,7 +326,7 @@ fun EpubWebView(
                 val lastSignature = webView.tag as? String
                 
                 if (lastSignature != contentSignature) {
-                    val styledHtml = wrapHtml(html, userSettings, theme, viewModel.lastScrollPercent, accentHex, highlightId)
+                    val styledHtml = wrapHtml(html, userSettings, theme, viewModel.lastScrollPercent, accentHex, null)
                     android.util.Log.d("EpubWebView", "Reloading content. Signature changed: $contentSignature")
                     webView.loadDataWithBaseURL(baseUrl, styledHtml, "text/html", "UTF-8", null)
                     webView.scrollTo(0, 0)
@@ -492,40 +492,75 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
             </style>
             <script>
                 let currentPage = 0;
+                let currentHighlightId = null;
+                let highlightInProgress = false;
+                let pendingHighlight = null;
                 
                 function highlightElement(id, retryCount = 0) {
                     if (!id) return;
+                    
+                    if (id && id.match && id.match(/^c\d+$/) && currentHighlightId && currentHighlightId.match && currentHighlightId.match(/sentence|text|para/i)) {
+                        return;
+                    }
+                    
+                    if (highlightInProgress && pendingHighlight !== id) {
+                        pendingHighlight = id;
+                        return;
+                    }
+                    
+                    highlightInProgress = true;
+                    pendingHighlight = null;
                     
                     const el = document.getElementById(id);
                     if (!el) {
                         if (retryCount < 15) {
                             setTimeout(() => highlightElement(id, retryCount + 1), 200);
+                        } else {
+                            highlightInProgress = false;
+                            if (pendingHighlight && pendingHighlight !== id) {
+                                highlightElement(pendingHighlight);
+                            }
                         }
                         return;
                     }
-
-                    const highlights = document.querySelectorAll('.highlight');
-                    highlights.forEach(h => h.classList.remove('highlight'));
                     
-                    el.classList.add('highlight');
+                    if (currentHighlightId !== id) {
+                        const highlights = document.querySelectorAll('.highlight');
+                        highlights.forEach(h => h.classList.remove('highlight'));
+                        el.classList.add('highlight');
+                        currentHighlightId = id;
+                    }
                     
-                    setTimeout(() => {
-                        const step = getStep();
-                        if (step > 0) {
-                            const container = document.getElementById('content-container');
-                            const containerRect = container.getBoundingClientRect();
-                            const elRect = el.getBoundingClientRect();
-                            
-                            const absoluteLeft = Math.round(elRect.left - containerRect.left);
-                            const targetPage = Math.floor((absoluteLeft + 1) / step);
-                            
-                            if (targetPage !== currentPage) {
-                                console.log("Jumping to page " + targetPage + " for element " + id);
-                                currentPage = targetPage;
-                                updateTransform(true);
-                            }
+                    const container = document.getElementById('content-container');
+                    const step = getStep();
+                    
+                    if (step > 0 && container) {
+                        let elementLeft = 0;
+                        let current = el;
+                        
+                        while (current && current !== container) {
+                            elementLeft += current.offsetLeft;
+                            current = current.offsetParent;
                         }
-                    }, 100);
+                        
+                        const elementCenter = elementLeft + (el.offsetWidth / 2);
+                        const targetPage = Math.floor(elementCenter / step);
+                        const maxPages = Math.max(1, Math.ceil(container.scrollWidth / step));
+                        const clampedPage = Math.max(0, Math.min(targetPage, maxPages - 1));
+                        
+                        if (clampedPage !== currentPage) {
+                            currentPage = clampedPage;
+                            updateTransform(true);
+                        }
+                    }
+                    
+                    highlightInProgress = false;
+                    
+                    if (pendingHighlight && pendingHighlight !== id) {
+                        const nextHighlight = pendingHighlight;
+                        pendingHighlight = null;
+                        highlightElement(nextHighlight);
+                    }
                 }
                 
                 
@@ -584,7 +619,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     console.log("findAndHighlight called for: " + text + ", index: " + matchIndex + ", retry: " + retryCount);
                     if (!text) return;
                     
-                    // Clear previous search highlights
                     if (retryCount === 0) {
                          const oldHighlights = document.querySelectorAll('.search-highlight');
                          oldHighlights.forEach(el => {
@@ -594,7 +628,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                          });
                     }
 
-                    // Find text using TreeWalker (more robust than window.find for selection)
                     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
                     let node;
                     let currentMatch = 0;
@@ -611,7 +644,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                             if (foundIndex === -1) break;
                             
                             if (currentMatch === matchIndex) {
-                                // Found our target match!
                                 foundRange = document.createRange();
                                 foundRange.setStart(node, foundIndex);
                                 foundRange.setEnd(node, foundIndex + text.length);
@@ -660,7 +692,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                         } else {
                             console.warn("Step is 0! Retrying...");
                              if (retryCount < 20) {
-                                 // Unwrap before retry
                                  const parent = span.parentNode;
                                  while(span.firstChild) parent.insertBefore(span.firstChild, span);
                                  parent.removeChild(span);
@@ -672,7 +703,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
 
                     } catch (e) {
                          console.error("Failed to wrap highlighting", e);
-                         // Fallback logic
                          const rect = foundRange.getBoundingClientRect();
                          const container = document.getElementById('content-container');
                          const containerRect = container.getBoundingClientRect();
@@ -738,21 +768,17 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 };
 
                 window.onload = function() {
-                    setTimeout(() => {
-                        const container = document.getElementById('content-container');
-                        const totalWidth = container.scrollWidth;
-                        const maxPages = Math.max(1, Math.ceil(totalWidth / getStep()));
-                        
-                        const highlightId = ${if (initialHighlightId != null) "'$initialHighlightId'" else "null"};
-                        if (highlightId) {
-                            highlightElement(highlightId);
-                        } else {
-                            currentPage = Math.round($initialScrollPercent * (maxPages - 1));
-                            if (currentPage < 0) currentPage = 0;
-                            if (currentPage >= maxPages) currentPage = maxPages - 1;
-                            updateTransform(false);
-                        }
-                    }, 100);
+                    const container = document.getElementById('content-container');
+                    const totalWidth = container.scrollWidth;
+                    const maxPages = Math.max(1, Math.ceil(totalWidth / getStep()));
+                    
+                    const highlightId = ${if (initialHighlightId != null) "'$initialHighlightId'" else "null"};
+                    if (highlightId) {
+                        highlightElement(highlightId);
+                    } else {
+                        currentPage = 0;
+                        updateTransform(false);
+                    }
                 };
             </script>
         </head>

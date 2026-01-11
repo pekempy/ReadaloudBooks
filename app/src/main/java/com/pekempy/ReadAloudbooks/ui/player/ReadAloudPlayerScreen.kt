@@ -31,6 +31,7 @@ import com.pekempy.ReadAloudbooks.util.FormatUtils
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,7 +56,10 @@ fun ReadAloudPlayerScreen(
     }
     
     val highlightId = readAloudAudioViewModel.currentElementId
+    
     LaunchedEffect(highlightId) {
+        delay(200)
+        
         if (highlightId != null && readerViewModel.currentHighlightId != highlightId) {
             readerViewModel.currentHighlightId = highlightId
             readerViewModel.forceScrollUpdate()

@@ -299,7 +299,6 @@ class ReaderViewModel(
                             android.util.Log.d("ReaderSync", "Progress remaining on Chapter Index: $currentChapterIndex")
                         }
                         
-                        // Check server progress
                         try {
                             val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
                             if (serverPos != null) {
@@ -347,10 +346,8 @@ class ReaderViewModel(
     }
 
     fun saveProgress(chapterIndex: Int, scrollPercent: Float, audioPosMs: Long? = null, elementId: String? = null) {
-        // if (!isReadAloudMode) return // Re-enabled for API sync
-
         lastScrollPercent = scrollPercent
-        if (elementId != null) {
+        if (elementId != null && !isReadAloudMode) {
             currentHighlightId = elementId
         }
         if (audioPosMs != null) {
@@ -385,7 +382,7 @@ class ReaderViewModel(
             repository.saveBookProgress(bookId, progress.toString())
             android.util.Log.d("ReaderSync", "Saved unified progress: ch=$chapterIndex, elem=$elementId, audio=${actualAudioPos}ms, scroll=$scrollPercent")
             
-            // Sync to server
+
             try {
                 val percentage = ((chapterIndex + scrollPercent) / totalChapters.coerceAtLeast(1)).toDouble().coerceIn(0.0, 1.0)
                 val position = Position(
@@ -419,8 +416,8 @@ class ReaderViewModel(
     }
 
     fun changeChapter(index: Int, audioPosMs: Long? = null) {
-        currentHighlightId = null
         currentChapterIndex = index
+        currentHighlightId = null
         saveProgress(index, 0f, audioPosMs)
     }
 
@@ -625,21 +622,15 @@ class ReaderViewModel(
                     
                     val rawHtml = zip.getInputStream(entry).bufferedReader().readText()
                     
-                    // Cleanup HTML to match Browser's visible text behavior
-                    // 1. Extract Body (to ignore Head metadata)
                     val bodyContent = Regex("<body[^>]*>([\\s\\S]*?)</body>", RegexOption.IGNORE_CASE)
                         .find(rawHtml)?.groupValues?.get(1) ?: rawHtml
 
-                    // 2. Remove Scripts and Styles
                     val noScriptStyle = bodyContent.replace(Regex("<(script|style)[^>]*>[\\s\\S]*?</\\1>", RegexOption.IGNORE_CASE), " ")
                     
-                    // 3. Ensure breaks become spaces (e.g. <br/> or </p> -> space) so "end</p><p>start" isn't "endstart"
                     val breaksToSpaces = noScriptStyle.replace(Regex("</?(br|p|div|li|h\\d|tr|td)[^>]*>", RegexOption.IGNORE_CASE), " ")
 
-                    // 4. Strip remaining tags
                     val simpleText = breaksToSpaces.replace(htmlTagRegex, "")
                     
-                    // 5. Clean whitespace
                     val plainText = simpleText.replace(spaceRegex, " ")
                     
                     var searchIndex = 0

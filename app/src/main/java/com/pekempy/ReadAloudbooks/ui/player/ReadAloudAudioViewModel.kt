@@ -633,25 +633,41 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
     
     fun seekToElement(elementId: String) {
         var foundPosition: Long? = null
+        var foundClipIndex: Int? = null
+        var foundRelativeMs: Long? = null
         
-        for (clip in clipSegments) {
+        for ((index, clip) in clipSegments.withIndex()) {
             if (clip.elementId == elementId) {
                 foundPosition = clip.cumulativeStartMs
+                foundClipIndex = index
+                foundRelativeMs = 0L
                 break
             }
             
             val sub = clip.subSegments.find { it.elementId == elementId }
             if (sub != null) {
                 foundPosition = clip.cumulativeStartMs + sub.relativeStartMs
+                foundClipIndex = index
+                foundRelativeMs = sub.relativeStartMs
                 break
             }
         }
         
-        if (foundPosition != null) {
-             android.util.Log.d("ReadAloudAudioVM", "Seeking to element $elementId at $foundPosition ms")
-             seekTo(foundPosition)
+        if (foundPosition != null && foundClipIndex != null && foundRelativeMs != null) {
+            android.util.Log.d("ReadAloudAudioVM", "Seeking to element $elementId at clip[$foundClipIndex] + ${foundRelativeMs}ms = $foundPosition ms total")
+            
+            player?.let { p ->
+                if (foundClipIndex < p.mediaItemCount) {
+                    p.seekTo(foundClipIndex, foundRelativeMs)
+                    
+                    currentPosition = foundPosition
+                    currentElementId = elementId
+                } else {
+                    android.util.Log.w("ReadAloudAudioVM", "Clip index $foundClipIndex out of bounds (mediaItemCount=${p.mediaItemCount})")
+                }
+            }
         } else {
-             android.util.Log.w("ReadAloudAudioVM", "Element $elementId not found in timeline")
+            android.util.Log.w("ReadAloudAudioVM", "Element $elementId not found in timeline")
         }
     }
 
@@ -678,7 +694,11 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             
             player.seekTo(clipIndex, offsetInClip)
             currentPosition = validPosition
-            currentElementId = clip.elementId
+            currentChapterIndex = clip.chapterIndex
+            val subMatch = clip.subSegments
+                .filter { offsetInClip >= it.relativeStartMs && offsetInClip < it.relativeStartMs + it.durationMs }
+                .maxByOrNull { it.relativeStartMs }
+            currentElementId = subMatch?.elementId ?: clip.elementId
         } else if (validPosition <= 0) {
             player.seekTo(0, 0)
             currentPosition = 0
@@ -717,9 +737,10 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                             currentPosition = clip.cumulativeStartMs + posInClip
                             currentChapterIndex = clip.chapterIndex
                             
-                            val subMatch = clip.subSegments.find { 
-                                posInClip >= it.relativeStartMs && posInClip < it.relativeStartMs + it.durationMs 
-                            }
+                            val subMatch = clip.subSegments
+                                .filter { posInClip >= it.relativeStartMs && posInClip < it.relativeStartMs + it.durationMs }
+                                .maxByOrNull { it.relativeStartMs }  
+                            
                             if (currentElementId != (subMatch?.elementId ?: clip.elementId)) {
                                 currentElementId = subMatch?.elementId ?: clip.elementId
                                 android.util.Log.d("ReadAloudAudioVM", "Element changed: $currentElementId at $currentPosition ms")
