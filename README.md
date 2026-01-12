@@ -2,7 +2,6 @@
 
 An Android application for audiobook and eBook consumption with a focus on high-quality audio playback and Material You design.
 
-## Images
 ## Images
 
 <details>
