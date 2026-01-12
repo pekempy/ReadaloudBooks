@@ -21,10 +21,9 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
       - name: Generate Version Tag
         id: version_tag
@@ -40,13 +39,13 @@ jobs:
           echo "Generated tag: $TAG"
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug -PversionName="${{ steps.version_tag.outputs.tag }}"
+        run: gradle assembleDebug -PversionName="${{ steps.version_tag.outputs.tag }}" -PenableAbiSplit=true
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.version_tag.outputs.tag }}
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 
       - name: Comment on PR
         uses: actions/github-script@v6
