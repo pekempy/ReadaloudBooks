@@ -1,6 +1,7 @@
 package com.pekempy.ReadAloudbooks.ui.library
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.fadeIn
@@ -59,9 +60,16 @@ fun LibraryScreen(
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
     var isSearchMode by remember { mutableStateOf(false) }
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
     var selectedBookForMenu by remember { mutableStateOf<Book?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     var bookToDelete by remember { mutableStateOf<Book?>(null) }
+
+    LaunchedEffect(isSearchMode) {
+        if (isSearchMode) {
+            focusRequester.requestFocus()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.loadBooks()
@@ -84,8 +92,8 @@ fun LibraryScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 0.dp)
-                    .height(40.dp),
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                    .heightIn(min = 56.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -93,19 +101,31 @@ fun LibraryScreen(
                     TextField(
                         value = viewModel.searchQuery,
                         onValueChange = { viewModel.onSearchQueryChange(it) },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester),
                         placeholder = { Text("Search...") },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
                             focusedIndicatorColor = Color.Transparent,
                             unfocusedIndicatorColor = Color.Transparent,
+                            cursorColor = MaterialTheme.colorScheme.primary,
+                            focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onBackground
                         ),
                         singleLine = true,
                         leadingIcon = {
                             IconButton(onClick = { isSearchMode = false; viewModel.onSearchQueryChange("") }) {
                                 Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = null)
                             }
+                        },
+                        trailingIcon = {
+                             if (viewModel.searchQuery.isNotEmpty()) {
+                                 IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
+                                     Icon(painterResource(R.drawable.ic_close), contentDescription = "Clear")
+                                 }
+                             }
                         }
                     )
                 } else {
