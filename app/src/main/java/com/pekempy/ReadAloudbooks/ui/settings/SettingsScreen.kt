@@ -116,6 +116,12 @@ fun SettingsConnections(
     onBack: () -> Unit,
     onLogout: () -> Unit
 ) {
+    var remoteUrl by remember(viewModel.serverUrl) { mutableStateOf(viewModel.serverUrl) }
+    var localUrl by remember(viewModel.localServerUrl) { mutableStateOf(viewModel.localServerUrl) }
+    var useLocalOnWifi by remember(viewModel.useLocalOnWifi) { mutableStateOf(viewModel.useLocalOnWifi) }
+    var wifiSsid by remember(viewModel.wifiSsid) { mutableStateOf(viewModel.wifiSsid) }
+    var hasChanges by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -139,14 +145,61 @@ fun SettingsConnections(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            SettingsSection("Server") {
+            SettingsSection("Server Checklist") {
                  OutlinedTextField(
-                    value = viewModel.serverUrl,
-                    onValueChange = {},
-                    label = { Text("Storyteller URL") },
-                    readOnly = true,
+                    value = remoteUrl,
+                    onValueChange = { remoteUrl = it; hasChanges = true },
+                    label = { Text("Remote Address") },
+                    placeholder = { Text("https://storyteller.example.com") },
                     modifier = Modifier.fillMaxWidth()
                 )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                OutlinedTextField(
+                    value = localUrl,
+                    onValueChange = { localUrl = it; hasChanges = true },
+                    label = { Text("Local Address") },
+                    placeholder = { Text("http://192.168.1.x:8001") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Row(
+                   modifier = Modifier.fillMaxWidth(),
+                   verticalAlignment = Alignment.CenterVertically,
+                   horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                   Text("Auto-switch on Home WiFi", modifier = Modifier.weight(1f))
+                   Switch(
+                       checked = useLocalOnWifi,
+                       onCheckedChange = { useLocalOnWifi = it; hasChanges = true }
+                   )
+                }
+                
+                if (useLocalOnWifi) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = wifiSsid,
+                        onValueChange = { wifiSsid = it; hasChanges = true },
+                        label = { Text("Home WiFi Name (SSID)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Button(
+                    onClick = { 
+                        viewModel.updateConnectionSettings(remoteUrl, localUrl, useLocalOnWifi, wifiSsid)
+                        hasChanges = false
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = hasChanges
+                ) {
+                    Text("Save Changes")
+                }
             }
             
             SettingsSection("Account") {

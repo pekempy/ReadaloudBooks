@@ -11,14 +11,21 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 data class UserCredentials(
     val url: String,
+    val localUrl: String,
     val username: String,
-    val token: String? = null
+    val token: String? = null,
+    val useLocalOnWifi: Boolean = false,
+    val wifiSsid: String = ""
 )
 
 class UserPreferencesRepository(private val context: Context) {
 
     companion object {
         val URL = stringPreferencesKey("instance_url")
+        val LOCAL_URL = stringPreferencesKey("local_instance_url")
+        val USE_LOCAL_ON_WIFI = booleanPreferencesKey("use_local_on_wifi")
+        val WIFI_SSID = stringPreferencesKey("wifi_ssid")
+        
         val USERNAME = stringPreferencesKey("username")
         val TOKEN = stringPreferencesKey("auth_token")
         val IS_LOGGED_IN = booleanPreferencesKey("is_logged_in")
@@ -40,9 +47,19 @@ class UserPreferencesRepository(private val context: Context) {
 
     val userCredentials: Flow<UserCredentials?> = context.dataStore.data.map { preferences ->
         val url = preferences[URL]
+        val localUrl = preferences[LOCAL_URL]
+        
+        // At least one URL must be present, and we need a username
         val username = preferences[USERNAME]
-        if (url != null && username != null) {
-            UserCredentials(url, username, preferences[TOKEN])
+        if ((url != null || localUrl != null) && username != null) {
+            UserCredentials(
+                url = url ?: "",
+                localUrl = localUrl ?: "",
+                username = username,
+                token = preferences[TOKEN],
+                useLocalOnWifi = preferences[USE_LOCAL_ON_WIFI] ?: false,
+                wifiSsid = preferences[WIFI_SSID] ?: ""
+            )
         } else {
             null
         }
@@ -66,12 +83,39 @@ class UserPreferencesRepository(private val context: Context) {
         )
     }
 
-    suspend fun saveCredentials(url: String, username: String, token: String?) {
+    suspend fun saveCredentials(
+        url: String, 
+        localUrl: String,
+        username: String, 
+        token: String?,
+        useLocalOnWifi: Boolean,
+        wifiSsid: String
+    ) {
         context.dataStore.edit { preferences ->
-            preferences[URL] = url
+            if (url.isNotEmpty()) preferences[URL] = url else preferences.remove(URL)
+            if (localUrl.isNotEmpty()) preferences[LOCAL_URL] = localUrl else preferences.remove(LOCAL_URL)
+            
             preferences[USERNAME] = username
             if (token != null) preferences[TOKEN] = token
+            
+            preferences[USE_LOCAL_ON_WIFI] = useLocalOnWifi
+            if (wifiSsid.isNotEmpty()) preferences[WIFI_SSID] = wifiSsid else preferences.remove(WIFI_SSID)
+            
             preferences[IS_LOGGED_IN] = true
+        }
+    }
+
+    suspend fun updateConnectionSettings(
+        url: String,
+        localUrl: String,
+        useLocalOnWifi: Boolean,
+        wifiSsid: String
+    ) {
+        context.dataStore.edit { preferences ->
+            if (url.isNotEmpty()) preferences[URL] = url else preferences.remove(URL)
+            if (localUrl.isNotEmpty()) preferences[LOCAL_URL] = localUrl else preferences.remove(LOCAL_URL)
+            preferences[USE_LOCAL_ON_WIFI] = useLocalOnWifi
+            if (wifiSsid.isNotEmpty()) preferences[WIFI_SSID] = wifiSsid else preferences.remove(WIFI_SSID)
         }
     }
 

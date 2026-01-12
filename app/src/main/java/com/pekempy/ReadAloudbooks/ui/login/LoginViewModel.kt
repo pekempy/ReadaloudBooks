@@ -36,7 +36,29 @@ class LoginViewModel(private val repository: UserPreferencesRepository) : ViewMo
                 
                 val response = apiManager.getApi().login(usernamePart, passwordPart)
                 
-                repository.saveCredentials(apiManager.baseUrl ?: url, username, response.accessToken)
+                val connectedUrl = apiManager.baseUrl ?: url
+                
+                if (com.pekempy.ReadAloudbooks.util.NetworkUtils.isLocalIp(connectedUrl)) {
+                    val ssid = com.pekempy.ReadAloudbooks.util.NetworkUtils.getCurrentSsid(AppContainer.context)
+                    repository.saveCredentials(
+                        url = "",
+                        localUrl = connectedUrl,
+                        username = username,
+                        token = response.accessToken,
+                        useLocalOnWifi = true,
+                        wifiSsid = ssid ?: ""
+                    )
+                } else {
+                    repository.saveCredentials(
+                        url = connectedUrl,
+                        localUrl = "",
+                        username = username,
+                        token = response.accessToken,
+                        useLocalOnWifi = false,
+                        wifiSsid = ""
+                    )
+                }
+                
                 onSuccess()
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Authentication failed"

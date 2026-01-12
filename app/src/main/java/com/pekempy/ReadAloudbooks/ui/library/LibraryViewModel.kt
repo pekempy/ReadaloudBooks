@@ -144,8 +144,29 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
             try {
                 val credentials = repository.userCredentials.first()
                 if (credentials != null) {
+                    val currentSsid = com.pekempy.ReadAloudbooks.util.NetworkUtils.getCurrentSsid(AppContainer.context)
+                    val shouldUseLocal = credentials.useLocalOnWifi && 
+                                        credentials.wifiSsid.isNotEmpty() &&
+                                        currentSsid == credentials.wifiSsid
+                    
+                    val targetUrl = if (shouldUseLocal && credentials.localUrl.isNotEmpty()) {
+                        credentials.localUrl
+                    } else {
+                        if (credentials.url.isNotEmpty()) {
+                            credentials.url
+                        } else {
+                            // Only local configured, but not on home wifi. Abort sync.
+                            ""
+                        }
+                    }
+                    
+                    if (targetUrl.isEmpty()) {
+                        isLoading = false
+                        return@launch
+                    }
+
                     val apiManager = AppContainer.apiClientManager
-                    apiManager.updateConfig(credentials.url, credentials.token)
+                    apiManager.updateConfig(targetUrl, credentials.token)
                     
                     val response = apiManager.getApi().listBooks()
                     

@@ -17,6 +17,9 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
     var themeSource by mutableStateOf(0)
     var sleepTimerFinishChapter by mutableStateOf(false)
     var serverUrl by mutableStateOf("")
+    var localServerUrl by mutableStateOf("")
+    var useLocalOnWifi by mutableStateOf(false)
+    var wifiSsid by mutableStateOf("")
     
     var readerFontSize by mutableStateOf(18f)
     var readerTheme by mutableStateOf(0)
@@ -38,8 +41,18 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
             }
         }
         viewModelScope.launch {
-            val credentials = repository.userCredentials.first()
-            serverUrl = credentials?.url ?: ""
+            repository.userCredentials.collect { credentials ->
+                serverUrl = credentials?.url ?: ""
+                localServerUrl = credentials?.localUrl ?: ""
+                useLocalOnWifi = credentials?.useLocalOnWifi ?: false
+                wifiSsid = credentials?.wifiSsid ?: ""
+            }
+        }
+    }
+
+    fun updateConnectionSettings(url: String, localUrl: String, useLocal: Boolean, ssid: String) {
+        viewModelScope.launch {
+            repository.updateConnectionSettings(url, localUrl, useLocal, ssid)
         }
     }
 
