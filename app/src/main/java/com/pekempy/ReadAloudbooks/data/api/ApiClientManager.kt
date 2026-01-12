@@ -20,7 +20,17 @@ class ApiClientManager {
 
     fun updateConfig(url: String, authToken: String?) {
         val cleanUrl = url.let { 
-            val withProtocol = if (!it.startsWith("http")) "https://$it" else it
+            val withProtocol = if (!it.startsWith("http")) {
+                if (it.startsWith("localhost") || 
+                    it.startsWith("127.0.0.1") ||
+                    it.startsWith("192.168.") || 
+                    it.startsWith("10.") || 
+                    (it.startsWith("172.") && it.substring(4).toIntOrNull()?.let { num -> num in 16..31 } == true)) {
+                    "http://$it"
+                } else {
+                    "https://$it"
+                }
+            } else it
             if (withProtocol.endsWith("/")) withProtocol.dropLast(1) else withProtocol
         }
         

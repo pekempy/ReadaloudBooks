@@ -53,6 +53,12 @@ fun LoginScreen(
                 color = MaterialTheme.colorScheme.primary
             )
             
+            Text(
+                text = "v${com.pekempy.ReadAloudbooks.BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            
             Spacer(modifier = Modifier.height(48.dp))
 
             OutlinedTextField(

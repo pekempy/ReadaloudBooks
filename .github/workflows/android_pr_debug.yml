@@ -32,7 +32,10 @@ jobs:
           BRANCH_NAME="${{ github.head_ref }}"
           # Sanitize branch name: replace non-alphanumeric chars with dashes, trim
           SAFE_BRANCH_NAME=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
-          SHORT_SHA=$(git rev-parse --short HEAD)
+          
+          # Use the PR head SHA instead of the local HEAD (which is a merge commit in actions)
+          FULL_SHA="${{ github.event.pull_request.head.sha }}"
+          SHORT_SHA=${FULL_SHA:0:7}
           
           TAG="v-debug-${PR_NUMBER}-${SAFE_BRANCH_NAME}-${SHORT_SHA}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
@@ -55,13 +58,32 @@ jobs:
             const tag = '${{ steps.version_tag.outputs.tag }}';
             const runUrl = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}';
             
+            // Delete previous comments from github-actions[bot]
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            for (const comment of comments.data) {
+              if (comment.user.type === 'Bot' && comment.body.includes('Debug Build Ready')) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: comment.id,
+                });
+              }
+            }
+            
             const body = `### Debug Build Ready
             
             **Version Tag:** \`${tag}\`
             
             The debug APK has been built and is available for download in the **Artifacts** section of the workflow run.
             
-            [Download APK from Workflow Run](${runUrl})
+            [Download APK (Zip)](${runUrl})
+            
+            _Note: GitHub keeps artifacts as .zip files. You will need to extract it to get the .apk file._
             `;
             
             github.rest.issues.createComment({
