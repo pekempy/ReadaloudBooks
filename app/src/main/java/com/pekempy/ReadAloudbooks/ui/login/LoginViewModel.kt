@@ -38,26 +38,17 @@ class LoginViewModel(private val repository: UserPreferencesRepository) : ViewMo
                 
                 val connectedUrl = apiManager.baseUrl ?: url
                 
-                if (com.pekempy.ReadAloudbooks.util.NetworkUtils.isLocalIp(connectedUrl)) {
-                    val ssid = com.pekempy.ReadAloudbooks.util.NetworkUtils.getCurrentSsid(AppContainer.context)
-                    repository.saveCredentials(
-                        url = "",
-                        localUrl = connectedUrl,
-                        username = username,
-                        token = response.accessToken,
-                        useLocalOnWifi = true,
-                        wifiSsid = ssid ?: ""
-                    )
-                } else {
-                    repository.saveCredentials(
-                        url = connectedUrl,
-                        localUrl = "",
-                        username = username,
-                        token = response.accessToken,
-                        useLocalOnWifi = false,
-                        wifiSsid = ""
-                    )
-                }
+                val isLocal = com.pekempy.ReadAloudbooks.util.NetworkUtils.isLocalIp(connectedUrl)
+                val ssid = if (isLocal) com.pekempy.ReadAloudbooks.util.NetworkUtils.getCurrentSsid(AppContainer.context) else null
+                
+                repository.saveCredentials(
+                    url = connectedUrl,
+                    localUrl = if (isLocal) connectedUrl else "",
+                    username = username,
+                    token = response.accessToken,
+                    useLocalOnWifi = isLocal && ssid != null,
+                    wifiSsid = ssid ?: ""
+                )
                 
                 onSuccess()
             } catch (e: Exception) {

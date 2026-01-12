@@ -149,18 +149,14 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
                                         credentials.wifiSsid.isNotEmpty() &&
                                         currentSsid == credentials.wifiSsid
                     
-                    val targetUrl = if (shouldUseLocal && credentials.localUrl.isNotEmpty()) {
-                        credentials.localUrl
-                    } else {
-                        if (credentials.url.isNotEmpty()) {
-                            credentials.url
-                        } else {
-                            // Only local configured, but not on home wifi. Abort sync.
-                            ""
-                        }
+                    val targetUrl = when {
+                        shouldUseLocal && credentials.localUrl.isNotEmpty() -> credentials.localUrl
+                        credentials.url.isNotEmpty() -> credentials.url
+                        else -> credentials.localUrl 
                     }
                     
                     if (targetUrl.isEmpty()) {
+                        android.util.Log.w("LibraryViewModel", "No target URL available for sync (url and localUrl both empty or not on home wifi)")
                         isLoading = false
                         return@launch
                     }
