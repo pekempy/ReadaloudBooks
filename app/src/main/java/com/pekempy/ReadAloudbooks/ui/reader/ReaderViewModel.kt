@@ -367,7 +367,6 @@ class ReaderViewModel(
                                         }
                                     } else {
                                         android.util.Log.d("ReaderSync", "Progress diff is minor ($serverPercent% vs $localPercent%). Auto-syncing to Storyteller.")
-                                        // Auto-sync if diff is minor
                                         withContext(Dispatchers.Main) {
                                             currentChapterIndex = serverProgress.chapterIndex
                                             lastScrollPercent = serverProgress.scrollPercent
@@ -459,7 +458,6 @@ class ReaderViewModel(
                 mediaType = mediaType
             )
 
-            // Safeguard: Don't overwrite a meaningful position with 0 during load
             if (actualAudioPos == 0L && finalElementId == null && lastSyncedProgress != null) {
                 val old = lastSyncedProgress!!
                 if (old.chapterIndex == chapterIndex && old.audioTimestampMs > 5000) {
@@ -480,12 +478,11 @@ class ReaderViewModel(
             }
             lastSyncedProgress = progress
 
-            repository.saveBookProgress(bookId, progress.toString()) // toString() now returns JSON
+            repository.saveBookProgress(bookId, progress.toString()) 
             android.util.Log.d("ReaderSync", "Saved JSON progress: $progress")
             
             try {
                 val pos = progress.toPosition()
-                // Use the exact ms timestamp if the server supports it, but ensure no collision
                 AppContainer.apiClientManager.getApi().updatePosition(bookId, pos)
                 android.util.Log.d("ReaderSync", "Synced position to server: href=$href")
             } catch (e: retrofit2.HttpException) {

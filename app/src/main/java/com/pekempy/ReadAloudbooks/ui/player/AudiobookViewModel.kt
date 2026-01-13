@@ -183,7 +183,6 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                 val progressStr = repository.getBookProgress(bookId).first()
                 val progress = com.pekempy.ReadAloudbooks.data.UnifiedProgress.fromString(progressStr)
                 
-                // Fetch server progress for comparison even if already loaded
                 try {
                     val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
                     if (serverPos != null) {
@@ -420,9 +419,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                                             source = "Storyteller Server"
                                         )
                                     }
-                                    // We keep local for now, it will be updated if they confirm
                                 } else {
-                                    // Minor diff, just auto-sync if server is newer
                                     finalProgressToUse = serverProgress
                                 }
                             } else {

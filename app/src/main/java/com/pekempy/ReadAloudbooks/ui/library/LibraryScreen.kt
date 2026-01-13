@@ -46,6 +46,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -329,10 +330,10 @@ fun LibraryScreen(
                                      .padding(top = 8.dp, bottom = 8.dp)
                                      .verticalScroll(rememberScrollState())
                              ) {
-                                if (viewModel.downloadedBooks.isNotEmpty()) {
+                                if (viewModel.continueReadingBooks.isNotEmpty()) {
                                     HomeSection(
-                                        title = "Ready to Read",
-                                        books = viewModel.downloadedBooks,
+                                        title = "Continue Reading",
+                                        books = viewModel.continueReadingBooks,
                                         onBookClick = onBookClick,
                                         onBookLongClick = { 
                                             selectedBookForMenu = it
@@ -342,10 +343,10 @@ fun LibraryScreen(
                                     Spacer(Modifier.height(24.dp))
                                 }
 
-                                if (viewModel.continueReadingBooks.isNotEmpty()) {
+                                if (viewModel.downloadedBooks.isNotEmpty()) {
                                     HomeSection(
-                                        title = "Continue Reading",
-                                        books = viewModel.continueReadingBooks,
+                                        title = "Ready to Read",
+                                        books = viewModel.downloadedBooks,
                                         onBookClick = onBookClick,
                                         onBookLongClick = { 
                                             selectedBookForMenu = it
@@ -470,7 +471,20 @@ fun LibraryScreen(
                         )
 
                         if (targetMode == LibraryViewModel.ViewMode.Library || viewModel.selectedFilter != null) {
+                            val gridState = rememberLazyGridState()
+                            
+                            val totalItems = viewModel.books.size
+                            LaunchedEffect(gridState.firstVisibleItemIndex) {
+                                if (totalItems > 0 && gridState.layoutInfo.visibleItemsInfo.isNotEmpty()) {
+                                    val lastVisibleItemIndex = gridState.layoutInfo.visibleItemsInfo.last().index
+                                    if (lastVisibleItemIndex >= totalItems - 10) {
+                                        viewModel.loadNextPage()
+                                    }
+                                }
+                            }
+
                             LazyVerticalGrid(
+                                state = gridState,
                                 columns = GridCells.Fixed(2),
                                 contentPadding = contentPadding,
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -491,7 +505,19 @@ fun LibraryScreen(
                             }
                         } else if (targetMode == LibraryViewModel.ViewMode.Authors) {
                             val authors = viewModel.getUniqueAuthors()
+                            val listState = rememberLazyListState()
+
+                            LaunchedEffect(listState.firstVisibleItemIndex) {
+                                if (authors.isNotEmpty() && listState.layoutInfo.visibleItemsInfo.isNotEmpty()) {
+                                    val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.last().index
+                                    if (lastVisibleIndex >= authors.size - 5) {
+                                        viewModel.loadNextPage()
+                                    }
+                                }
+                            }
+
                             LazyColumn(
+                                state = listState,
                                 contentPadding = contentPadding,
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -505,7 +531,19 @@ fun LibraryScreen(
                             }
                         } else if (targetMode == LibraryViewModel.ViewMode.Series) {
                             val series = viewModel.getUniqueSeries()
+                            val listState = rememberLazyListState()
+
+                            LaunchedEffect(listState.firstVisibleItemIndex) {
+                                if (series.isNotEmpty() && listState.layoutInfo.visibleItemsInfo.isNotEmpty()) {
+                                    val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.last().index
+                                    if (lastVisibleIndex >= series.size - 5) {
+                                        viewModel.loadNextPage()
+                                    }
+                                }
+                            }
+
                             LazyColumn(
+                                state = listState,
                                 contentPadding = contentPadding,
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {

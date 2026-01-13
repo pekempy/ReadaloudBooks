@@ -70,6 +70,7 @@ object DownloadUtils {
         file: File,
         onProgress: (Float) -> Unit
     ) {
+        var serverHash: String? = null
         val existingSize = if (file.exists()) file.length() else 0L
         
         val request = Request.Builder()
@@ -85,6 +86,11 @@ object DownloadUtils {
             if (!response.isSuccessful && response.code != 206) {
                 if (response.code == 416) return
                 throw Exception("Unexpected code $response")
+            }
+
+            serverHash = response.header("X-Storyteller-Hash")
+            if (serverHash != null) {
+                 android.util.Log.i("DownloadUtils", "X-Storyteller-Hash found: $serverHash")
             }
             
             val body = response.body ?: throw Exception("Empty body")
@@ -105,6 +111,28 @@ object DownloadUtils {
                         onProgress(totalBytesRead.toFloat() / totalSize)
                     }
                 }
+            }
+        }
+
+        if (serverHash != null && file.exists()) {
+            try {
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                val computedHash = file.inputStream().use { input ->
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        digest.update(buffer, 0, bytesRead)
+                    }
+                    digest.digest().joinToString("") { "%02x".format(it) }
+                }
+                
+                if (computedHash.equals(serverHash, ignoreCase = true)) {
+                    android.util.Log.i("DownloadUtils", "Hash verification successful for ${file.name}: $computedHash")
+                } else {
+                    android.util.Log.e("DownloadUtils", "Hash verification FAILED for ${file.name}! Server: $serverHash, Computed: $computedHash")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DownloadUtils", "Failed to verify hash", e)
             }
         }
     }

@@ -65,7 +65,6 @@ fun AppNavigationBar(
         )
         
         if (hasProcessing && hasDownloads) {
-            // Show "More" button when both are active to prevent overflow
             val totalCount = processingCount + downloadCount
             NavigationBarItem(
                 icon = { 
@@ -78,7 +77,7 @@ fun AppNavigationBar(
                         DropdownMenu(
                             expanded = showMoreMenu,
                             onDismissRequest = { showMoreMenu = false },
-                            offset = DpOffset(0.dp, (-48).dp) // Show above the bar
+                            offset = DpOffset(0.dp, (-48).dp)
                         ) {
                             DropdownMenuItem(
                                 text = { Text("Processing ($processingCount)") },
@@ -114,7 +113,7 @@ fun AppNavigationBar(
                         Icon(painterResource(R.drawable.ic_history), contentDescription = null) 
                     }
                 },
-                label = { Text("Process", maxLines = 1) }, // Shortened label
+                label = { Text("Process", maxLines = 1) },
                 selected = currentViewMode == LibraryViewModel.ViewMode.Processing,
                 onClick = {
                     onNavigateToLibrary()

@@ -556,7 +556,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                         const elementLeft = elementLeftAbsolute(el, container);
                         const elementCenter = elementLeft + (el.offsetWidth / 2);
                         
-                        // Use a more robust overlap check for visibility
                         const isVisible = rect.left < (step - 5) && rect.right > 5;
                         
                         if (!isVisible) {
@@ -616,7 +615,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                         const currentX = currentPage * step;
                         const maxPages = Math.max(1, Math.ceil(totalWidth / step));
                         
-                        // Don't report progress if the layout isn't fully rendered or only 1 page
                         if (maxPages <= 1 && totalWidth <= step + 10 && currentPage === 0) {
                             return; 
                         }
@@ -629,7 +627,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                             const el = elements[i];
                             if (el.id === 'content-container' || el.classList.contains('highlight')) continue;
                             const left = elementLeftAbsolute(el, container);
-                            // We want the element that started before or on the current page
                             if (left <= currentX + 50) {
                                 bestId = el.id;
                             } else {

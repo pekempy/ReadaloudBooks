@@ -144,7 +144,6 @@ data class Locations(
     val position: Int? = null,
     @SerializedName("totalProgression") val totalProgression: Double? = null,
     
-    // Additional fields for local storage and unified progress mapping
     val audioTimestampMs: Long? = null,
     val chapterIndex: Int? = null,
     val elementId: String? = null,

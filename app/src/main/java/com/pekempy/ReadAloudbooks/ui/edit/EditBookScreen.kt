@@ -90,7 +90,6 @@ fun EditBookScreen(
             ) {
                 Spacer(Modifier.height(8.dp))
                 
-                // Covers
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)

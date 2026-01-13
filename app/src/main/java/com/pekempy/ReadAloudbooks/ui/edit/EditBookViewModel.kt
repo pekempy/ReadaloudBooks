@@ -26,7 +26,6 @@ class EditBookViewModel(private val repository: UserPreferencesRepository) : Vie
     var isSaving by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
 
-    // Editable fields
     var title by mutableStateOf("")
     var subtitle by mutableStateOf("")
     var description by mutableStateOf("")
@@ -39,12 +38,10 @@ class EditBookViewModel(private val repository: UserPreferencesRepository) : Vie
     var tags = mutableStateListOf<String>()
     var collections = mutableStateListOf<String>()
 
-    // Internal metadata to preserve existing relationships
     private var seriesUuid: String? = null
     private val authorUuids = mutableMapOf<String, String>()
     private val narratorUuids = mutableMapOf<String, String>()
 
-    // Master lists for suggestions and matching
     var allCreators by mutableStateOf<List<com.pekempy.ReadAloudbooks.data.api.AuthorResponse>>(emptyList())
     var allSeriesList by mutableStateOf<List<com.pekempy.ReadAloudbooks.data.api.SeriesResponse>>(emptyList())
     var allTagsList by mutableStateOf<List<com.pekempy.ReadAloudbooks.data.api.TagResponse>>(emptyList())
@@ -131,7 +128,6 @@ class EditBookViewModel(private val repository: UserPreferencesRepository) : Vie
                     }
                 }
 
-                // Core fields
                 originalResponse?.let { original ->
                     addField("uuid", original.uuid)
                     addField("title", title)
@@ -144,15 +140,12 @@ class EditBookViewModel(private val repository: UserPreferencesRepository) : Vie
                 originalResponse?.suffix?.let { addField("suffix", it) }
                 addField("subtitle", if (subtitle.isNotEmpty()) subtitle else null)
                 
-                // Multi-value Fields as simple strings to avoid SQLite binding errors on server
                 val authorsListStr = authors.filter { it.isNotEmpty() }
                 addMultiField("authors", authorsListStr)
                 
                 val narratorsListStr = narrators.filter { it.isNotEmpty() }
                 addMultiField("narrators", narratorsListStr)
                 
-                // creators role is typically derived from authors/narrators on server
-
                 if (series.isNotEmpty()) {
                     val originalSeries = originalResponse?.series?.firstOrNull()
                     val seriesObject = mutableMapOf<String, Any?>(
@@ -176,7 +169,6 @@ class EditBookViewModel(private val repository: UserPreferencesRepository) : Vie
                 val collectionsListStr = collections.filter { it.isNotEmpty() }
                 addMultiField("collections", collectionsListStr)
 
-                // Use helper extensions for status and position to avoid DB binding errors
                 originalResponse?.let { original ->
                     addField("status", original.status.extractId())
                     
@@ -186,8 +178,6 @@ class EditBookViewModel(private val repository: UserPreferencesRepository) : Vie
                         seriesIndex.replace(",", ".").toDoubleOrNull()?.toInt() ?: original.position.extractValue()
                     }
                     addField("position", posValue)
-                    android.util.Log.d("EditBookVM", "RAW ebook path='${original.ebook?.filepath}'")
-                    android.util.Log.d("EditBookVM", "RAW audiobook path='${original.audiobook?.filepath}'")
                     fun relativize(path: String?): String? {
                         if (path == null) return null
 
@@ -217,7 +207,6 @@ class EditBookViewModel(private val repository: UserPreferencesRepository) : Vie
                     }
                 }
 
-                // Final Assembly: Manifest list first, then all parts
                 val finalParts = mutableListOf<MultipartBody.Part>()
                 fieldNames.forEach { name ->
                     finalParts.add(MultipartBody.Part.createFormData("fields", name))

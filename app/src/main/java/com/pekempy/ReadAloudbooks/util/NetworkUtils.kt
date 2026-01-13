@@ -34,17 +34,13 @@ object NetworkUtils {
              
              if (host == "localhost") return true
              
-             // Check for IPv4 pattern
              val parts = host.split(".")
              if (parts.size == 4) {
                  val first = parts[0].toIntOrNull() ?: return false
                  val second = parts[1].toIntOrNull() ?: return false
                  
-                 // 10.x.x.x
                  if (first == 10) return true
-                 // 192.168.x.x
                  if (first == 192 && second == 168) return true
-                 // 172.16.x.x - 172.31.x.x
                  if (first == 172 && (second in 16..31)) return true
              }
         } catch (e: Exception) {

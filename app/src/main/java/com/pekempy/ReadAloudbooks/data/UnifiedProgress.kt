@@ -64,7 +64,6 @@ data class UnifiedProgress(
         fun fromString(progressStr: String?): UnifiedProgress? {
             if (progressStr.isNullOrBlank()) return null
             
-            // Try parsing as JSON first (new format)
             if (progressStr.trim().startsWith("{")) {
                 return try {
                     val pos = gson.fromJson(progressStr, Position::class.java)
@@ -75,7 +74,6 @@ data class UnifiedProgress(
                 }
             }
 
-            // Fallback to legacy colon-separated format
             val parts = progressStr.split(":")
             if (parts.isEmpty()) return null
             

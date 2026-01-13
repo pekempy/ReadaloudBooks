@@ -58,6 +58,18 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     enum class ViewMode { Home, Library, Authors, Series, Downloads, Processing }
     var currentViewMode by mutableStateOf(ViewMode.Home)
     
+    private val LIMIT = 100
+    var currentPage by mutableStateOf(0)
+    
+    fun loadNextPage() {
+        currentPage++
+        applyFiltersAndSort()
+    }
+
+    fun resetPagination() {
+        currentPage = 0
+    }
+    
     var continueReadingBooks by mutableStateOf<List<Book>>(emptyList())
     var continueSeriesBooks by mutableStateOf<List<Book>>(emptyList())
     var downloadedBooks by mutableStateOf<List<Book>>(emptyList())
@@ -141,7 +153,7 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
                         }
                     }
                 }
-                kotlinx.coroutines.delay(5000) // Poll every 5 seconds
+                kotlinx.coroutines.delay(5000)
             }
         }
     }
@@ -386,16 +398,19 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     fun setViewMode(mode: ViewMode) {
         currentViewMode = mode
         selectedFilter = null
+        resetPagination()
         applyFiltersAndSort()
     }
 
     fun selectFilter(filter: String) {
         selectedFilter = filter
+        resetPagination()
         applyFiltersAndSort()
     }
     
     fun setSort(sort: SortOption) {
         currentSort = sort
+        resetPagination()
         applyFiltersAndSort()
     }
 
@@ -427,7 +442,8 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
             }
         }
         
-        books = result
+        
+        books = result.take((currentPage + 1) * LIMIT)
     }
 
     private fun applyGlobalFilters(baseList: List<Book>): List<Book> {
@@ -457,11 +473,13 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     }
 
     fun getUniqueAuthors(): List<String> {
-        return getFilteredMasterList().map { it.author }.distinct().sorted()
+        val allAuthors = getFilteredMasterList().map { it.author }.distinct().sorted()
+        return allAuthors.take((currentPage + 1) * LIMIT)
     }
 
     fun getUniqueSeries(): List<String> {
-        return getFilteredMasterList().mapNotNull { it.series }.distinct().sorted()
+        val allSeries = getFilteredMasterList().mapNotNull { it.series }.distinct().sorted()
+        return allSeries.take((currentPage + 1) * LIMIT)
     }
 
     fun getCoversForAuthor(author: String): List<String> {
