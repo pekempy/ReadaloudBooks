@@ -78,15 +78,14 @@ fun ReadAloudPlayerScreen(
         }
     }
 
-    LaunchedEffect(readerViewModel.syncData, readerViewModel.chapterOffsets) {
-        if (readerViewModel.syncData.isNotEmpty()) {
-            val spineHrefs = readerViewModel.lazyBook?.spineHrefs ?: emptyList()
+    LaunchedEffect(readerViewModel.publication) {
+        val pub = readerViewModel.publication
+        if (pub != null) {
             readAloudAudioViewModel.loadBook(
                 bookId = bookId,
+                publication = pub,
                 smilData = readerViewModel.syncData,
-                chapterOffsets = readerViewModel.chapterOffsets,
-                spineHrefs = spineHrefs,
-                spineTitles = readerViewModel.lazyBook?.spineTitles ?: emptyMap()
+                chapterOffsets = readerViewModel.chapterOffsets
             )
         }
     }
@@ -217,32 +216,21 @@ fun ReadAloudPlayerScreen(
         val accentColor = MaterialTheme.colorScheme.primary
         val accentHex = String.format("#%06X", (0xFFFFFF and accentColor.toArgb()))
         
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(theme.bgInt))
+                .statusBarsPadding()
+                .navigationBarsPadding()
         ) {
-            EpubWebView(
-                html = readerViewModel.getCurrentChapterHtml() ?: "",
-                userSettings = userSettings,
-                viewModel = readerViewModel,
-                accentHex = accentHex,
-                highlightId = if (readerViewModel.activeSearchHighlight == null) readerViewModel.currentHighlightId else null,
-                syncTrigger = readerViewModel.syncTrigger,
-                activeSearch = readerViewModel.activeSearchHighlight,
-                activeSearchMatchIndex = readerViewModel.activeSearchMatchIndex,
-                pendingAnchor = readerViewModel.pendingAnchorId.value,
-                onTap = {  }
-            )
+            val pub = readerViewModel.publication
             
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(theme.bgInt).copy(alpha = 0.95f))
-                    .statusBarsPadding()
-                    .height(40.dp)
-                    .padding(horizontal = 4.dp)
-                    .align(Alignment.TopCenter),
+                    .height(56.dp) 
+                    .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -287,7 +275,7 @@ fun ReadAloudPlayerScreen(
                             tint = Color(theme.textInt)
                         )
                     }
-                    IconButton(onClick = { readerViewModel.showControls = !readerViewModel.showControls }) {
+                    IconButton(onClick = { readerViewModel.showSettings = !readerViewModel.showSettings }) {
                         Icon(
                             painterResource(R.drawable.ic_settings), 
                             contentDescription = "Preferences",
@@ -297,52 +285,72 @@ fun ReadAloudPlayerScreen(
                 }
             }
 
-            AnimatedVisibility(
-                visible = !isPlayerExpanded,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-            ) {
-                Column {
-                    AnimatedVisibility(
-                        visible = readerViewModel.showControls,
-                        enter = slideInVertically { it },
-                        exit = slideOutVertically { it }
-                    ) {
-                        ReaderControls(
-                            userSettings = userSettings,
-                            currentChapter = readerViewModel.currentChapterIndex,
-                            totalChapters = readerViewModel.totalChapters,
-                            onFontSizeChange = readerViewModel::updateFontSize,
-                            onThemeChange = readerViewModel::updateTheme,
-                            onFontFamilyChange = readerViewModel::updateFontFamily,
-                            onChapterChange = readerViewModel::changeChapter,
-                            backgroundColor = Color(theme.bgInt).copy(alpha = 0.95f),
-                            contentColor = Color(theme.textInt)
-                        )
-                    }
-                    ReadAloudMinimalCard(
-                        audiobookViewModel = readAloudAudioViewModel,
-                        theme = theme,
-                        onClick = { isPlayerExpanded = true }
+            Box(modifier = Modifier.weight(1f)) {
+                if (pub != null) {
+                    ReadiumReader(
+                        publication = pub,
+                        initialLocator = readerViewModel.currentLocator,
+                        userSettings = userSettings,
+                        modifier = Modifier.fillMaxSize(),
+                        accentColor = accentHex,
+                        onTap = {  },
+                        onReady = { readerViewModel.markReady() },
+                        onElementTap = { elementId ->
+                            readAloudAudioViewModel.seekToElement(elementId)
+                        },
+                        onLocatorChange = { locator ->
+                            readerViewModel.onLocatorChange(locator)
+                        }
                     )
                 }
-            }
+                this@Column.AnimatedVisibility(
+                    visible = !isPlayerExpanded,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically(),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                ) {
+                    Column {
+                        this@Column.AnimatedVisibility(
+                            visible = readerViewModel.showSettings,
+                            enter = slideInVertically { it },
+                            exit = slideOutVertically { it }
+                        ) {
+                            ReaderControls(
+                                userSettings = userSettings,
+                                currentChapter = readerViewModel.currentChapterIndex,
+                                totalChapters = readerViewModel.totalChapters,
+                                onFontSizeChange = readerViewModel::updateFontSize,
+                                onThemeChange = readerViewModel::updateTheme,
+                                onFontFamilyChange = readerViewModel::updateFontFamily,
+                                onChapterChange = readerViewModel::changeChapter,
+                                backgroundColor = Color(theme.bgInt).copy(alpha = 0.95f),
+                                contentColor = Color(theme.textInt)
+                            )
+                        }
+                        ReadAloudMinimalCard(
+                            audiobookViewModel = readAloudAudioViewModel,
+                            theme = theme,
+                            onClick = { isPlayerExpanded = true }
+                        )
+                    }
+                }
 
-            AnimatedVisibility(
-                visible = isPlayerExpanded,
-                enter = slideInVertically { it },
-                exit = slideOutVertically { it }
-            ) {
-                ReadAloudFullPlayerOverlay(
-                    viewModel = readAloudAudioViewModel,
-                    onClose = { isPlayerExpanded = false },
-                    onShowSpeed = { showSpeedSheet = true },
-                    onShowChapters = { showChaptersSheet = true },
-                    onShowSleep = { showSleepTimerSheet = true }
-                )
+                this@Column.AnimatedVisibility(
+                    visible = isPlayerExpanded,
+                    enter = slideInVertically { it },
+                    exit = slideOutVertically { it },
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    ReadAloudFullPlayerOverlay(
+                        viewModel = readAloudAudioViewModel,
+                        onClose = { isPlayerExpanded = false },
+                        onShowSpeed = { showSpeedSheet = true },
+                        onShowChapters = { showChaptersSheet = true },
+                        onShowSleep = { showSleepTimerSheet = true }
+                    )
+                }
             }
         }
 
@@ -366,9 +374,9 @@ fun ReadAloudPlayerScreen(
         
         if (showSearchSheet) {
             ModalBottomSheet(onDismissRequest = { showSearchSheet = false }) {
-                SearchContent(
+                com.pekempy.ReadAloudbooks.ui.player.BookSearchSheetContent(
                     viewModel = readerViewModel,
-                    onResultClick = { result, query ->
+                    onResultClick = { result: ReaderViewModel.SearchResult, query: String ->
                         readerViewModel.navigateToSearchResult(result, query)
                         showSearchSheet = false
                     }
@@ -379,7 +387,7 @@ fun ReadAloudPlayerScreen(
 }
 
 @Composable
-fun SearchContent(
+fun BookSearchSheetContent(
     viewModel: ReaderViewModel,
     onResultClick: (ReaderViewModel.SearchResult, String) -> Unit
 ) {

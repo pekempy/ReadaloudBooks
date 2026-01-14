@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.pekempy.ReadAloudbooks.data.UserPreferencesRepository
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
 import com.pekempy.ReadAloudbooks.data.UnifiedProgress
-import nl.siegmann.epublib.epub.EpubReader
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import java.io.File
@@ -14,9 +13,22 @@ import java.io.FileInputStream
 import android.webkit.WebResourceResponse
 import com.pekempy.ReadAloudbooks.data.Book
 import com.pekempy.ReadAloudbooks.data.api.Position
-import com.pekempy.ReadAloudbooks.data.api.Locator
+import com.pekempy.ReadAloudbooks.data.api.Locator as ApiLocator
 import com.pekempy.ReadAloudbooks.data.api.Locations
 import com.pekempy.ReadAloudbooks.util.DownloadUtils
+
+import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.Locator
+import org.readium.r2.shared.publication.Link
+import org.readium.r2.shared.util.Try
+import org.readium.r2.shared.util.getOrElse
+import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.mediatype.MediaType
+import org.readium.r2.shared.publication.services.search.SearchService
+import org.readium.r2.shared.publication.services.search.SearchIterator
+import org.readium.r2.shared.publication.services.search.SearchError
+import org.readium.r2.shared.publication.LocatorCollection
+import org.readium.r2.shared.publication.services.search.search
 
 class ReaderViewModel(
     private val repository: UserPreferencesRepository
@@ -36,8 +48,10 @@ class ReaderViewModel(
         val spineTitles: Map<String, String> = emptyMap()
     )
 
-    private var currentZipFile: java.util.zip.ZipFile? = null
+    var publication by mutableStateOf<Publication?>(null)
     internal var lazyBook: LazyBook? = null
+    
+    var currentLocator by mutableStateOf<Locator?>(null)
     
     var epubTitle by mutableStateOf("")
     var currentChapterIndex by mutableIntStateOf(0)
@@ -49,7 +63,8 @@ class ReaderViewModel(
     var settings by mutableStateOf<com.pekempy.ReadAloudbooks.data.UserSettings?>(null)
     private var currentBookId: String? = null
     
-    var showControls by mutableStateOf(false)
+    var showTopBar by mutableStateOf(false)
+    var showSettings by mutableStateOf(false)
     var isReadAloudMode by mutableStateOf(false)
 
     data class SyncSegment(
@@ -79,7 +94,8 @@ class ReaderViewModel(
     var pendingAnchorId = mutableStateOf<String?>(null)
     
     fun loadEpub(bookId: String, isReadAloud: Boolean) {
-        if (currentBookId == bookId && lazyBook != null && isReadAloudMode == isReadAloud) {
+        if (currentBookId == bookId && publication != null && isReadAloudMode == isReadAloud) {
+            // Already loaded, just check for progress sync
             viewModelScope.launch {
                 val progressStr = repository.getBookProgress(bookId).first()
                 val progress = UnifiedProgress.fromString(progressStr)
@@ -88,82 +104,62 @@ class ReaderViewModel(
                     val savedAudioMs = progress.audioTimestampMs
                     
                     if (isReadAloud && savedAudioMs > 0) {
-                        val diff = savedAudioMs - currentAudioPos
-                        val fiveMinutesMs = 5 * 60 * 1000L
+                        // Current sync logic stays for now
+                        val serverPercent = (progress.getOverallProgress() * 100).coerceIn(0f, 100f)
+                        val localPercent = (((currentChapterIndex + lastScrollPercent) / totalChapters.coerceAtLeast(1)) * 100).coerceIn(0f, 100f)
                         
-                        val isAtStart = currentAudioPos < 5000L
-                        
-                        if ((diff < 0 && diff >= -fiveMinutesMs) || (isAtStart && diff > 0)) {
-                            android.util.Log.d("ReaderViewModel", "Auto-syncing position jump: $diff ms (isAtStart=$isAtStart)")
+                        if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
+                            val resolvedElementId = progress.elementId ?: if (savedAudioMs > 0) getElementIdAtTime(savedAudioMs)?.second else null
+                            syncConfirmation = SyncConfirmation(
+                                newChapterIndex = savedChapter,
+                                newScrollPercent = progress.scrollPercent,
+                                newAudioMs = savedAudioMs,
+                                newElementId = resolvedElementId,
+                                progressPercent = serverPercent,
+                                localProgressPercent = localPercent,
+                                source = "another device"
+                            )
+                        } else {
                             currentChapterIndex = savedChapter
                             lastScrollPercent = progress.scrollPercent
                             currentAudioPos = savedAudioMs
                             currentHighlightId = progress.elementId ?: if (savedAudioMs > 0) getElementIdAtTime(savedAudioMs)?.second else null
-                        } else {
-                            val serverPercent = (progress.getOverallProgress() * 100).coerceIn(0f, 100f)
-                            val localPercent = (((currentChapterIndex + lastScrollPercent) / totalChapters.coerceAtLeast(1)) * 100).coerceIn(0f, 100f)
-                            
-                            if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
-                                android.util.Log.d("ReaderViewModel", "Showing sync confirmation for significant jump ($serverPercent% vs $localPercent%)")
-                                val resolvedElementId = progress.elementId ?: if (savedAudioMs > 0) getElementIdAtTime(savedAudioMs)?.second else null
-                                syncConfirmation = SyncConfirmation(
-                                    newChapterIndex = savedChapter,
-                                    newScrollPercent = progress.scrollPercent,
-                                    newAudioMs = savedAudioMs,
-                                    newElementId = resolvedElementId,
-                                    progressPercent = serverPercent,
-                                    localProgressPercent = localPercent,
-                                    source = "another device"
-                                )
-                            } else {
-                                android.util.Log.d("ReaderViewModel", "Auto-syncing minor jump ($serverPercent% vs $localPercent%)")
-                                currentChapterIndex = savedChapter
-                                lastScrollPercent = progress.scrollPercent
-                                currentAudioPos = savedAudioMs
-                                currentHighlightId = progress.elementId ?: if (savedAudioMs > 0) getElementIdAtTime(savedAudioMs)?.second else null
-                            }
                         }
                     }
                 }
             }
             return
         }
+
         currentBookId = bookId
         isReadAloudMode = isReadAloud
-        currentChapterIndex = 0
-        lastScrollPercent = 0f
-        currentAudioPos = 0L
-        currentHighlightId = null
         isLoading = true
         readerInitialized = false
-        syncData = emptyMap()
-        chapterOffsets = emptyMap()
         
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Load settings
                 val globalSettings = repository.userSettings.first()
                 val bookSettings = repository.getBookReaderSettings(bookId).first()
-                
                 settings = globalSettings.copy(
                     readerFontSize = bookSettings.first ?: globalSettings.readerFontSize,
                     readerTheme = bookSettings.second ?: globalSettings.readerTheme,
                     readerFontFamily = bookSettings.third ?: globalSettings.readerFontFamily
                 )
                 
+                // Get book details
                 val apiManager = AppContainer.apiClientManager
                 val apiBook = apiManager.getApi().getBookDetails(bookId)
                 
                 val apiSeries = apiBook.series?.firstOrNull()
                 val apiCollection = apiBook.collections?.firstOrNull()
-                val seriesName = apiSeries?.name ?: apiCollection?.name
-                val seriesIdx = apiSeries?.seriesIndex ?: apiCollection?.seriesIndex
-
+                
                 val book = Book(
                     id = apiBook.uuid,
                     title = apiBook.title,
                     author = apiBook.authors.joinToString(", ") { it.name },
-                    series = seriesName,
-                    seriesIndex = seriesIdx,
+                    series = apiSeries?.name ?: apiCollection?.name,
+                    seriesIndex = apiSeries?.seriesIndex ?: apiCollection?.seriesIndex,
                     coverUrl = apiManager.getCoverUrl(apiBook.uuid),
                     audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
                     ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid)
@@ -178,220 +174,122 @@ class ReaderViewModel(
                     throw Exception("Ebook file not found on disk. Please download it first.")
                 }
 
-                android.util.Log.d("ReaderViewModel", "Lazily opening: ${file.absolutePath}")
+                // Open with Readium
+                val result = AppContainer.readiumEngine.open(file)
+                val pub = result.getOrElse { throw it }
                 
-                val zip = java.util.zip.ZipFile(file)
-                currentZipFile = zip
-                
-                val containerEntry = zip.getEntry("META-INF/container.xml") 
-                    ?: throw Exception("Invalid EPUB: Missing container.xml")
-                val containerHtml = zip.getInputStream(containerEntry).bufferedReader().readText()
-                val opfPath = containerHtml.substringAfter("full-path=\"").substringBefore("\"")
-                
-                val opfEntry = zip.getEntry(opfPath) ?: throw Exception("Invalid EPUB: Missing $opfPath")
-                val opfContent = zip.getInputStream(opfEntry).bufferedReader().readText()
-                
-                val opfDir = if (opfPath.contains("/")) opfPath.substringBeforeLast("/") + "/" else ""
-                
-                epubTitle = opfContent.substringAfter("<dc:title>").substringBefore("</dc:title>")
-                
-                val manifestMap = mutableMapOf<String, String>()
-                val mediaTypeMap = mutableMapOf<String, String>()
-                val resourcesMap = mutableMapOf<String, String>()
-                val mediaOverlayMap = mutableMapOf<String, String>()
-                
-                val manifestLines = opfContent.substringAfter("<manifest>").substringBefore("</manifest>")
-                manifestLines.split("<item ").drop(1).forEach { line ->
-                    val id = line.substringAfter("id=\"").substringBefore("\"")
-                    val href = line.substringAfter("href=\"").substringBefore("\"")
-                    val type = line.substringAfter("media-type=\"").substringBefore("\"")
-                    val overlay = if (line.contains("media-overlay=\"")) line.substringAfter("media-overlay=\"").substringBefore("\"") else null
-                    val durationStr = if (line.contains("duration=\"")) line.substringAfter("duration=\"").substringBefore("\"") else null
+                withContext(Dispatchers.Main) {
+                    publication = pub
+                    epubTitle = pub.metadata.title ?: "Unknown Title"
                     
-                    manifestMap[id] = href
-                    val fullPath = (opfDir + href).replace("./", "").replace("//", "/")
-                    mediaTypeMap[fullPath] = type
-                    resourcesMap[fullPath] = fullPath
+                    val spineHrefs = pub.readingOrder.map { it.href.toString() }
+                    val resources = mutableMapOf<String, String>()
+                    val mediaTypes = mutableMapOf<String, String>()
+                    val spineTitles = mutableMapOf<String, String>()
                     
-                    if (overlay != null) {
-                        mediaOverlayMap[fullPath] = overlay
-                    }
-                }
-
-                val resolvedOverlayMap = mutableMapOf<String, String>()
-                mediaOverlayMap.forEach { (itemHref, overlayId) ->
-                    manifestMap[overlayId]?.let { overlayHref ->
-                        val fullPath = (opfDir + overlayHref).replace("./", "").replace("//", "/")
-                        resolvedOverlayMap[itemHref] = fullPath
-                    }
-                }
-                
-                val spineHrefs = mutableListOf<String>()
-                val spineLines = opfContent.substringAfter("<spine").substringAfter(">").substringBefore("</spine>")
-                spineLines.split("<itemref ").drop(1).forEach { line ->
-                    val idref = line.substringAfter("idref=\"").substringBefore("\"")
-                    manifestMap[idref]?.let { href ->
-                        val fullPath = (opfDir + href).replace("./", "").replace("//", "/")
-                        spineHrefs.add(fullPath)
-                    }
-                }
-
-                val spineTitles = mutableMapOf<String, String>()
-                try {
-                    val ncxId = opfContent.substringAfter("toc=\"", "").substringBefore("\"").ifEmpty {
-                        manifestLines.split("<item ").find { it.contains("application/x-dtbncx+xml") }
-                            ?.substringAfter("id=\"")?.substringBefore("\"")
+                    pub.readingOrder.forEach { link ->
+                        val hrefStr = link.href.toString()
+                        resources[hrefStr] = hrefStr
+                        link.mediaType?.toString()?.let { mediaTypes[hrefStr] = it }
+                        link.title?.let { spineTitles[hrefStr] = it }
                     }
                     
-                    if (!ncxId.isNullOrEmpty()) {
-                        val ncxHref = manifestMap[ncxId]
-                        if (ncxHref != null) {
-                            val fullNcxPath = (opfDir + ncxHref).replace("./", "").replace("//", "/")
-                            val ncxEntry = zip.getEntry(fullNcxPath)
-                            if (ncxEntry != null) {
-                                val ncxContent = zip.getInputStream(ncxEntry).bufferedReader().readText()
-                                val navPoints = ncxContent.split("<navPoint")
-                                navPoints.drop(1).forEach { point ->
-                                    val label = point.substringAfter("<text>").substringBefore("</text>")
-                                    var src = point.substringAfter("src=\"").substringBefore("\"")
-                                    val ncxDir = if (fullNcxPath.contains("/")) fullNcxPath.substringBeforeLast("/") + "/" else ""
-                                    src = src.substringBefore("#") 
-                                    val absPath = (ncxDir + src).replace("./", "").replace("//", "/")
-                                    
-                                    if (label.isNotBlank()) {
-                                        spineTitles[absPath] = label
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.w("ReaderViewModel", "Failed to parse NCX titles: ${e.message}")
-                }
-
-                lazyBook = LazyBook(epubTitle, spineHrefs, resourcesMap, mediaTypeMap, spineTitles)
-                totalChapters = spineHrefs.size
-
-                val progressStr = repository.getBookProgress(bookId).first()
-                val progress = UnifiedProgress.fromString(progressStr)
-                var savedAudioMs: Long? = null
-                if (progress != null) {
-                    currentChapterIndex = progress.chapterIndex.coerceIn(0, totalChapters - 1)
-                    lastScrollPercent = progress.scrollPercent
-                    currentHighlightId = progress.elementId
-                    savedAudioMs = if (progress.audioTimestampMs > 0) progress.audioTimestampMs else null
-                }
-
-                if (resolvedOverlayMap.isNotEmpty()) {
-                    val segmentsMap = java.util.concurrent.ConcurrentHashMap<String, List<SyncSegment>>()
+                    lazyBook = LazyBook(epubTitle, spineHrefs, resources, mediaTypes, spineTitles)
+                    totalChapters = spineHrefs.size
                     
-                    viewModelScope.launch(Dispatchers.IO) {
-                        val jobs = spineHrefs.map { chapterHref ->
-                            val smilHref = resolvedOverlayMap[chapterHref] ?: return@map null
-                            async {
-                                try {
-                                    val smilEntry = zip.getEntry(smilHref)
-                                    if (smilEntry != null) {
-                                        val smilContent = zip.getInputStream(smilEntry).bufferedReader().readText()
-                                        segmentsMap[chapterHref] = parseSmil(smilContent, chapterHref)
-                                    }
-                                } catch (e: Exception) { e.printStackTrace() }
-                            }
-                        }.filterNotNull()
-                        jobs.awaitAll()
-
-                        val sortedOffsets = mutableMapOf<String, Double>()
-                        var currentOffset = 0.0
-                        spineHrefs.forEach { chapterHref ->
-                            val smilHref = resolvedOverlayMap[chapterHref] ?: return@forEach
-                            sortedOffsets[chapterHref] = currentOffset
-                            val segments = segmentsMap[chapterHref]
-                            val dur = segments?.sumOf { it.clipEnd - it.clipBegin } ?: 0.0
-                            currentOffset += dur
+                    // Restore progress
+                    val progressStr = repository.getBookProgress(bookId).first()
+                    val progress = UnifiedProgress.fromString(progressStr)
+                    if (progress != null) {
+                        currentChapterIndex = progress.chapterIndex.coerceIn(0, totalChapters - 1)
+                        lastScrollPercent = progress.scrollPercent
+                        currentHighlightId = progress.elementId
+                        if (progress.audioTimestampMs > 0) {
+                            currentAudioPos = progress.audioTimestampMs
                         }
                         
-                        syncData = segmentsMap.toMap()
-                        if (chapterOffsets.isEmpty()) {
-                            chapterOffsets = sortedOffsets
-                        }
-                        
-                        if (savedAudioMs != null && savedAudioMs > 0) {
-                            val result = getElementIdAtTime(savedAudioMs)
-                            if (result != null) {
-                                currentChapterIndex = result.first
-                                currentHighlightId = result.second
-                                android.util.Log.d("ReaderSync", "Progress restored via priority Audio MS: ${result.first} / ${result.second} (${savedAudioMs}ms)")
-                            }
-                        } else if (currentHighlightId != null) {
-                            android.util.Log.d("ReaderSync", "Progress restored via Element ID: $currentHighlightId")
-                        } else {
-                            android.util.Log.d("ReaderSync", "Progress remaining on Chapter Index: $currentChapterIndex")
-                        }
-                        
-                                try {
-                                    val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
-                                    if (serverPos != null) {
-                                        val serverHref = serverPos.locator.href
-                                        val chapterIdxFromHref = lazyBook?.spineHrefs?.indexOfFirst { it == serverHref || it.endsWith("/$serverHref") || serverHref.endsWith("/$it") }
-                                        
-                                        val serverProgress = UnifiedProgress.fromPosition(serverPos, totalChapters).let {
-                                            val resolvedIdx = serverPos.locator.locations.chapterIndex ?: chapterIdxFromHref
-                                            if (resolvedIdx != null && resolvedIdx >= 0) {
-                                                it.copy(chapterIndex = resolvedIdx)
-                                            } else it
-                                        }
-                                
-                                val localLastUpdated = progress?.lastUpdated ?: 0L
-                                
-                                if (serverProgress.lastUpdated > localLastUpdated) {
-                                    val localPercent = (((currentChapterIndex + lastScrollPercent) / totalChapters.coerceAtLeast(1)) * 100).coerceIn(0f, 100f)
-                                    val serverPercent = ((serverPos.locator.locations.totalProgression ?: 0.0).toFloat() * 100).coerceIn(0f, 100f)
-                                    
-                                    if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
-                                        android.util.Log.d("ReaderSync", "Significant progress diff ($serverPercent% vs $localPercent%). Prompting.")
-                                        
-                                        val savedChapter = serverProgress.chapterIndex
-                                        val savedAudioMs = serverProgress.audioTimestampMs
-                                        val resolvedElementId = if (savedAudioMs > 0) getElementIdAtTime(savedAudioMs)?.second else null
-                                        
-                                        withContext(Dispatchers.Main) {
-                                            syncConfirmation = SyncConfirmation(
-                                                newChapterIndex = savedChapter,
-                                                newScrollPercent = serverProgress.scrollPercent,
-                                                newAudioMs = savedAudioMs,
-                                                newElementId = resolvedElementId,
-                                                progressPercent = serverPercent,
-                                                localProgressPercent = localPercent,
-                                                source = "Storyteller Server"
-                                            )
-                                        }
-                                    } else {
-                                        android.util.Log.d("ReaderSync", "Progress diff is minor ($serverPercent% vs $localPercent%). Auto-syncing to Storyteller.")
-                                        withContext(Dispatchers.Main) {
-                                            currentChapterIndex = serverProgress.chapterIndex
-                                            lastScrollPercent = serverProgress.scrollPercent
-                                            if (serverProgress.audioTimestampMs > 0) {
-                                                currentAudioPos = serverProgress.audioTimestampMs
-                                            }
-                                            currentHighlightId = serverProgress.elementId ?: if (serverProgress.audioTimestampMs > 0) getElementIdAtTime(serverProgress.audioTimestampMs)?.second else null
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.w("ReaderSync", "Failed to fetch server progress: ${e.message}")
-                        }
-                        
-                        android.util.Log.d("ReaderSync", "SMIL data background-loaded for ${segmentsMap.size} chapters.")
+                        // Create initial locator
+                        val href = spineHrefs[currentChapterIndex]
+                        currentLocator = Locator(
+                            href = Url(href)!!,
+                            mediaType = MediaType(mediaTypes[href] ?: "text/html") ?: MediaType.HTML,
+                            locations = Locator.Locations(
+                                progression = lastScrollPercent.toDouble()
+                            )
+                        )
+                    } else if (spineHrefs.isNotEmpty()) {
+                        val href = spineHrefs[0]
+                        currentLocator = Locator(
+                            href = Url(href)!!,
+                            mediaType = MediaType(mediaTypes[href] ?: "text/html") ?: MediaType.HTML
+                        )
                     }
                 }
 
-                isLoading = false
+                // Media Overlays (SMIL) handling if in read-aloud mode
+                if (pub.readingOrder.any { it.properties["media-overlay"] != null }) {
+                    // Extract SMIL data for sync
+                    val segmentsMap = mutableMapOf<String, List<SyncSegment>>()
+                    pub.readingOrder.forEach { link ->
+                        if (link.properties["media-overlay"] != null) {
+                            // Readium 3.x simplifies Media Overlay access
+                        }
+                    }
+                    
+                    // Re-populating syncData for now to avoid breaking AudioViewModel
+                    // This is temporary until AudioViewModel is also refactored
+                    loadSmilLegacy(pub)
+                }
+
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
-                error = e.message
-                isLoading = false
+                withContext(Dispatchers.Main) {
+                    error = e.message
+                    isLoading = false
+                }
             }
+        }
+    }
+
+    private suspend fun loadSmilLegacy(pub: Publication) {
+        val smilMap = mutableMapOf<String, List<SyncSegment>>()
+        val offsetMap = mutableMapOf<String, Double>()
+        var totalOffset = 0.0
+
+        for (link in pub.readingOrder) {
+            val href = link.href.toString()
+            // Find SMIL resource for this link
+            val smilHref = link.properties["media-overlay"] as? String
+            
+            if (smilHref != null) {
+                val smilUrl = Url(smilHref)
+                val smilLink = smilUrl?.let { pub.linkWithHref(it) }
+                if (smilLink != null) {
+                    try {
+                            val resource = pub.get(smilLink)
+                            val bytes = resource?.read()?.getOrElse { null }
+                            val smilContent = bytes?.decodeToString() ?: ""
+                            if (smilContent.isNotEmpty()) {
+                            val segments = parseSmil(smilContent, href)
+                            if (segments.isNotEmpty()) {
+                                smilMap[href] = segments
+                                offsetMap[href] = totalOffset
+                                totalOffset += segments.sumOf { it.clipEnd - it.clipBegin }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("ReaderViewModel", "Failed to parse SMIL for $href: ${e.message}")
+                    }
+                }
+            }
+        }
+        
+        withContext(Dispatchers.Main) {
+            syncData = smilMap
+            chapterOffsets = offsetMap
         }
     }
 
@@ -399,7 +297,18 @@ class ReaderViewModel(
         saveProgress(currentChapterIndex, lastScrollPercent, if (isReadAloudMode) currentAudioPos else 0L, currentHighlightId)
     }
 
-    fun saveProgress(chapterIndex: Int, scrollPercent: Float, audioPosMs: Long? = null, elementId: String? = null) {
+    fun onLocatorChange(locator: Locator) {
+        currentLocator = locator
+        val href = locator.href.toString()
+        val index = lazyBook?.spineHrefs?.indexOfFirst { it == href || it.endsWith("/$href") || href.endsWith("/$it") } ?: -1
+        if (index >= 0) {
+            currentChapterIndex = index
+            lastScrollPercent = locator.locations.progression?.toFloat() ?: 0f
+            saveProgress(index, lastScrollPercent)
+        }
+    }
+
+    fun saveProgress(chapterIndex: Int, scrollPercent: Float, audioTimestampMs: Long? = null, elementId: String? = null) {
         if (isLoading || !readerInitialized) {
             android.util.Log.d("ReaderViewModel", "Ignoring saveProgress: loading=$isLoading, initialized=$readerInitialized")
             return
@@ -409,8 +318,8 @@ class ReaderViewModel(
         if (elementId != null && !isReadAloudMode) {
             currentHighlightId = elementId
         }
-        if (audioPosMs != null) {
-            currentAudioPos = audioPosMs
+        if (audioTimestampMs != null) {
+            currentAudioPos = audioTimestampMs
         }
         
         viewModelScope.launch {
@@ -440,7 +349,8 @@ class ReaderViewModel(
                 } else null
             }
             
-            val mediaType = lazyBook?.mediaTypes?.get(href) ?: "application/xhtml+xml"
+            val mediaTypeStr = lazyBook?.mediaTypes?.get(href) ?: "application/xhtml+xml"
+            val mediaType = MediaType(mediaTypeStr) ?: MediaType.HTML
 
             val lastChapterHref = chapterOffsets.entries.maxByOrNull { it.value }?.key
             val lastChapterDur = syncData[lastChapterHref]?.sumOf { it.clipEnd - it.clipBegin } ?: 0.0
@@ -455,7 +365,7 @@ class ReaderViewModel(
                 totalChapters = totalChapters,
                 totalDurationMs = totalAudioDurMs,
                 href = href,
-                mediaType = mediaType
+                mediaType = mediaType.toString()
             )
 
             if (actualAudioPos == 0L && finalElementId == null && lastSyncedProgress != null) {
@@ -515,8 +425,15 @@ class ReaderViewModel(
     }
 
     fun changeChapter(index: Int, audioPosMs: Long? = null) {
+        val href = lazyBook?.spineHrefs?.getOrNull(index) ?: return
+        val mediaTypeStr = lazyBook?.mediaTypes?.get(href) ?: "text/html"
+        
         currentChapterIndex = index
         currentHighlightId = null
+        currentLocator = Locator(
+            href = Url(href)!!,
+            mediaType = MediaType(mediaTypeStr) ?: MediaType.HTML
+        )
         saveProgress(index, 0f, audioPosMs)
     }
 
@@ -545,35 +462,39 @@ class ReaderViewModel(
     }
 
     fun getResourceResponse(href: String): WebResourceResponse? {
-        val zip = currentZipFile ?: return null
-        val book = lazyBook ?: return null
+        val pub = publication ?: return null
         
         val cleanHref = href.substringAfter("https://epub-internal/")
             .substringBefore("?")
             .substringBefore("#")
 
-        val zipEntryName = book.resources[cleanHref] ?: return null
-        val entry = zip.getEntry(zipEntryName) ?: return null
-        val mimeType = book.mediaTypes[cleanHref] ?: "application/octet-stream"
+        val url = Url(cleanHref) ?: return null
+        val link = pub.linkWithHref(url) ?: return null
+        val type = link.mediaType?.toString() ?: "application/octet-stream"
         
         return try {
-            WebResourceResponse(mimeType, null, zip.getInputStream(entry))
+            val resource = pub.get(link)
+            val bytes = runBlocking { resource?.read()?.getOrNull() }
+            val inputStream = bytes?.inputStream() ?: return null
+            WebResourceResponse(type, null, inputStream)
         } catch (e: Exception) {
             null
         }
     }
 
     fun getCurrentChapterHtml(): String? {
-        val zip = currentZipFile ?: return null
-        val book = lazyBook ?: return null
-        if (currentChapterIndex !in book.spineHrefs.indices) return null
+        val pub = publication ?: return null
+        if (currentChapterIndex !in pub.readingOrder.indices) return null
         
-        val href = book.spineHrefs[currentChapterIndex]
-        val entryName = book.resources[href] ?: return null
-        val entry = zip.getEntry(entryName) ?: return null
-        val raw = zip.getInputStream(entry).bufferedReader().readText()
-        
-        return raw.replace(Regex("<\\?xml[^>]*\\?>", RegexOption.IGNORE_CASE), "").trim()
+        val link = pub.readingOrder[currentChapterIndex]
+        return try {
+            val resource = pub.get(link)
+            val bytes = runBlocking { resource?.read()?.getOrNull() }
+            val raw = bytes?.decodeToString() ?: return null
+            raw.replace(Regex("<\\?xml[^>]*\\?>", RegexOption.IGNORE_CASE), "").trim()
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun getCurrentChapterPath(): String {
@@ -693,7 +614,8 @@ class ReaderViewModel(
         val chapterIndex: Int,
         val title: String,
         val textSnippet: String,
-        val matchIndex: Int
+        val matchIndex: Int,
+        val locator: Locator
     )
     
     var searchResults by mutableStateOf<List<SearchResult>>(emptyList())
@@ -709,55 +631,72 @@ class ReaderViewModel(
             return
         }
         
-        searchJob = viewModelScope.launch(Dispatchers.IO) {
+        searchJob = viewModelScope.launch(Dispatchers.Default) {
             isSearching = true
             val results = mutableListOf<SearchResult>()
-            val book = lazyBook ?: return@launch
-            val zip = currentZipFile ?: return@launch
+            val pub = publication ?: return@launch
             
-            val htmlTagRegex = Regex("<[^>]*>")
-            val spaceRegex = Regex("\\s+")
+            android.util.Log.d("ReaderViewModel", "Search: Starting search for '$query'")
             
-            book.spineHrefs.forEachIndexed { index, href ->
-                if (!isActive) return@forEachIndexed
-                try {
-                    val entryName = book.resources[href] ?: return@forEachIndexed
-                    val entry = zip.getEntry(entryName) ?: return@forEachIndexed
-                    
-                    val rawHtml = zip.getInputStream(entry).bufferedReader().readText()
-                    
-                    val bodyContent = Regex("<body[^>]*>([\\s\\S]*?)</body>", RegexOption.IGNORE_CASE)
-                        .find(rawHtml)?.groupValues?.get(1) ?: rawHtml
-
-                    val noScriptStyle = bodyContent.replace(Regex("<(script|style)[^>]*>[\\s\\S]*?</\\1>", RegexOption.IGNORE_CASE), " ")
-                    
-                    val breaksToSpaces = noScriptStyle.replace(Regex("</?(br|p|div|li|h\\d|tr|td)[^>]*>", RegexOption.IGNORE_CASE), " ")
-
-                    val simpleText = breaksToSpaces.replace(htmlTagRegex, "")
-                    
-                    val plainText = simpleText.replace(spaceRegex, " ")
-                    
-                    var searchIndex = 0
-                    var matchCount = 0
-                    while (true) {
-                        val foundIndex = plainText.indexOf(query, searchIndex, ignoreCase = true)
-                        if (foundIndex == -1 || matchCount > 5) break 
-                        
-                        val start = (foundIndex - 30).coerceAtLeast(0)
-                        val end = (foundIndex + query.length + 30).coerceAtMost(plainText.length)
-                        val snippet = "..." + plainText.substring(start, end) + "..."
-                        
-                        val title = book.spineTitles[href] ?: "Section ${index + 1}"
-                        
-                        results.add(SearchResult(index, title, snippet, matchCount))
-                        
-                        searchIndex = foundIndex + 1
-                        matchCount++
-                        if (results.size > 50) break 
-                    }
-                    if (results.size > 50) return@forEachIndexed
-                } catch (e: Exception) {}
+            val searchTry = pub.search(query)
+            android.util.Log.d("ReaderViewModel", "Search: searchTry = $searchTry, isSuccess = ${searchTry is Try.Success<*, *>}")
+            
+            val iterator = if (searchTry is Try.Success<*, *>) {
+                searchTry.value as SearchIterator
+            } else {
+                android.util.Log.e("ReaderViewModel", "Search: Failed to get iterator - $searchTry")
+                isSearching = false
+                return@launch 
             }
+            
+            try {
+                var matchCount = 0
+                while (isActive && matchCount < 50) {
+                    val nextTry = iterator.next()
+                    android.util.Log.d("ReaderViewModel", "Search: nextTry = $nextTry")
+                    
+                    val collection = if (nextTry is Try.Success<*, *>) {
+                        nextTry.value as? LocatorCollection ?: break
+                    } else {
+                        android.util.Log.d("ReaderViewModel", "Search: nextTry was not success, breaking")
+                        break
+                    }
+                    
+                    android.util.Log.d("ReaderViewModel", "Search: collection has ${collection.locators.size} locators")
+                    if (collection.locators.isEmpty()) break
+                    
+                    for (locator in collection.locators) {
+                        if (!isActive) break
+                        val chapterIndex = pub.readingOrder.indexOfFirst { it.href == locator.href }
+                        val chapterTitle = locator.title ?: pub.readingOrder.getOrNull(chapterIndex)?.title ?: "Chapter ${chapterIndex + 1}"
+                        
+                        val before = locator.text.before ?: ""
+                        val highlight = locator.text.highlight ?: ""
+                        val after = locator.text.after ?: ""
+                        val snippet = if (after.isNotEmpty()) {
+                            "...$before$highlight$after..."
+                        } else {
+                            highlight.ifEmpty { "Match found" }
+                        }
+                            
+                        results.add(SearchResult(
+                            chapterIndex = if (chapterIndex >= 0) chapterIndex else 0,
+                            title = chapterTitle,
+                            textSnippet = snippet,
+                            matchIndex = matchCount,
+                            locator = locator
+                        ))
+                        matchCount++
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ReaderViewModel", "Search: Exception", e)
+                e.printStackTrace()
+            } finally {
+                iterator.close()
+            }
+            
+            android.util.Log.d("ReaderViewModel", "Search: Found ${results.size} results")
             
             withContext(Dispatchers.Main) {
                 searchResults = results
@@ -775,7 +714,8 @@ class ReaderViewModel(
     }
 
     fun navigateToSearchResult(result: SearchResult, query: String) {
-        changeChapter(result.chapterIndex)
+        currentChapterIndex = result.chapterIndex
+        currentLocator = result.locator
         activeSearchHighlight = query
         activeSearchMatchIndex = result.matchIndex
     }
@@ -802,9 +742,9 @@ class ReaderViewModel(
     override fun onCleared() {
         super.onCleared()
         try {
-            currentZipFile?.close()
+            publication?.close()
         } catch (e: Exception) {}
-        currentZipFile = null
+        publication = null
         lazyBook = null
     }
 

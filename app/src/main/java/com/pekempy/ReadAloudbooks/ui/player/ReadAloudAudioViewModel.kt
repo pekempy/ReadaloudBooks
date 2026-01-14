@@ -18,7 +18,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.zip.ZipFile
 import android.net.Uri
 import android.content.ComponentName
 import androidx.media3.session.MediaController
@@ -27,6 +26,10 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import java.util.concurrent.TimeUnit
 import com.pekempy.ReadAloudbooks.data.UnifiedProgress
+import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.Locator
+import org.readium.r2.shared.util.getOrElse
+import org.readium.r2.shared.util.Url
 
 class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository) : ViewModel() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
@@ -62,7 +65,6 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
     private var loadJob: Job? = null
     private var filesDir: File? = null
     private var appContext: android.content.Context? = null
-    private var currentZipFile: ZipFile? = null
     private var pendingSeekPosition: Long? = null
     private var loadedSpineHrefs: List<String> = emptyList()
     
@@ -145,10 +147,9 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
 
     fun loadBook(
         bookId: String, 
-        smilData: Map<String, List<com.pekempy.ReadAloudbooks.ui.reader.ReaderViewModel.SyncSegment>>, 
+        publication: org.readium.r2.shared.publication.Publication,
+        smilData: Map<String, List<com.pekempy.ReadAloudbooks.ui.reader.ReaderViewModel.SyncSegment>>,
         chapterOffsets: Map<String, Double>,
-        spineHrefs: List<String>,
-        spineTitles: Map<String, String> = emptyMap(),
         autoPlay: Boolean = true
     ) {
         if (currentBook?.id == bookId && player != null && player?.playbackState != androidx.media3.common.Player.STATE_IDLE) {
@@ -200,9 +201,6 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 val apiManager = AppContainer.apiClientManager
                 val apiBook = apiManager.getApi().getBookDetails(bookId)
                 
-                val apiSeries = apiBook.series?.firstOrNull()
-                val apiCollection = apiBook.collections?.firstOrNull()
-                
                 val book = Book(
                     id = apiBook.uuid,
                     title = apiBook.title,
@@ -212,7 +210,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                     audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
                     ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid),
                     description = apiBook.description,
-                    series = apiSeries?.name ?: apiCollection?.name,
+                    series = apiBook.series?.firstOrNull()?.name ?: apiBook.collections?.firstOrNull()?.name,
                     seriesIndex = apiBook.series?.firstNotNullOfOrNull { it.seriesIndex }
                         ?: apiBook.collections?.firstNotNullOfOrNull { it.seriesIndex }
                 )
@@ -227,21 +225,14 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                     currentPosition = 0
                 }
                 
-                val bookDir = DownloadUtils.getBookDir(filesDir!!, book)
-                val baseFileName = DownloadUtils.getBaseFileName(book)
-                val epubFile = File(bookDir, "$baseFileName (readaloud).epub")
-                
-                if (!epubFile.exists()) {
-                    throw Exception("Read-aloud EPUB not found on disk")
-                }
-                
-                currentZipFile = ZipFile(epubFile)
-                
                 val localExtractedFiles = mutableMapOf<String, File>()
-                extractAudioFiles(smilData, bookId, localExtractedFiles)
+                extractAudioFiles(publication, smilData, bookId, localExtractedFiles)
                 
                 val localClipSegments = mutableListOf<ClipSegment>()
                 val localChapterOffsets = mutableMapOf<String, Long>()
+                val spineHrefs = publication.readingOrder.map { it.href.toString() }
+                val spineTitles = publication.readingOrder.associate { it.href.toString() to (it.title ?: "") }
+                
                 createClippedSegments(smilData, spineHrefs, localExtractedFiles, localClipSegments, localChapterOffsets)
                 
                 val calculatedDuration = localClipSegments.sumOf { it.clipEndMs - it.clipBeginMs }
@@ -261,8 +252,6 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                     }
                 }
                 val mediaMetadata = mediaMetadataBuilder.build()
-                
-                android.util.Log.d("ReadAloudAudioVM", "Building media items from ${localClipSegments.size} clips")
                 
                 val mediaItems = localClipSegments.map { clip ->
                     val chapter = localChaptersList.findLast { it.startOffset <= clip.cumulativeStartMs }
@@ -289,8 +278,6 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                         .build()
                 }
                 
-                android.util.Log.d("ReadAloudAudioVM", "Built ${mediaItems.size} media items, setting to player...")
-                
                 var connectionWaitTime = 0
                 while (player == null && connectionWaitTime < 100) { 
                     delay(100)
@@ -308,14 +295,14 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                     extractedAudioFiles.putAll(localExtractedFiles)
                     hrefToAudioOffset.clear()
                     hrefToAudioOffset.putAll(localChapterOffsets)
-                    audioChapterOffsets = localChapterOffsets.mapValues { it.value / 1000.0 }
+                    audioChapterOffsets = chapterOffsets
                     chapters = localChaptersList
                     duration = calculatedDuration
                     
                     loadedSpineHrefs = spineHrefs
                     player?.setMediaItems(mediaItems)
                     player?.prepare()
-                    android.util.Log.d("ReadAloudAudioVM", "Player prepared with ${mediaItems.size} items")
+                    if (autoPlay) player?.play()
                 }
                 
                 loadProgress(bookId)
@@ -383,24 +370,27 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 withContext(Dispatchers.Main) {
                      currentBook = book
                      if (progress != null) {
-                         currentPosition = progress.audioTimestampMs
+                         currentPosition = progress?.audioTimestampMs ?: 0L
                          duration = progress.totalDurationMs
-                         currentChapterIndex = progress.chapterIndex
-                         currentElementId = progress.elementId
+                         currentChapterIndex = progress?.chapterIndex ?: 0
+                         currentElementId = progress?.elementId
                      }
                      isLoading = false
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                }
+            }
         }
     }
 
     private suspend fun extractAudioFiles(
+        publication: Publication,
         smilData: Map<String, List<com.pekempy.ReadAloudbooks.ui.reader.ReaderViewModel.SyncSegment>>,
         bookId: String,
         outputMap: MutableMap<String, File>
     ) {
-        val zip = currentZipFile ?: return
-        
         val tempDir = File(appContext!!.cacheDir, "readaloud_audio/$bookId")
         if (!tempDir.exists()) {
             tempDir.mkdirs()
@@ -413,71 +403,31 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             }
         }
         
-        android.util.Log.d("ReadAloudAudioVM", "Found ${uniqueAudioSources.size} unique audio files to extract")
-        
         uniqueAudioSources.forEach { audioSrc ->
-            val filename = audioSrc.substringAfterLast("/")
-            
-            android.util.Log.d("ReadAloudAudioVM", "Searching for audio: $audioSrc (filename: $filename)")
-            
-            val possiblePaths = listOf(
-                audioSrc.removePrefix("../"),
-                "OEBPS/${audioSrc.removePrefix("../")}",
-                "Audio/$filename",
-                "OEBPS/Audio/$filename",
-                audioSrc
-            )
-            
-            var entry: java.util.zip.ZipEntry? = null
-            var foundPath: String? = null
-            
-            for (path in possiblePaths) {
-                entry = zip.getEntry(path)
-                if (entry != null) {
-                    foundPath = path
-                    break
-                }
-            }
-
-            if (entry == null) {
-                val allEntries = zip.entries()
-                while (allEntries.hasMoreElements()) {
-                    val next = allEntries.nextElement()
-                    if (next.name.endsWith("/$filename") || next.name == filename) {
-                        entry = next
-                        foundPath = next.name
-                        break
-                    }
-                }
-            }
-            
-            if (entry == null) {
-                android.util.Log.e("ReadAloudAudioVM", "Audio file NOT FOUND: $audioSrc")
-                return@forEach
-            }
-            
-            android.util.Log.d("ReadAloudAudioVM", "Found audio at: $foundPath")
-            
             val safeName = audioSrc.replace("/", "_").replace("\\", "_").removePrefix(".._")
             val tempFile = File(tempDir, safeName)
             
             if (tempFile.exists() && tempFile.length() > 0) {
-                android.util.Log.d("ReadAloudAudioVM", "Using existing file: $audioSrc")
                 outputMap[audioSrc] = tempFile
                 return@forEach
             }
-            
-            zip.getInputStream(entry).use { input ->
-                tempFile.outputStream().use { output ->
-                    input.copyTo(output)
+
+            val url = Url(audioSrc) ?: return@forEach
+            val link = publication.linkWithHref(url) ?: return@forEach
+            try {
+                val resource = publication.get(link)
+                val inputStream = resource?.read()?.getOrNull()?.inputStream() ?: return@forEach
+                inputStream.use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
                 }
+                outputMap[audioSrc] = tempFile
+                android.util.Log.d("ReadAloudAudioVM", "Extracted via Readium: $audioSrc → ${tempFile.name}")
+            } catch (e: Exception) {
+                android.util.Log.e("ReadAloudAudioVM", "Failed to extract $audioSrc: ${e.message}")
             }
-            
-            outputMap[audioSrc] = tempFile
-            android.util.Log.d("ReadAloudAudioVM", "Extracted: $audioSrc → ${tempFile.name} (${tempFile.length()} bytes)")
         }
-        
-        android.util.Log.d("ReadAloudAudioVM", "Extracted ${outputMap.size} audio files")
     }
     
     private fun createClippedSegments(
@@ -930,10 +880,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         sleepTimerRemaining = 0
         clipSegments.clear()
         
-        try {
-            currentZipFile?.close()
-            currentZipFile = null
-        } catch (e: Exception) {}
+        clipSegments.clear()
     }
 
     override fun onCleared() {
@@ -945,11 +892,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         progressJob?.cancel()
         sleepTimerJob?.cancel()
         
-        try {
-            currentZipFile?.close()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        sleepTimerJob?.cancel()
     }
 }
 

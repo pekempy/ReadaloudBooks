@@ -3,6 +3,7 @@ package com.pekempy.ReadAloudbooks.ui.reader
 import android.view.ViewGroup
 import android.webkit.*
 import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -97,82 +98,93 @@ fun ReaderScreen(
         val accentColor = MaterialTheme.colorScheme.primary
         val accentHex = String.format("#%06X", (0xFFFFFF and accentColor.toArgb()))
 
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(theme.bgInt))
+                .statusBarsPadding()
+                .navigationBarsPadding()
         ) {
-            EpubWebView(
-                html = viewModel.getCurrentChapterHtml() ?: "",
-                userSettings = userSettings,
-                viewModel = viewModel,
-                accentHex = accentHex,
-                highlightId = viewModel.currentHighlightId,
-                syncTrigger = viewModel.syncTrigger,
-                activeSearch = viewModel.activeSearchHighlight,
-                activeSearchMatchIndex = viewModel.activeSearchMatchIndex,
-                pendingAnchor = viewModel.pendingAnchorId.value,
-                onTap = { viewModel.showControls = !viewModel.showControls }
-            )
-
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .background(Color(theme.bgInt).copy(alpha = 0.95f))
-                    .statusBarsPadding()
-                    .height(56.dp) 
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // Top Bar
+            this@Column.AnimatedVisibility(
+                visible = viewModel.showTopBar,
+                enter = slideInVertically { -it },
+                exit = slideOutVertically { -it }
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back", tint = Color(theme.textInt))
-                }
-                Text(
-                    viewModel.epubTitle, 
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleMedium, 
-                    maxLines = 1,
-                    color = Color(theme.textInt)
-                )
-                IconButton(onClick = { 
-                    viewModel.clearSearch()
-                    showSearchSheet = true 
-                }) {
-                    Icon(painterResource(R.drawable.ic_search), contentDescription = "Search", tint = Color(theme.textInt))
-                }
-                IconButton(onClick = { viewModel.showControls = !viewModel.showControls }) {
-                    Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings", tint = Color(theme.textInt))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(theme.bgInt).copy(alpha = 0.95f))
+                        .height(56.dp) 
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back", tint = Color(theme.textInt))
+                    }
+                    Text(
+                        viewModel.epubTitle, 
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium, 
+                        maxLines = 1,
+                        color = Color(theme.textInt)
+                    )
+                    IconButton(onClick = { 
+                        viewModel.clearSearch()
+                        showSearchSheet = true 
+                    }) {
+                        Icon(painterResource(R.drawable.ic_search), contentDescription = "Search", tint = Color(theme.textInt))
+                    }
+                    IconButton(onClick = { viewModel.showSettings = !viewModel.showSettings }) {
+                        Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings", tint = Color(theme.textInt))
+                    }
                 }
             }
 
-            AnimatedVisibility(
-                visible = viewModel.showControls,
-                enter = slideInVertically { it },
-                exit = slideOutVertically { it },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-            ) {
-                ReaderControls(
-                    userSettings = userSettings,
-                    currentChapter = viewModel.currentChapterIndex,
-                    totalChapters = viewModel.totalChapters,
-                    onFontSizeChange = viewModel::updateFontSize,
-                    onThemeChange = viewModel::updateTheme,
-                    onFontFamilyChange = viewModel::updateFontFamily,
-                    onChapterChange = viewModel::changeChapter,
-                    backgroundColor = Color(theme.bgInt).copy(alpha = 0.95f),
-                    contentColor = Color(theme.textInt)
-                )
+            Box(modifier = Modifier.weight(1f)) {
+                val pub = viewModel.publication
+                if (pub != null) {
+                    ReadiumReader(
+                        publication = pub,
+                        initialLocator = viewModel.currentLocator,
+                        userSettings = userSettings,
+                        modifier = Modifier.fillMaxSize(),
+                        onTap = { /* Handled by Readium */ },
+                        onDoubleTap = { viewModel.showTopBar = !viewModel.showTopBar },
+                        onReady = { viewModel.markReady() },
+                        onLocatorChange = { locator ->
+                            viewModel.onLocatorChange(locator)
+                        }
+                    )
+                }
+
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = viewModel.showSettings,
+                    enter = slideInVertically { it },
+                    exit = slideOutVertically { it },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                ) {
+                    ReaderControls(
+                        userSettings = userSettings,
+                        currentChapter = viewModel.currentChapterIndex,
+                        totalChapters = viewModel.totalChapters,
+                        onFontSizeChange = viewModel::updateFontSize,
+                        onThemeChange = viewModel::updateTheme,
+                        onFontFamilyChange = viewModel::updateFontFamily,
+                        onChapterChange = viewModel::changeChapter,
+                        backgroundColor = Color(theme.bgInt).copy(alpha = 0.95f),
+                        contentColor = Color(theme.textInt)
+                    )
+                }
             }
         }
         
         if (showSearchSheet) {
             ModalBottomSheet(onDismissRequest = { showSearchSheet = false }) {
-                com.pekempy.ReadAloudbooks.ui.player.SearchContent(
+                com.pekempy.ReadAloudbooks.ui.player.BookSearchSheetContent(
                     viewModel = viewModel,
-                    onResultClick = { result, query ->
+                    onResultClick = { result: ReaderViewModel.SearchResult, query: String ->
                         viewModel.navigateToSearchResult(result, query)
                         showSearchSheet = false
                     }

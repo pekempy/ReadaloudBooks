@@ -4,16 +4,17 @@ import java.io.FileInputStream
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
     namespace = "com.pekempy.ReadAloudbooks"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.pekempy.ReadAloudbooks"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35
         versionCode = project.findProperty("versionCode")?.toString()?.toInt() ?: 1
         versionName = project.findProperty("versionName")?.toString() ?: "1.0"
 
@@ -72,6 +73,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions {
         jvmTarget = "17"
@@ -79,9 +81,6 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
     }
     packaging {
         resources {
@@ -110,13 +109,23 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.3.1")
     implementation("androidx.media3:media3-session:1.3.1")
     implementation("androidx.media3:media3-transformer:1.3.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1")
     implementation("nl.siegmann.epublib:epublib-core:3.1") {
         exclude(group = "org.slf4j")
         exclude(group = "xmlpull")
         exclude(group = "net.sf.kxml")
     }
+    implementation("androidx.fragment:fragment-ktx:1.6.2")
+    implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("org.slf4j:slf4j-android:1.7.36")
+    
+    implementation("org.readium.kotlin-toolkit:readium-shared:3.1.2")
+    implementation("org.readium.kotlin-toolkit:readium-streamer:3.1.2")
+    implementation("org.readium.kotlin-toolkit:readium-navigator:3.1.2")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")

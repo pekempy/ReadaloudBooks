@@ -1,7 +1,6 @@
 package com.pekempy.ReadAloudbooks
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.slideInHorizontally
@@ -45,8 +44,9 @@ import com.pekempy.ReadAloudbooks.ui.components.AppNavigationBar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.appcompat.app.AppCompatActivity
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     private lateinit var repository: UserPreferencesRepository
     private lateinit var sharedAudiobookViewModel: AudiobookViewModel
     private lateinit var readAloudAudioViewModel: com.pekempy.ReadAloudbooks.ui.player.ReadAloudAudioViewModel
@@ -543,8 +543,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (::sharedAudiobookViewModel.isInitialized) sharedAudiobookViewModel.saveBookProgress()
-        if (::readAloudAudioViewModel.isInitialized) readAloudAudioViewModel.saveBookProgress()
-        if (::readerViewModel.isInitialized) readerViewModel.saveProgress()
+        if (this::sharedAudiobookViewModel.isInitialized) sharedAudiobookViewModel.saveBookProgress()
+        if (this::readAloudAudioViewModel.isInitialized) readAloudAudioViewModel.saveBookProgress()
+        if (this::readerViewModel.isInitialized) readerViewModel.saveProgress()
     }
 }

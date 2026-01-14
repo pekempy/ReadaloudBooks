@@ -711,7 +711,8 @@ fun SingleCoverWithBlur(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(320.dp),
+            .height(320.dp)
+            .clip(RoundedCornerShape(0.dp)),
         contentAlignment = Alignment.TopCenter
     ) {
         AsyncImage(
