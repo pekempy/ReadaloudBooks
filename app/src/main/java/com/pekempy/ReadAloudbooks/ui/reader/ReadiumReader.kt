@@ -17,8 +17,6 @@ import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.AbsoluteUrl
 import android.graphics.PointF
-import android.view.GestureDetector
-import android.view.MotionEvent
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.Navigator
@@ -52,7 +50,7 @@ fun ReadiumReader(
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
-            FragmentContainerView(ctx).apply {
+            val fragmentContainer = FragmentContainerView(ctx).apply {
                 id = containerId
                 
                 val factory = EpubNavigatorFactory(publication)
@@ -83,19 +81,9 @@ fun ReadiumReader(
                 fragmentManager.commit {
                     replace(containerId, EpubNavigatorFragment::class.java, null, "readium_navigator")
                 }
-                
-                val gestureDetector = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
-                    override fun onDoubleTap(e: MotionEvent): Boolean {
-                        onDoubleTap()
-                        return true
-                    }
-                })
-                
-                setOnTouchListener { _, event ->
-                    gestureDetector.onTouchEvent(event)
-                    false
-                }
             }
+            
+            fragmentContainer
         },
         update = { _ ->
             // Fragment management is handled via LaunchedEffect and fragmentManager
@@ -129,7 +117,8 @@ fun ReadiumReader(
         }
         
         var lastTapTime = 0L
-        val doubleTapTimeout = android.view.ViewConfiguration.getDoubleTapTimeout()
+        val doubleTapTimeout = 300L
+        val screenWidth = context.resources.displayMetrics.widthPixels
         
         fragment.addInputListener(object : InputListener {
             override fun onTap(event: TapEvent): Boolean {
@@ -140,7 +129,19 @@ fun ReadiumReader(
                     return true
                 }
                 lastTapTime = currentTime
-                return false
+                
+                val point = event.point
+                if (point != null) {
+                    if (point.x < screenWidth * 0.2) {
+                        fragment.goBackward(animated = true)
+                        return true
+                    } else if (point.x > screenWidth * 0.8) {
+                        fragment.goForward(animated = true)
+                        return true
+                    }
+                }
+                
+                return true // Consume all other taps to prevent default menu header
             }
         })
         

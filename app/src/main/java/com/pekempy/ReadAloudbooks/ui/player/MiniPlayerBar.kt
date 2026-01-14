@@ -56,7 +56,7 @@ fun MiniPlayerBar(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (isReadAloud) readAloudViewModel.stopPlayback() else audiobookViewModel.stopPlayback()
+                        if (isReadAloud) readAloudViewModel.pause() else audiobookViewModel.pause()
                         showStopConfirmation = false
                     }
                 ) {

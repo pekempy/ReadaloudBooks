@@ -23,6 +23,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.viewinterop.AndroidView
 import com.pekempy.ReadAloudbooks.data.UserSettings
+import androidx.compose.foundation.interaction.MutableInteractionSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -155,6 +156,17 @@ fun ReaderScreen(
                         onLocatorChange = { locator ->
                             viewModel.onLocatorChange(locator)
                         }
+                    )
+                }
+
+                if (viewModel.showSettings) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { viewModel.showSettings = false }
                     )
                 }
 

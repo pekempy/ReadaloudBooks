@@ -108,10 +108,9 @@ fun AudiobookPlayerScreen(
             val book = viewModel.currentBook
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .systemBarsPadding()
+                    .fillMaxSize() // .systemBarsPadding() removed
                     .padding(padding)
-                    .padding(24.dp),
+                    .padding(horizontal = 24.dp, vertical = 0.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
@@ -157,15 +156,15 @@ fun AudiobookPlayerScreen(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(vertical = 32.dp),
+                        .padding(vertical = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Card(
                         modifier = Modifier
-                            .aspectRatio(1f)
-                            .maxHeight(350.dp),
+                            .fillMaxWidth()
+                            .aspectRatio(1f),
                         shape = RoundedCornerShape(24.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                        elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
                     ) {
                         AsyncImage(
                             model = book?.audiobookCoverUrl ?: book?.coverUrl,
@@ -235,12 +234,6 @@ fun AudiobookPlayerScreen(
                     IconButton(onClick = { viewModel.rewind10s() }) {
                         Icon(painterResource(R.drawable.ic_replay_10), contentDescription = "Rewind 10s", Modifier.size(32.dp))
                     }
-                    IconButton(onClick = { 
-                        if (viewModel.chapters.isNotEmpty()) {
-                        }
-                    }) {
-                        Icon(painterResource(R.drawable.ic_skip_previous), contentDescription = "Previous", Modifier.size(40.dp))
-                    }
                     FilledIconButton(
                         onClick = { viewModel.togglePlayPause() },
                         modifier = Modifier.size(72.dp),
@@ -251,12 +244,6 @@ fun AudiobookPlayerScreen(
                             contentDescription = "Play/Pause",
                             Modifier.size(40.dp)
                         )
-                    }
-                    IconButton(onClick = { 
-                        if (viewModel.chapters.isNotEmpty()) {
-                        }
-                    }) {
-                        Icon(painterResource(R.drawable.ic_skip_next), contentDescription = "Next", Modifier.size(40.dp))
                     }
                     IconButton(onClick = { viewModel.forward30s() }) {
                         Icon(painterResource(R.drawable.ic_forward_30), contentDescription = "Forward 30s", Modifier.size(32.dp))

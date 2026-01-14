@@ -124,6 +124,8 @@ dependencies {
     implementation("org.readium.kotlin-toolkit:readium-shared:3.1.2")
     implementation("org.readium.kotlin-toolkit:readium-streamer:3.1.2")
     implementation("org.readium.kotlin-toolkit:readium-navigator:3.1.2")
+    implementation("org.readium.kotlin-toolkit:readium-navigator-media-audio:3.1.2")
+    implementation("org.readium.kotlin-toolkit:readium-adapter-exoplayer:3.1.2")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
     testImplementation("junit:junit:4.13.2")
