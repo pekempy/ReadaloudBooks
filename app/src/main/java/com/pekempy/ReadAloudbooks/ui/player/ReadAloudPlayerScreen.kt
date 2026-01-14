@@ -72,6 +72,15 @@ fun ReadAloudPlayerScreen(
         }
     }
 
+    LaunchedEffect(readAloudAudioViewModel.isPlaying) {
+        if (readAloudAudioViewModel.isPlaying) {
+            while (true) {
+                readerViewModel.forceScrollUpdate()
+                kotlinx.coroutines.delay(500)
+            }
+        }
+    }
+
     LaunchedEffect(readAloudAudioViewModel.currentPosition) {
         if (!readAloudAudioViewModel.isLoading && readAloudAudioViewModel.currentPosition > 0) {
             readerViewModel.currentAudioPos = readAloudAudioViewModel.currentPosition

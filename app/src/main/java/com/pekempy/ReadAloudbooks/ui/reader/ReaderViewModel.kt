@@ -342,11 +342,16 @@ class ReaderViewModel(
                                         }
                                 
                                 val localLastUpdated = progress?.lastUpdated ?: 0L
+                                val serverTimestampMs = (serverPos.timestamp * 1000)
                                 
-                                if (serverProgress.lastUpdated > localLastUpdated) {
-                                    val localPercent = (((currentChapterIndex + lastScrollPercent) / totalChapters.coerceAtLeast(1)) * 100).coerceIn(0f, 100f)
-                                    val serverPercent = ((serverPos.locator.locations.totalProgression ?: 0.0).toFloat() * 100).coerceIn(0f, 100f)
-                                    
+                                val serverPercent = ((serverPos.locator.locations.totalProgression ?: 0.0).toFloat() * 100).coerceIn(0f, 100f)
+                                val localPercent = (((currentChapterIndex + lastScrollPercent) / totalChapters.coerceAtLeast(1)) * 100).coerceIn(0f, 100f)
+                                
+                                val isServerZeroButLocalStarted = serverPercent < 0.1f && localPercent > 1.0f
+                                val isSignificantlyNewer = serverTimestampMs > localLastUpdated + 300000
+                                val isRecentEnough = serverTimestampMs > localLastUpdated + 10000
+                                
+                                if (isRecentEnough && (!isServerZeroButLocalStarted || isSignificantlyNewer)) {
                                     if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
                                         android.util.Log.d("ReaderSync", "Significant progress diff ($serverPercent% vs $localPercent%). Prompting.")
                                         

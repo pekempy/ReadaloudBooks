@@ -347,7 +347,8 @@ fun EpubWebView(
                     webView.setTag(com.pekempy.ReadAloudbooks.R.id.anchor_tag, null)
                 }
 
-                currentHighlightId?.let { id ->
+                if (currentHighlightId != null) {
+                    val id = currentHighlightId
                     if (id.isNotEmpty()) {
                         val lastId = webView.getTag(com.pekempy.ReadAloudbooks.R.id.highlight_tag) as? String
                         val lastTrigger = webView.getTag(com.pekempy.ReadAloudbooks.R.id.trigger_tag) as? Int ?: -1
@@ -359,6 +360,14 @@ fun EpubWebView(
                             webView.setTag(com.pekempy.ReadAloudbooks.R.id.trigger_tag, trigger)
                         }
                     }
+                } else {
+                    val lastTrigger = webView.getTag(com.pekempy.ReadAloudbooks.R.id.trigger_tag) as? Int ?: -1
+                    if (lastTrigger != trigger) {
+                        val percent = viewModel.lastScrollPercent
+                        android.util.Log.d("EpubWebView", "Scroll jump to $percent (trigger $trigger)")
+                        webView.evaluateJavascript("if (typeof scrollToPercent === 'function') scrollToPercent($percent)", null)
+                        webView.setTag(com.pekempy.ReadAloudbooks.R.id.trigger_tag, trigger)
+                    }
                 }
                 
                 if (activeSearch != null) {
@@ -367,7 +376,7 @@ fun EpubWebView(
                         android.util.Log.d("EpubWebView", "Update: scheduling findAndHighlight('$activeSearch', 0, $activeSearchMatchIndex)")
                         webView.postDelayed({
                             android.util.Log.d("EpubWebView", "Update: executing findAndHighlight")
-                            webView.evaluateJavascript("findAndHighlight('$activeSearch', 0, $activeSearchMatchIndex)", null)
+                            webView.evaluateJavascript("if (typeof findAndHighlight === 'function') findAndHighlight('$activeSearch', 0, $activeSearchMatchIndex)", null)
                         }, 300)
                         webView.setTag(com.pekempy.ReadAloudbooks.R.id.search_tag, activeSearch)
                     }
@@ -447,7 +456,8 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
                 }
 
-                #content-container, #content-container *:not(.highlight) {
+                /* Standard content styling with support for theme consistency */
+                #content-container, #content-container *:not(.highlight):not(.search-highlight) {
                     font-size: var(--font-size) !important;
                     font-family: var(--font-family) !important;
                     line-height: 1.6 !important;
@@ -457,6 +467,15 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     -webkit-user-select: none;
                     user-select: none;
                     -webkit-touch-callout: none;
+                }
+
+                /* Nuclear reset for unwanted lines (ruled paper, global underlining) */
+                /* Excludes images, highlights, and intentional headers/emphasis tags */
+                html, body, #content-container, #content-container *:not(img):not(.highlight):not(.search-highlight):not(h1):not(h2):not(h3):not(h4):not(h5):not(h6):not(u):not(b):not(strong) {
+                    background-image: none !important;
+                    text-decoration: none !important;
+                    border-bottom: none !important;
+                    box-shadow: none !important;
                 }
 
                 h1, h2, h3 {
@@ -599,7 +618,9 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
 
                 function updateTransform(animate = true) {
                     const container = document.getElementById('content-container');
-                    const offset = currentPage * getStep();
+                    if (!container) return;
+                    const step = getStep();
+                    const offset = currentPage * step;
                     
                     if (animate) {
                         container.classList.add('animate');
@@ -611,14 +632,9 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     
                     if (window.Android) {
                         const totalWidth = container.scrollWidth;
-                        const step = getStep();
-                        const currentX = currentPage * step;
+                        if (totalWidth <= 0 || step <= 0) return;
+                        
                         const maxPages = Math.max(1, Math.ceil(totalWidth / step));
-                        
-                        if (maxPages <= 1 && totalWidth <= step + 10 && currentPage === 0) {
-                            return; 
-                        }
-                        
                         const percent = maxPages > 1 ? (currentPage / (maxPages - 1)) : 0;
                         
                         let bestId = "";
@@ -627,7 +643,7 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                             const el = elements[i];
                             if (el.id === 'content-container' || el.classList.contains('highlight')) continue;
                             const left = elementLeftAbsolute(el, container);
-                            if (left <= currentX + 50) {
+                            if (left <= offset + 50) {
                                 bestId = el.id;
                             } else {
                                 break;
@@ -636,6 +652,20 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                         
                         window.Android.onScrollWithId(percent, bestId);
                     }
+                }
+
+                function scrollToPercent(percent) {
+                    const container = document.getElementById('content-container');
+                    if (!container) return;
+                    const totalWidth = container.scrollWidth;
+                    const step = getStep();
+                    if (totalWidth <= 0 || step <= 0) {
+                        setTimeout(() => scrollToPercent(percent), 100);
+                        return;
+                    }
+                    const maxPages = Math.max(1, Math.ceil(totalWidth / step));
+                    currentPage = Math.round(percent * (maxPages - 1));
+                    updateTransform(false);
                 }
 
                 function pageLeft() {
@@ -800,22 +830,24 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 };
 
                 window.onload = function() {
-                    const container = document.getElementById('content-container');
-                    const totalWidth = container.scrollWidth;
-                    const maxPages = Math.max(1, Math.ceil(totalWidth / getStep()));
-                    
                     const highlightId = ${if (initialHighlightId != null) "'$initialHighlightId'" else "null"};
-                    if (highlightId) {
-                        highlightElement(highlightId);
-                    } else {
-                        const initialPercent = $initialScrollPercent;
+                    const initialPercent = $initialScrollPercent;
+                    
+                    function stabilizeAndStart() {
                         const container = document.getElementById('content-container');
-                        const totalWidth = container.scrollWidth;
-                        const maxPages = Math.max(1, Math.ceil(totalWidth / getStep()));
-                        currentPage = Math.round(initialPercent * (maxPages - 1));
-                        updateTransform(false);
-                        if (window.Android) window.Android.onReaderReady();
+                        if (!container || container.scrollWidth <= 0) {
+                            setTimeout(stabilizeAndStart, 100);
+                            return;
+                        }
+                        
+                        if (highlightId) {
+                            highlightElement(highlightId);
+                        } else {
+                            scrollToPercent(initialPercent);
+                        }
                     }
+                    
+                    stabilizeAndStart();
                 };
             </script>
         </head>
