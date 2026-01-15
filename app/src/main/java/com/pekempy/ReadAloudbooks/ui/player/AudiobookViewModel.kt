@@ -195,8 +195,18 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                                val serverMs = serverProgress.audioTimestampMs
                                val localMs = currentPosition
                                
-                               val serverPercent = (serverMs.toFloat() / totalDur) * 100
-                               val localPercent = (localMs.toFloat() / totalDur) * 100
+                               val serverPercent = serverProgress.getOverallProgress() * 100
+                               
+                               val localUnified = UnifiedProgress(
+                                   chapterIndex = currentChapterIndex,
+                                   elementId = null,
+                                   audioTimestampMs = currentPosition,
+                                   scrollPercent = 0f, 
+                                   lastUpdated = progress?.lastUpdated ?: 0L,
+                                   totalChapters = chapters.size.coerceAtLeast(1),
+                                   totalDurationMs = totalDur
+                               )
+                               val localPercent = localUnified.getOverallProgress() * 100
                                
                                if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
                                    android.util.Log.d("AudiobookVM", "Server progress is newer and significantly different. Prompting.")
@@ -208,7 +218,8 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                                            source = "Storyteller Server"
                                        )
                                    }
-                               } else {
+                               }
+ else {
                                    android.util.Log.d("AudiobookVM", "Server progress is newer but minor. Auto-syncing.")
                                    withContext(Dispatchers.Main) {
                                        seekTo(serverMs)
@@ -407,8 +418,18 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                         if (serverProgress.lastUpdated > localLastUpdated) {
                             val totalDur = if (probedDurationMs > 0) probedDurationMs else duration
                             if (totalDur > 0) {
-                                val serverPercent = (serverProgress.audioTimestampMs.toFloat() / totalDur) * 100
-                                val localPercent = ((localProgress?.audioTimestampMs?.toFloat() ?: 0f) / totalDur) * 100
+                                val serverPercent = serverProgress.getOverallProgress() * 100
+                                
+                                val localUnified = UnifiedProgress(
+                                    chapterIndex = localProgress?.chapterIndex ?: 0,
+                                    elementId = localProgress?.elementId,
+                                    audioTimestampMs = localProgress?.audioTimestampMs ?: 0L,
+                                    scrollPercent = localProgress?.scrollPercent ?: 0f,
+                                    lastUpdated = localProgress?.lastUpdated ?: 0L,
+                                    totalChapters = (if (probedChapters.isNotEmpty()) probedChapters else chapters).size.coerceAtLeast(1),
+                                    totalDurationMs = totalDur
+                                )
+                                val localPercent = localUnified.getOverallProgress() * 100
                                 
                                 if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
                                     withContext(Dispatchers.Main) {
@@ -419,7 +440,8 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                                             source = "Storyteller Server"
                                         )
                                     }
-                                } else {
+                                }
+ else {
                                     finalProgressToUse = serverProgress
                                 }
                             } else {
@@ -781,7 +803,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                 audioTimestampMs = pos,
                 scrollPercent = chapterProgress,
                 lastUpdated = System.currentTimeMillis(),
-                totalChapters = chapterCount,
+                totalChapters = chapterCount.coerceAtLeast(1),
                 totalDurationMs = dur,
                 href = chapters.getOrNull(currentChapter)?.title ?: "chapter_$currentChapter",
                 mediaType = "audio/mpeg"
@@ -789,7 +811,16 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
             repository.saveBookProgress(bookId, progress.toString())
             
             try {
-                AppContainer.apiClientManager.getApi().updatePosition(bookId, progress.toPosition())
+                val position = progress.toPosition()
+                android.util.Log.d("AudiobookVM", "Uploading audiobook progress: $position")
+                AppContainer.apiClientManager.getApi().updatePosition(bookId, position)
+                android.util.Log.d("AudiobookVM", "Successfully synced audiobook progress to server")
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 409) {
+                    android.util.Log.i("AudiobookVM", "Server has newer or same audiobook position (409). Skipping sync.")
+                } else {
+                    android.util.Log.w("AudiobookVM", "Failed to sync audiobook progress (HTTP ${e.code()}): ${e.message}")
+                }
             } catch (e: Exception) {
                 android.util.Log.w("AudiobookVM", "Failed to sync audiobook progress: ${e.message}")
             }
@@ -798,6 +829,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
 
     fun dismissSync() {
         syncConfirmation = null
+        saveBookProgress()
     }
 
     fun stopPlayback() {

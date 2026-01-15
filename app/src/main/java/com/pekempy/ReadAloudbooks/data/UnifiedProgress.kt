@@ -35,11 +35,11 @@ data class UnifiedProgress(
                     audioTimestampMs = audioTimestampMs,
                     chapterIndex = chapterIndex,
                     elementId = elementId,
-                    totalChapters = totalChapters,
+                    totalChapters = totalChapters.coerceAtLeast(1),
                     totalDurationMs = totalDurationMs
                 )
             ),
-            timestamp = lastUpdated / 1000
+            timestamp = lastUpdated
         )
     }
 
@@ -48,13 +48,15 @@ data class UnifiedProgress(
 
         fun fromPosition(pos: Position, totalChaptersCount: Int = 1): UnifiedProgress {
             val loc = pos.locator.locations
+            val timestampMs = if (pos.timestamp < 1000000000000L) pos.timestamp * 1000 else pos.timestamp
+            
             return UnifiedProgress(
                 chapterIndex = loc.chapterIndex ?: 0,
                 elementId = loc.elementId,
                 audioTimestampMs = loc.audioTimestampMs ?: 0L,
                 scrollPercent = loc.progression.toFloat(),
-                lastUpdated = pos.timestamp * 1000,
-                totalChapters = loc.totalChapters ?: totalChaptersCount,
+                lastUpdated = timestampMs,
+                totalChapters = loc.totalChapters?.coerceAtLeast(1) ?: totalChaptersCount.coerceAtLeast(1),
                 totalDurationMs = loc.totalDurationMs ?: 0L,
                 href = pos.locator.href,
                 mediaType = pos.locator.mediaType

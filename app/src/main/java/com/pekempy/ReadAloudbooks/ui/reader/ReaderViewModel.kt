@@ -79,50 +79,45 @@ class ReaderViewModel(
     var pendingAnchorId = mutableStateOf<String?>(null)
     
     fun loadEpub(bookId: String, isReadAloud: Boolean) {
-        if (currentBookId == bookId && lazyBook != null && isReadAloudMode == isReadAloud) {
-            viewModelScope.launch {
-                val progressStr = repository.getBookProgress(bookId).first()
-                val progress = UnifiedProgress.fromString(progressStr)
-                if (progress != null) {
-                    val savedChapter = progress.chapterIndex.coerceIn(0, totalChapters - 1)
-                    val savedAudioMs = progress.audioTimestampMs
-                    
-                    if (isReadAloud && savedAudioMs > 0) {
-                        val diff = savedAudioMs - currentAudioPos
-                        val fiveMinutesMs = 5 * 60 * 1000L
-                        
-                        val isAtStart = currentAudioPos < 5000L
-                        
-                        if ((diff < 0 && diff >= -fiveMinutesMs) || (isAtStart && diff > 0)) {
-                            android.util.Log.d("ReaderViewModel", "Auto-syncing position jump: $diff ms (isAtStart=$isAtStart)")
-                            currentChapterIndex = savedChapter
-                            lastScrollPercent = progress.scrollPercent
-                            currentAudioPos = savedAudioMs
-                            currentHighlightId = progress.elementId ?: if (savedAudioMs > 0) getElementIdAtTime(savedAudioMs)?.second else null
-                        } else {
-                            val serverPercent = (progress.getOverallProgress() * 100).coerceIn(0f, 100f)
-                            val localPercent = (((currentChapterIndex + lastScrollPercent) / totalChapters.coerceAtLeast(1)) * 100).coerceIn(0f, 100f)
-                            
-                            if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
-                                android.util.Log.d("ReaderViewModel", "Showing sync confirmation for significant jump ($serverPercent% vs $localPercent%)")
-                                val resolvedElementId = progress.elementId ?: if (savedAudioMs > 0) getElementIdAtTime(savedAudioMs)?.second else null
-                                syncConfirmation = SyncConfirmation(
-                                    newChapterIndex = savedChapter,
-                                    newScrollPercent = progress.scrollPercent,
-                                    newAudioMs = savedAudioMs,
-                                    newElementId = resolvedElementId,
-                                    progressPercent = serverPercent,
-                                    localProgressPercent = localPercent,
-                                    source = "another device"
-                                )
-                            } else {
-                                android.util.Log.d("ReaderViewModel", "Auto-syncing minor jump ($serverPercent% vs $localPercent%)")
-                                currentChapterIndex = savedChapter
-                                lastScrollPercent = progress.scrollPercent
-                                currentAudioPos = savedAudioMs
-                                currentHighlightId = progress.elementId ?: if (savedAudioMs > 0) getElementIdAtTime(savedAudioMs)?.second else null
+        if (currentBookId == bookId && isReadAloudMode == isReadAloud) {
+            if (lazyBook != null && !isReadAloud) {
+                viewModelScope.launch {
+                    val progressStr = repository.getBookProgress(bookId).first()
+                    val progress = UnifiedProgress.fromString(progressStr)
+                    if (progress != null) {
+                        try {
+                            val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
+                            if (serverPos != null) {
+                                val serverProgress = UnifiedProgress.fromPosition(serverPos, totalChapters)
+                                val localLastUpdated = progress.lastUpdated
+                                val serverTimestampMs = serverPos.timestamp.let { if (it < 1000000000000L) it * 1000 else it }
+                                if (serverTimestampMs > localLastUpdated + 10000) {
+                                    val serverPercent = (serverProgress.getOverallProgress() * 100).coerceIn(0f, 100f)
+                                    val localUnified = UnifiedProgress(
+                                        chapterIndex = currentChapterIndex,
+                                        elementId = currentHighlightId,
+                                        audioTimestampMs = currentAudioPos,
+                                        scrollPercent = lastScrollPercent,
+                                        lastUpdated = progress.lastUpdated,
+                                        totalChapters = totalChapters.coerceAtLeast(1),
+                                        totalDurationMs = (chapterOffsets.values.maxOrNull() ?: 0.0).let { (it * 1000).toLong() }
+                                    )
+                                    val localPercent = (localUnified.getOverallProgress() * 100).coerceIn(0f, 100f)
+                                    
+                                    if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
+                                        syncConfirmation = SyncConfirmation(
+                                            newChapterIndex = serverProgress.chapterIndex,
+                                            newScrollPercent = serverProgress.scrollPercent,
+                                            newAudioMs = serverProgress.audioTimestampMs,
+                                            newElementId = serverProgress.elementId,
+                                            progressPercent = serverPercent,
+                                            localProgressPercent = localPercent,
+                                            source = "Storyteller Server"
+                                        )
+                                    }
+                                }
                             }
-                        }
+                        } catch (e: Exception) {}
                     }
                 }
             }
@@ -285,7 +280,7 @@ class ReaderViewModel(
                 if (resolvedOverlayMap.isNotEmpty()) {
                     val segmentsMap = java.util.concurrent.ConcurrentHashMap<String, List<SyncSegment>>()
                     
-                    viewModelScope.launch(Dispatchers.IO) {
+                    coroutineScope {
                         val jobs = spineHrefs.map { chapterHref ->
                             val smilHref = resolvedOverlayMap[chapterHref] ?: return@map null
                             async {
@@ -299,25 +294,23 @@ class ReaderViewModel(
                             }
                         }.filterNotNull()
                         jobs.awaitAll()
+                    }
 
-                        val sortedOffsets = mutableMapOf<String, Double>()
-                        var currentOffset = 0.0
-                        spineHrefs.forEach { chapterHref ->
-                            val smilHref = resolvedOverlayMap[chapterHref] ?: return@forEach
-                            sortedOffsets[chapterHref] = currentOffset
-                            val segments = segmentsMap[chapterHref]
-                            val dur = segments?.sumOf { it.clipEnd - it.clipBegin } ?: 0.0
-                            currentOffset += dur
-                        }
-                        
+                    val sortedOffsets = mutableMapOf<String, Double>()
+                    var currentOffset = 0.0
+                    spineHrefs.forEach { chapterHref ->
+                        sortedOffsets[chapterHref] = currentOffset
+                        val segments = segmentsMap[chapterHref]
+                        val dur = segments?.sumOf { it.clipEnd - it.clipBegin } ?: 0.0
+                        currentOffset += dur
+                    }
+                    
+                    withContext(Dispatchers.Main) {
                         syncData = segmentsMap.toMap()
-                        if (chapterOffsets.isEmpty()) {
-                            chapterOffsets = sortedOffsets
-                        }
+                        chapterOffsets = sortedOffsets
                         
                         if (savedAudioMs != null && savedAudioMs > 0) {
-                            val result = getElementIdAtTime(savedAudioMs)
-                            if (result != null) {
+                            getElementIdAtTime(savedAudioMs)?.let { result ->
                                 currentChapterIndex = result.first
                                 currentHighlightId = result.second
                                 android.util.Log.d("ReaderSync", "Progress restored via priority Audio MS: ${result.first} / ${result.second} (${savedAudioMs}ms)")
@@ -327,25 +320,37 @@ class ReaderViewModel(
                         } else {
                             android.util.Log.d("ReaderSync", "Progress remaining on Chapter Index: $currentChapterIndex")
                         }
+                    }
+                    
+                    if (!isReadAloud) {
+                        try {
+                            val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
+                            if (serverPos != null) {
+                                val serverHref = serverPos.locator.href
+                                val chapterIdxFromHref = lazyBook?.spineHrefs?.indexOfFirst { it == serverHref || it.endsWith("/$serverHref") || serverHref.endsWith("/$it") }
+                                
+                                val serverProgress = UnifiedProgress.fromPosition(serverPos, totalChapters).let {
+                                    val resolvedIdx = serverPos.locator.locations.chapterIndex ?: chapterIdxFromHref
+                                    if (resolvedIdx != null && resolvedIdx >= 0) {
+                                        it.copy(chapterIndex = resolvedIdx)
+                                    } else it
+                                }
                         
-                                try {
-                                    val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
-                                    if (serverPos != null) {
-                                        val serverHref = serverPos.locator.href
-                                        val chapterIdxFromHref = lazyBook?.spineHrefs?.indexOfFirst { it == serverHref || it.endsWith("/$serverHref") || serverHref.endsWith("/$it") }
-                                        
-                                        val serverProgress = UnifiedProgress.fromPosition(serverPos, totalChapters).let {
-                                            val resolvedIdx = serverPos.locator.locations.chapterIndex ?: chapterIdxFromHref
-                                            if (resolvedIdx != null && resolvedIdx >= 0) {
-                                                it.copy(chapterIndex = resolvedIdx)
-                                            } else it
-                                        }
-                                
                                 val localLastUpdated = progress?.lastUpdated ?: 0L
-                                val serverTimestampMs = (serverPos.timestamp * 1000)
+                                val serverTimestampMs = serverPos.timestamp.let { if (it < 1000000000000L) it * 1000 else it }
                                 
-                                val serverPercent = ((serverPos.locator.locations.totalProgression ?: 0.0).toFloat() * 100).coerceIn(0f, 100f)
-                                val localPercent = (((currentChapterIndex + lastScrollPercent) / totalChapters.coerceAtLeast(1)) * 100).coerceIn(0f, 100f)
+                                val serverPercent = (serverProgress.getOverallProgress() * 100).coerceIn(0f, 100f)
+                                
+                                val localUnified = UnifiedProgress(
+                                    chapterIndex = currentChapterIndex,
+                                    elementId = currentHighlightId,
+                                    audioTimestampMs = currentAudioPos,
+                                    scrollPercent = lastScrollPercent,
+                                    lastUpdated = progress?.lastUpdated ?: 0L,
+                                    totalChapters = totalChapters.coerceAtLeast(1),
+                                    totalDurationMs = ((sortedOffsets.values.maxOrNull() ?: 0.0) + (segmentsMap[spineHrefs.lastOrNull()]?.sumOf { it.clipEnd - it.clipBegin } ?: 0.0)).let { (it * 1000).toLong() }
+                                )
+                                val localPercent = (localUnified.getOverallProgress() * 100).coerceIn(0f, 100f)
                                 
                                 val isServerZeroButLocalStarted = serverPercent < 0.1f && localPercent > 1.0f
                                 val isSignificantlyNewer = serverTimestampMs > localLastUpdated + 300000
@@ -386,12 +391,12 @@ class ReaderViewModel(
                         } catch (e: Exception) {
                             android.util.Log.w("ReaderSync", "Failed to fetch server progress: ${e.message}")
                         }
-                        
-                        android.util.Log.d("ReaderSync", "SMIL data background-loaded for ${segmentsMap.size} chapters.")
                     }
                 }
 
-                isLoading = false
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 error = e.message
@@ -484,17 +489,18 @@ class ReaderViewModel(
             lastSyncedProgress = progress
 
             repository.saveBookProgress(bookId, progress.toString()) 
-            android.util.Log.d("ReaderSync", "Saved JSON progress: $progress")
+            android.util.Log.d("ReaderSync", "Saved local progress for $bookId")
             
             try {
                 val pos = progress.toPosition()
+                android.util.Log.d("ReaderSync", "Uploading reader progress: $pos")
                 AppContainer.apiClientManager.getApi().updatePosition(bookId, pos)
-                android.util.Log.d("ReaderSync", "Synced position to server: href=$href")
+                android.util.Log.d("ReaderSync", "Successfully synced position to server: href=$href")
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 409) {
                     android.util.Log.i("ReaderSync", "Server has newer or same position (409). skipping.")
                 } else {
-                    android.util.Log.w("ReaderSync", "Failed to sync to server: ${e.message}")
+                    android.util.Log.w("ReaderSync", "Failed to sync to server (HTTP ${e.code()}): ${e.message}")
                 }
             } catch (e: Exception) {
                 android.util.Log.w("ReaderSync", "Failed to sync to server: ${e.message}")
@@ -802,6 +808,7 @@ class ReaderViewModel(
 
     fun dismissSync() {
         syncConfirmation = null
+        saveProgress() 
     }
 
     override fun onCleared() {

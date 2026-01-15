@@ -169,7 +169,10 @@ fun ReadAloudPlayerScreen(
         )
     }
 
-    readAloudAudioViewModel.syncConfirmation?.let { sync ->
+    val audioSync = readAloudAudioViewModel.syncConfirmation
+    val readerSync = readerViewModel.syncConfirmation
+
+    if (audioSync != null) {
         AlertDialog(
             onDismissRequest = { readAloudAudioViewModel.dismissSync() },
             title = { Text("Progress Sync") },
@@ -181,7 +184,7 @@ fun ReadAloudPlayerScreen(
                     onClick = { readAloudAudioViewModel.confirmSync() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Use server (${"%.1f".format(sync.progressPercent)}%)")
+                    Text("Use server (${"%.1f".format(audioSync.progressPercent)}%)")
                 }
             },
             dismissButton = {
@@ -189,13 +192,11 @@ fun ReadAloudPlayerScreen(
                     onClick = { readAloudAudioViewModel.dismissSync() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Use local (${"%.1f".format(sync.localProgressPercent)}%)")
+                    Text("Use local (${"%.1f".format(audioSync.localProgressPercent)}%)")
                 }
             }
         )
-    }
-
-    readerViewModel.syncConfirmation?.let { sync ->
+    } else if (readerSync != null) {
         AlertDialog(
             onDismissRequest = { readerViewModel.dismissSync() },
             title = { Text("Progress Sync") },
@@ -207,7 +208,7 @@ fun ReadAloudPlayerScreen(
                     onClick = { readerViewModel.confirmSync() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Use server (${"%.1f".format(sync.progressPercent)}%)")
+                    Text("Use server (${"%.1f".format(readerSync.progressPercent)}%)")
                 }
             },
             dismissButton = {
@@ -215,7 +216,7 @@ fun ReadAloudPlayerScreen(
                     onClick = { readerViewModel.dismissSync() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Use local (${"%.1f".format(sync.localProgressPercent)}%)")
+                    Text("Use local (${"%.1f".format(readerSync.localProgressPercent)}%)")
                 }
             }
         )

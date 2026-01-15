@@ -572,20 +572,19 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     const step = getStep();
                     if (step > 0 && container) {
                         const rect = el.getBoundingClientRect();
-                        const elementLeft = elementLeftAbsolute(el, container);
-                        const elementCenter = elementLeft + (el.offsetWidth / 2);
+                        const containerRect = container.getBoundingClientRect();
                         
-                        const isVisible = rect.left < (step - 5) && rect.right > 5;
+                        const absoluteLeft = rect.left - containerRect.left;
+                        const elementCenter = absoluteLeft + (el.offsetWidth / 2);
                         
-                        if (!isVisible) {
-                            const targetPage = Math.floor(elementCenter / step);
-                            const maxPages = Math.max(1, Math.ceil(container.scrollWidth / step));
-                            const clampedPage = Math.max(0, Math.min(targetPage, maxPages - 1));
-                            
-                            if (clampedPage !== currentPage) {
-                                currentPage = clampedPage;
-                                updateTransform(true);
-                            }
+                        const targetPage = Math.floor(elementCenter / step);
+                        const totalWidth = container.scrollWidth;
+                        const maxPages = Math.max(1, Math.ceil(totalWidth / step));
+                        const clampedPage = Math.max(0, Math.min(targetPage, maxPages - 1));
+                        
+                        if (clampedPage !== currentPage) {
+                            currentPage = clampedPage;
+                            updateTransform(true);
                         }
                     }
                     
@@ -601,16 +600,10 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 }
                 
                 function elementLeftAbsolute(el, container) {
-                    let left = 0;
-                    let current = el;
-                    while (current && current !== container) {
-                        left += current.offsetLeft;
-                        current = current.offsetParent;
-                    }
-                    return left;
+                    const rect = el.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+                    return rect.left - containerRect.left;
                 }
-                
-                
                 
                 function getStep() {
                     return window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth || 0;
@@ -657,15 +650,19 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 function scrollToPercent(percent) {
                     const container = document.getElementById('content-container');
                     if (!container) return;
-                    const totalWidth = container.scrollWidth;
-                    const step = getStep();
-                    if (totalWidth <= 0 || step <= 0) {
-                        setTimeout(() => scrollToPercent(percent), 100);
-                        return;
+                    
+                    function attemptScroll() {
+                        const totalWidth = container.scrollWidth;
+                        const step = getStep();
+                        if (totalWidth <= 0 || step <= 0) {
+                            setTimeout(attemptScroll, 100);
+                            return;
+                        }
+                        const maxPages = Math.max(1, Math.ceil(totalWidth / step));
+                        currentPage = Math.round(percent * (maxPages - 1));
+                        updateTransform(false);
                     }
-                    const maxPages = Math.max(1, Math.ceil(totalWidth / step));
-                    currentPage = Math.round(percent * (maxPages - 1));
-                    updateTransform(false);
+                    attemptScroll();
                 }
 
                 function pageLeft() {

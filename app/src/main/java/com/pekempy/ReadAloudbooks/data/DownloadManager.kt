@@ -61,7 +61,7 @@ object DownloadManager {
             } else {
                 shouldDownloadAudio = (type == DownloadType.All || type == DownloadType.Audio) && book.hasAudiobook
                 shouldDownloadEbook = (type == DownloadType.All || type == DownloadType.Ebook) && book.hasEbook
-                shouldDownloadReadAloud = (type == DownloadType.ReadAloud) // book.hasReadAloud already checked via hasReadAloud variable but just in case
+                shouldDownloadReadAloud = (type == DownloadType.ReadAloud) 
             }
 
             if (shouldDownloadAudio) book.audiobookUrl?.takeIf { it.isNotBlank() }?.let { downloads.add(it to "$baseFileName.m4b") }

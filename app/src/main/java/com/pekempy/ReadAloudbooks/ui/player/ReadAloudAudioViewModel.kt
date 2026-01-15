@@ -57,6 +57,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
     )
     var syncConfirmation by mutableStateOf<SyncConfirmation?>(null)
     
+    private var lastSyncCheckTime = 0L
     private var sleepTimerJob: Job? = null
     private var progressJob: Job? = null
     private var loadJob: Job? = null
@@ -152,7 +153,12 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         autoPlay: Boolean = true
     ) {
         if (currentBook?.id == bookId && player != null && player?.playbackState != androidx.media3.common.Player.STATE_IDLE) {
+            if (syncConfirmation != null || System.currentTimeMillis() - lastSyncCheckTime < 10000) {
+                isLoading = false
+                return
+            }
             android.util.Log.d("ReadAloudAudioVM", "Book $bookId already loaded. Checking for external progress updates...")
+            lastSyncCheckTime = System.currentTimeMillis()
             viewModelScope.launch(Dispatchers.Main) {
                 val progressStr = repository.getBookProgress(bookId).first()
                 val progress = com.pekempy.ReadAloudbooks.data.UnifiedProgress.fromString(progressStr)
@@ -165,18 +171,29 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                         
                         if (serverProgress.lastUpdated > localLastUpdated) {
                             if (duration > 0) {
-                                val serverPercent = (serverProgress.audioTimestampMs.toFloat() / duration) * 100
-                                val localPercent = (currentPosition.toFloat() / duration) * 100
-                                
-                                if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
-                                    android.util.Log.d("ReadAloudAudioVM", "Server progress is newer and significantly different. Prompting.")
-                                    syncConfirmation = SyncConfirmation(
-                                        newPositionMs = serverProgress.audioTimestampMs,
-                                        progressPercent = serverPercent.coerceIn(0f, 100f),
-                                        localProgressPercent = localPercent.coerceIn(0f, 100f),
-                                        source = "Storyteller Server"
-                                    )
-                                } else {
+                            val serverPercent = (serverProgress.getOverallProgress() * 100).coerceIn(0f, 100f)
+                            
+                            val localUnified = UnifiedProgress(
+                                chapterIndex = currentChapterIndex,
+                                elementId = currentElementId,
+                                audioTimestampMs = currentPosition,
+                                scrollPercent = 0f,
+                                lastUpdated = progress?.lastUpdated ?: 0L,
+                                totalChapters = loadedSpineHrefs.size.coerceAtLeast(1),
+                                totalDurationMs = duration
+                            )
+                            val localPercent = (localUnified.getOverallProgress() * 100).coerceIn(0f, 100f)
+                            
+                            if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
+                                android.util.Log.d("ReadAloudAudioVM", "Server progress is newer and significantly different. Prompting.")
+                                syncConfirmation = SyncConfirmation(
+                                    newPositionMs = serverProgress.audioTimestampMs,
+                                    progressPercent = serverPercent.coerceIn(0f, 100f),
+                                    localProgressPercent = localPercent.coerceIn(0f, 100f),
+                                    source = "Storyteller Server"
+                                )
+                            }
+ else {
                                     android.util.Log.d("ReadAloudAudioVM", "Server progress is newer but minor. Auto-syncing.")
                                     seekTo(serverProgress.audioTimestampMs)
                                 }
@@ -565,14 +582,25 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         
         try {
             val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
+            lastSyncCheckTime = System.currentTimeMillis()
             if (serverPos != null) {
                 val serverProgress = UnifiedProgress.fromPosition(serverPos, chapters.size)
                 val localLastUpdated = localProgress?.lastUpdated ?: 0L
                 
                 if (serverProgress.lastUpdated > localLastUpdated) {
                     if (duration > 0) {
-                        val serverPercent = (serverProgress.audioTimestampMs.toFloat() / duration) * 100
-                        val localPercent = ((localProgress?.audioTimestampMs?.toFloat() ?: 0f) / duration) * 100
+                        val serverPercent = (serverProgress.getOverallProgress() * 100).coerceIn(0f, 100f)
+                        
+                        val localUnified = UnifiedProgress(
+                            chapterIndex = localProgress?.chapterIndex ?: 0,
+                            elementId = localProgress?.elementId,
+                            audioTimestampMs = localProgress?.audioTimestampMs ?: 0L,
+                            scrollPercent = localProgress?.scrollPercent ?: 0f,
+                            lastUpdated = localProgress?.lastUpdated ?: 0L,
+                            totalChapters = chapters.size.coerceAtLeast(1),
+                            totalDurationMs = duration
+                        )
+                        val localPercent = (localUnified.getOverallProgress() * 100).coerceIn(0f, 100f)
                         
                         if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
                             withContext(Dispatchers.Main) {
@@ -583,7 +611,8 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                                     source = "Storyteller Server"
                                 )
                             }
-                        } else {
+                        }
+ else {
                             finalProgressToUse = serverProgress
                         }
                     } else {
@@ -850,6 +879,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
 
     fun dismissSync() {
         syncConfirmation = null
+        saveBookProgress()
     }
 
     internal fun saveBookProgress() {
@@ -883,7 +913,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 audioTimestampMs = pos,
                 scrollPercent = chapterProgress,
                 lastUpdated = System.currentTimeMillis(),
-                totalChapters = chList.size,
+                totalChapters = chList.size.coerceAtLeast(1),
                 totalDurationMs = dur,
                 href = href,
                 mediaType = "application/xhtml+xml"
@@ -891,7 +921,16 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             repository.saveBookProgress(bookId, progress.toString())
             
             try {
-                AppContainer.apiClientManager.getApi().updatePosition(bookId, progress.toPosition())
+                val position = progress.toPosition()
+                android.util.Log.d("ReadAloudAudioVM", "Uploading ReadAloud progress: $position")
+                AppContainer.apiClientManager.getApi().updatePosition(bookId, position)
+                android.util.Log.d("ReadAloudAudioVM", "Successfully synced ReadAloud progress to server")
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 409) {
+                    android.util.Log.i("ReadAloudAudioVM", "Server has newer or same ReadAloud position (409). Skipping sync.")
+                } else {
+                    android.util.Log.w("ReadAloudAudioVM", "Failed to sync ReadAloud progress (HTTP ${e.code()}): ${e.message}")
+                }
             } catch (e: Exception) {
                 android.util.Log.w("ReadAloudAudioVM", "Failed to sync ReadAloud progress: ${e.message}")
             }

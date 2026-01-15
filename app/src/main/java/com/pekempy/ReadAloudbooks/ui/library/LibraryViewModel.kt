@@ -188,7 +188,7 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
                 AppContainer.apiClientManager.getApi().processBook(bookId)
             } catch (e: Exception) {
                 android.util.Log.e("LibraryViewModel", "Failed to create readaloud for $bookId: ${e.message}")
-                // Revert on failure
+                Revert on failure
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     allBooks = previousBooks
                     applyFiltersAndSort()
