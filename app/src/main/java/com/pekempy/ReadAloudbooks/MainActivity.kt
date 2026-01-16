@@ -136,11 +136,17 @@ class MainActivity : ComponentActivity() {
                 val context = androidx.compose.ui.platform.LocalContext.current
                 
                 LaunchedEffect(Unit) {
-                    if (!com.pekempy.ReadAloudbooks.util.UpdateChecker.isInstalledFromPlayStore(context)) {
+                    val isPlayStore = com.pekempy.ReadAloudbooks.util.UpdateChecker.isInstalledFromPlayStore(context)
+                    android.util.Log.d("MainActivity", "Is installed from Play Store: $isPlayStore")
+                    if (!isPlayStore) {
                         val currentVersion = BuildConfig.VERSION_NAME
+                        android.util.Log.d("MainActivity", "Current version: $currentVersion. Checking GitHub for updates...")
                         val newRelease = com.pekempy.ReadAloudbooks.util.UpdateChecker.checkForUpdate(currentVersion)
                         if (newRelease != null) {
+                            android.util.Log.i("MainActivity", "Found new release: ${newRelease.tag_name}")
                             updateRelease = newRelease
+                        } else {
+                            android.util.Log.d("MainActivity", "No new release found or update check failed")
                         }
                     }
                 }

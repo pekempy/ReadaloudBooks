@@ -20,35 +20,48 @@ object UpdateChecker {
     suspend fun checkForUpdate(currentVersion: String): GitHubRelease? {
         return withContext(Dispatchers.IO) {
             try {
+                android.util.Log.d("UpdateChecker", "Checking for update. Current version: $currentVersion")
                 val request = Request.Builder()
                     .url("https://api.github.com/repos/pekempy/ReadaloudBooks/releases/latest")
+                    .header("User-Agent", "ReadAloudBooks-Android")
                     .build()
 
                 client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@withContext null
+                    if (!response.isSuccessful) {
+                        android.util.Log.w("UpdateChecker", "GitHub API request failed: ${response.code}")
+                        return@withContext null
+                    }
                     val body = response.body?.string() ?: return@withContext null
                     
                     val release = gson.fromJson(body, GitHubRelease::class.java)
+                    android.util.Log.d("UpdateChecker", "Latest remote version: ${release.tag_name}")
                     
                     if (isNewer(release.tag_name, currentVersion)) {
+                        android.util.Log.i("UpdateChecker", "New version available: ${release.tag_name}")
                         release
                     } else {
+                        android.util.Log.d("UpdateChecker", "App is up to date")
                         null
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("UpdateChecker", "Error checking for update", e)
                 null
             }
         }
     }
 
     fun isNewer(remoteTag: String, localVersion: String): Boolean {
-        val remote = remoteTag.removePrefix("v")
-        val local = localVersion.removePrefix("v")
+        if (remoteTag == localVersion) return false
+        
+        val remote = remoteTag.removePrefix("v").trim()
+        val local = localVersion.removePrefix("v").trim()
 
-        val remoteParts = remote.split("-")[0].split(".").mapNotNull { it.toIntOrNull() }
-        val localParts = local.split("-")[0].split(".").mapNotNull { it.toIntOrNull() }
+        val remoteBase = remote.split("-")[0]
+        val localBase = local.split("-")[0]
+
+        val remoteParts = remoteBase.split(".").mapNotNull { it.toIntOrNull() }
+        val localParts = localBase.split(".").mapNotNull { it.toIntOrNull() }
         
         val length = maxOf(remoteParts.size, localParts.size)
         
@@ -59,7 +72,7 @@ object UpdateChecker {
             if (r < l) return false
         }
         
-        return false
+        return remote != local && remoteBase == localBase
     }
 
     fun isInstalledFromPlayStore(context: android.content.Context): Boolean {
