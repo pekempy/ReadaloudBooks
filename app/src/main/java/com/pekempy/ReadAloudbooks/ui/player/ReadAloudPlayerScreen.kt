@@ -386,7 +386,13 @@ fun ReadAloudPlayerScreen(
 
         if (showChaptersSheet) {
             ModalBottomSheet(onDismissRequest = { showChaptersSheet = false }) {
-                ChaptersContent(viewModel = readAloudAudioViewModel)
+                ChaptersContent(
+                    viewModel = readAloudAudioViewModel,
+                    onChapterClick = { index ->
+                        readAloudAudioViewModel.skipToChapter(index)
+                        showChaptersSheet = false
+                    }
+                )
             }
         }
         
@@ -531,7 +537,10 @@ fun SleepTimerContent(viewModel: ReadAloudAudioViewModel) {
 }
 
 @Composable
-fun ChaptersContent(viewModel: ReadAloudAudioViewModel) {
+fun ChaptersContent(
+    viewModel: ReadAloudAudioViewModel,
+    onChapterClick: (Int) -> Unit
+) {
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Chapters", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
         if (viewModel.chapters.isEmpty()) {
@@ -546,7 +555,7 @@ fun ChaptersContent(viewModel: ReadAloudAudioViewModel) {
                         supportingContent = { Text(FormatUtils.formatTime(chapter.startOffset)) },
                         trailingContent = { Text(FormatUtils.formatTime(chapter.duration)) },
                         modifier = Modifier.clickable {
-                            viewModel.skipToChapter(index)
+                            onChapterClick(index)
                         },
                         colors = ListItemDefaults.colors(
                             containerColor = if (viewModel.currentPosition in chapter.startOffset..(chapter.startOffset + chapter.duration)) 
@@ -599,7 +608,14 @@ fun ReadAloudFullPlayerOverlay(
                 }
             }
             
+            val currentChapterTitle = remember(viewModel.currentPosition, viewModel.chapters) {
+                viewModel.chapters.find { viewModel.currentPosition in it.startOffset..(it.startOffset + it.duration) }?.title
+            }
+            
             Text(book?.title ?: "Unknown", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            if (currentChapterTitle != null) {
+                Text(currentChapterTitle, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             Text(book?.author ?: "Unknown", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
             
             Spacer(Modifier.height(24.dp))

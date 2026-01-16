@@ -123,6 +123,12 @@ fun MiniPlayerBar(
                 
                 Spacer(modifier = Modifier.width(12.dp))
                 
+                val currentChapterTitle = remember(readAloudViewModel.currentPosition, readAloudViewModel.chapters) {
+                    if (isReadAloud) {
+                        readAloudViewModel.chapters.find { readAloudViewModel.currentPosition in it.startOffset..(it.startOffset + it.duration) }?.title
+                    } else null
+                }
+                
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = activeBook.title,
@@ -132,9 +138,9 @@ fun MiniPlayerBar(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = activeBook.author,
+                        text = currentChapterTitle ?: activeBook.author,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (currentChapterTitle != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

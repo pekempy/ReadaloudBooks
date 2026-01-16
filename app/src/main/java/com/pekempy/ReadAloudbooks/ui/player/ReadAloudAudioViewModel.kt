@@ -22,6 +22,8 @@ import java.io.File
 import java.util.zip.ZipFile
 import android.net.Uri
 import android.content.ComponentName
+import android.util.Xml
+import org.xmlpull.v1.XmlPullParser
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
@@ -254,7 +256,14 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 
                 val calculatedDuration = localClipSegments.sumOf { it.clipEndMs - it.clipBeginMs }
                 android.util.Log.i("ReadAloudAudioVM", "TOTAL BOOK DURATION: ${FormatUtils.formatTime(calculatedDuration)} ($calculatedDuration ms)")
-                val localChaptersList = createChaptersList(localChapterOffsets, spineHrefs, spineTitles, calculatedDuration)
+                
+                val chaptersFromXml = parseChaptersXml(currentZipFile!!)
+                val localChaptersList = if (chaptersFromXml != null && chaptersFromXml.isNotEmpty()) {
+                    android.util.Log.i("ReadAloudAudioVM", "Using ${chaptersFromXml.size} chapters from misc/chapters.xml")
+                    chaptersFromXml
+                } else {
+                    createChaptersList(localChapterOffsets, spineHrefs, spineTitles, calculatedDuration)
+                }
                 
                 val mediaMetadataBuilder = MediaMetadata.Builder()
                     .setTitle(book.title)
@@ -585,6 +594,65 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         }
         
         return chapterList
+    }
+
+    private fun parseChaptersXml(zipFile: ZipFile): List<Chapter>? {
+        return try {
+            var entry = zipFile.getEntry("misc/chapters.xml") 
+                ?: zipFile.getEntry("OEBPS/misc/chapters.xml")
+                
+            if (entry == null) {
+                val entries = zipFile.entries()
+                while (entries.hasMoreElements()) {
+                    val next = entries.nextElement()
+                    if (next.name.endsWith("chapters.xml", ignoreCase = true)) {
+                        entry = next
+                        break
+                    }
+                }
+            }
+            
+            if (entry == null) return null
+                
+            val inputStream = zipFile.getInputStream(entry)
+            val parser = Xml.newPullParser()
+            parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+            parser.setInput(inputStream, null)
+
+            val chaptersList = mutableListOf<Chapter>()
+            var eventType = parser.eventType
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                if (eventType == XmlPullParser.START_TAG && parser.name.equals("chapter", ignoreCase = true)) {
+                    val title = parser.getAttributeValue(null, "title") ?: "Chapter"
+                    val startMs = parser.getAttributeValue(null, "start_ms")?.toLongOrNull() ?: 0L
+                    val endMs = parser.getAttributeValue(null, "end_ms")?.toLongOrNull() ?: 0L
+                    val duration = endMs - startMs
+                    if (duration > 0 || startMs == 0L) {
+                        chaptersList.add(Chapter(title, startMs, Math.max(0, duration)))
+                    }
+                }
+                eventType = parser.next()
+            }
+            inputStream.close()
+            if (chaptersList.isEmpty()) return null
+            
+            // Ensure they are sorted by start offset
+            chaptersList.sortBy { it.startOffset }
+            
+            // Fix durations if end_ms was missing or zero
+            for (i in 0 until chaptersList.size) {
+                if (chaptersList[i].duration <= 0) {
+                    val nextStart = if (i + 1 < chaptersList.size) chaptersList[i+1].startOffset else duration
+                    val fixedChapter = chaptersList[i].copy(duration = Math.max(0, nextStart - chaptersList[i].startOffset))
+                    chaptersList[i] = fixedChapter
+                }
+            }
+            
+            chaptersList
+        } catch (e: Exception) {
+            android.util.Log.w("ReadAloudAudioVM", "Failed to parse chapters.xml", e)
+            null
+        }
     }
     
     private suspend fun loadProgress(bookId: String, skipSeek: Boolean = false) {
