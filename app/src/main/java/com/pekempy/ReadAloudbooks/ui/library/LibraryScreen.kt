@@ -264,7 +264,9 @@ fun LibraryScreen(
             onPlayAudiobook = onPlayAudiobook,
             onMarkFinished = { viewModel.deleteProgress(it.id) },
             onMarkUnread = { viewModel.deleteProgress(it.id) },
-            onEdit = onEditBook
+            onEdit = onEditBook,
+            onRefreshMetadata = { viewModel.forceRefreshMetadata(it) },
+            isLocalOnly = viewModel.isLocalOnly
         )
 
         if (bookToDelete != null) {
@@ -499,7 +501,7 @@ fun LibraryScreen(
                                             selectedBookForMenu = book
                                             showMenu = true
                                         },
-                                        onDownloadClick = { viewModel.downloadBook(book) }
+                                        onDownloadClick = if (viewModel.isLocalOnly) null else { { viewModel.downloadBook(book) } }
                                     )
                                 }
                             }

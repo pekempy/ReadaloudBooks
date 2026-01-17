@@ -25,6 +25,8 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
     var readerTheme by mutableStateOf(0)
     var readerFontFamily by mutableStateOf("serif")
     var playbackSpeed by mutableStateOf(1.0f)
+    var isLocalOnly by mutableStateOf(false)
+    var localLibraryPath by mutableStateOf("")
 
     init {
         viewModelScope.launch {
@@ -46,6 +48,8 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
                 localServerUrl = credentials?.localUrl ?: ""
                 useLocalOnWifi = credentials?.useLocalOnWifi ?: false
                 wifiSsid = credentials?.wifiSsid ?: ""
+                isLocalOnly = credentials?.isLocalOnly ?: false
+                localLibraryPath = credentials?.localLibraryPath ?: ""
             }
         }
     }
@@ -99,5 +103,10 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
     fun updatePlaybackSpeed(speed: Float) {
         playbackSpeed = speed
         viewModelScope.launch { repository.updatePlaybackSpeed(speed) }
+    }
+
+    fun updateLocalLibraryPath(path: String) {
+        localLibraryPath = path
+        viewModelScope.launch { repository.updateLocalLibraryPath(path) }
     }
 }

@@ -17,6 +17,13 @@ class LoginViewModel(private val repository: UserPreferencesRepository) : ViewMo
     var isLoading by mutableStateOf(false)
     var errorMessage by mutableStateOf<String?>(null)
 
+    fun onLocalOnlyClick(onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            repository.setLocalOnly()
+            onSuccess()
+        }
+    }
+
     fun onLoginClick(onSuccess: () -> Unit) {
         if (url.isBlank() || username.isBlank() || password.isBlank()) {
             errorMessage = "All fields are required"

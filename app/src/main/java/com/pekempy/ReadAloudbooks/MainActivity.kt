@@ -45,6 +45,10 @@ import com.pekempy.ReadAloudbooks.ui.components.AppNavigationBar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
+import android.net.Uri
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: UserPreferencesRepository
@@ -291,19 +295,19 @@ class MainActivity : ComponentActivity() {
                         LibraryScreen(
                             viewModel = libraryViewModel,
                             onBookClick = { book ->
-                                navController.navigate("detail/${book.id}")
+                                navController.navigate("detail/${Uri.encode(book.id)}")
                             },
                             onReadEbook = { book ->
-                                navController.navigate("reader/${book.id}?isReadAloud=false")
+                                navController.navigate("reader/${Uri.encode(book.id)}?isReadAloud=false")
                             },
                             onPlayReadAloud = { book ->
-                                navController.navigate("reader/${book.id}?isReadAloud=true")
+                                navController.navigate("reader/${Uri.encode(book.id)}?isReadAloud=true")
                             },
                             onPlayAudiobook = { book ->
                                 if (book.hasReadAloud) {
-                                    navController.navigate("reader/${book.id}?isReadAloud=true")
+                                    navController.navigate("reader/${Uri.encode(book.id)}?isReadAloud=true")
                                 } else {
-                                    navController.navigate("player/${book.id}")
+                                    navController.navigate("player/${Uri.encode(book.id)}")
                                 }
                             },
                             onSettingsClick = {
@@ -316,7 +320,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onEditBook = { book ->
-                                navController.navigate("edit/${book.id}")
+                                navController.navigate("edit/${Uri.encode(book.id)}")
                             }
                         )
                     }
@@ -327,9 +331,23 @@ class MainActivity : ComponentActivity() {
                         popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
                         popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
                     ) {
+                        val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
+                            factory = object : ViewModelProvider.Factory {
+                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                    return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
+                                }
+                            }
+                        )
                         com.pekempy.ReadAloudbooks.ui.settings.SettingsHome(
+                            isLocalOnly = settingsViewModel.isLocalOnly,
                             onBack = { navController.popBackStack() },
-                            onNavigateTo = { route -> navController.navigate(route) }
+                            onNavigateTo = { route -> navController.navigate(route) },
+                            onLogout = {
+                                runBlocking { repository.clearCredentials() }
+                                navController.navigate("login") {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }
                         )
                     }
                     composable(
@@ -434,6 +452,39 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable(
+                        route = "settings/local_storage",
+                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
+                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
+                    ) {
+                        val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
+                            factory = object : ViewModelProvider.Factory {
+                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                    return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
+                                }
+                            }
+                        )
+
+                        val launcher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.OpenDocumentTree()
+                        ) { uri ->
+                            if (uri != null) {
+                                contentResolver.takePersistableUriPermission(
+                                    uri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                                settingsViewModel.updateLocalLibraryPath(uri.toString())
+                            }
+                        }
+
+                        com.pekempy.ReadAloudbooks.ui.settings.SettingsLocalStorage(
+                            viewModel = settingsViewModel,
+                            onPickFolder = { launcher.launch(null) },
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable(
                         route = "storage",
                         enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
                         exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
@@ -474,27 +525,28 @@ class MainActivity : ComponentActivity() {
                             bookId = bookId,
                             onBack = { navController.popBackStack() },
                             onPlay = { book ->
-                                navController.navigate("player/${book.id}")
+                                navController.navigate("player/${Uri.encode(book.id)}")
                             },
                             onAuthorClick = { author ->
-                                navController.navigate("library?viewMode=${LibraryViewModel.ViewMode.Authors.name}&filter=$author") {
+                                navController.navigate("library?viewMode=${LibraryViewModel.ViewMode.Authors.name}&filter=${Uri.encode(author)}") {
                                     popUpTo("library") { inclusive = true }
                                 }
                             },
                             onSeriesClick = { series ->
-                                navController.navigate("library?viewMode=${LibraryViewModel.ViewMode.Series.name}&filter=$series") {
+                                navController.navigate("library?viewMode=${LibraryViewModel.ViewMode.Series.name}&filter=${Uri.encode(series)}") {
                                     popUpTo("library") { inclusive = true }
                                 }
                             },
                             onRead = { id, isReadAloud ->
-                                navController.navigate("reader/$id?isReadAloud=$isReadAloud")
+                                navController.navigate("reader/${Uri.encode(id)}?isReadAloud=$isReadAloud")
                             },
                             onNavigateToDownloads = {
                                 navController.navigate("storage")
                             },
                             onEdit = { id ->
-                                navController.navigate("edit/$id")
-                            }
+                                navController.navigate("edit/${Uri.encode(id)}")
+                            },
+                            isLocalOnly = libraryViewModel.isLocalOnly
                         )
                     }
                     composable("edit/{bookId}",
@@ -568,7 +620,7 @@ class MainActivity : ComponentActivity() {
                             bookId = bookId,
                             onBack = { navController.popBackStack() },
                             onSwitchToReadAloud = { id ->
-                                navController.navigate("reader/$id?isReadAloud=true")
+                                navController.navigate("reader/${Uri.encode(id)}?isReadAloud=true")
                             }
                         )
                     }

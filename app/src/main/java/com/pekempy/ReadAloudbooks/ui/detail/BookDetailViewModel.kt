@@ -11,6 +11,9 @@ import kotlinx.coroutines.launch
 
 import com.pekempy.ReadAloudbooks.data.UserPreferencesRepository
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import java.io.File
 
 class BookDetailViewModel(private val repository: UserPreferencesRepository) : ViewModel() {
     var book by mutableStateOf<Book?>(null)
@@ -18,6 +21,7 @@ class BookDetailViewModel(private val repository: UserPreferencesRepository) : V
     var error by mutableStateOf<String?>(null)
     var localProgress by mutableStateOf<Float?>(null)
     var serverProgress by mutableStateOf<Float?>(null)
+    var isLocalOnly by mutableStateOf(false)
 
     fun loadBook(uuid: String, showLoading: Boolean = true) {
         viewModelScope.launch {
@@ -26,6 +30,15 @@ class BookDetailViewModel(private val repository: UserPreferencesRepository) : V
             }
             error = null
             try {
+                val credentials = repository.userCredentials.first()
+                isLocalOnly = credentials?.isLocalOnly ?: false
+                
+                if (isLocalOnly) {
+                    loadLocalBook(uuid)
+                    isLoading = false
+                    return@launch
+                }
+
                 val apiManager = AppContainer.apiClientManager
                 val response = apiManager.getApi().getBookDetails(uuid)
                 
@@ -57,17 +70,17 @@ class BookDetailViewModel(private val repository: UserPreferencesRepository) : V
                 
                 val progressStr = repository.getBookProgress(uuid).first()
                 val up = com.pekempy.ReadAloudbooks.data.UnifiedProgress.fromString(progressStr)
-                this@BookDetailViewModel.localProgress = up?.getOverallProgress()
+                localProgress = up?.getOverallProgress()
                 
                 try {
                     val serverPos = apiManager.getApi().getPosition(uuid)
                     if (serverPos != null) {
                         val serverTotal = serverPos.locator.locations.totalProgression?.toFloat()
                         if (serverTotal != null) {
-                            this@BookDetailViewModel.serverProgress = serverTotal
+                            serverProgress = serverTotal
                         } else {
                             val serverUp = com.pekempy.ReadAloudbooks.data.UnifiedProgress.fromPosition(serverPos)
-                            this@BookDetailViewModel.serverProgress = serverUp.getOverallProgress()
+                            serverProgress = serverUp.getOverallProgress()
                         }
                     }
                 } catch (e: Exception) {
@@ -84,7 +97,7 @@ class BookDetailViewModel(private val repository: UserPreferencesRepository) : V
                     currentProcessingStage = response.readaloud?.currentStage,
                     processingProgress = response.readaloud?.stageProgress?.toFloat(),
                     queuePosition = response.readaloud?.queuePosition,
-                    progress = this@BookDetailViewModel.localProgress
+                    progress = localProgress
                 )
             } catch (e: Exception) {
                 error = "Failed to load book: ${e.message}"
@@ -134,6 +147,27 @@ class BookDetailViewModel(private val repository: UserPreferencesRepository) : V
             } catch (e: Exception) {
                 android.util.Log.e("BookDetailVM", "Failed to create readaloud: ${e.message}")
                 loadBook(currentBook.id, showLoading = false)
+            }
+        }
+    }
+
+    private suspend fun loadLocalBook(bookId: String) = withContext(Dispatchers.IO) {
+        val context = AppContainer.context
+        
+        var foundBook = com.pekempy.ReadAloudbooks.util.LocalScanner.findBookByLocalId(context, bookId)
+        
+        if (foundBook != null) {
+            foundBook = com.pekempy.ReadAloudbooks.util.LocalBookMetadataCache.enrichBook(context, foundBook)
+            
+            val progressStr = repository.getBookProgress(bookId).first()
+            val up = com.pekempy.ReadAloudbooks.data.UnifiedProgress.fromString(progressStr)
+            withContext(Dispatchers.Main) {
+                localProgress = up?.getOverallProgress()
+                book = foundBook.copy(progress = localProgress)
+            }
+        } else {
+            withContext(Dispatchers.Main) {
+                error = "Book not found locally"
             }
         }
     }
