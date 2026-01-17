@@ -303,7 +303,9 @@ fun BookActionMenu(
     onMarkFinished: (Book) -> Unit,
     onMarkUnread: (Book) -> Unit,
     onEdit: (Book) -> Unit,
-    onRemoveFromHome: ((Book) -> Unit)? = null
+    onRemoveFromHome: ((Book) -> Unit)? = null,
+    onRefreshMetadata: ((Book) -> Unit)? = null,
+    isLocalOnly: Boolean = false
 ) {
     if (book == null) return
 
@@ -333,7 +335,7 @@ fun BookActionMenu(
             }
             if (book.hasAudiobook) {
                 DropdownMenuItem(
-                    text = { Text("Play Audiobook") },
+                    text = { Text("Listen to Audiobook") },
                     leadingIcon = { Icon(painterResource(R.drawable.ic_headphones), contentDescription = null) },
                     onClick = {
                         onPlayAudiobook(book)
@@ -363,14 +365,25 @@ fun BookActionMenu(
             }
         )
 
-        DropdownMenuItem(
-            text = { Text("Edit Metadata") },
-            leadingIcon = { Icon(painterResource(R.drawable.ic_edit), contentDescription = null) },
-            onClick = {
-                onEdit(book)
-                onDismissRequest()
-            }
-        )
+        if (!isLocalOnly) {
+            DropdownMenuItem(
+                text = { Text("Edit Metadata") },
+                leadingIcon = { Icon(painterResource(R.drawable.ic_edit), contentDescription = null) },
+                onClick = {
+                    onEdit(book)
+                    onDismissRequest()
+                }
+            )
+        } else if (onRefreshMetadata != null) {
+            DropdownMenuItem(
+                text = { Text("Refresh Metadata") },
+                leadingIcon = { Icon(painterResource(R.drawable.ic_refresh), contentDescription = null) },
+                onClick = {
+                    onRefreshMetadata(book)
+                    onDismissRequest()
+                }
+            )
+        }
 
         if (onRemoveFromHome != null) {
             DropdownMenuItem(

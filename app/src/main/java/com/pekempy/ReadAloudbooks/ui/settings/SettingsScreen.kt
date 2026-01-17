@@ -28,8 +28,10 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsHome(
+    isLocalOnly: Boolean,
     onBack: () -> Unit,
-    onNavigateTo: (String) -> Unit
+    onNavigateTo: (String) -> Unit,
+    onLogout: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -53,11 +55,21 @@ fun SettingsHome(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            SettingsNavItem(
-                title = "Connection",
-                subtitle = "Manage server and account",
-                iconRes = R.drawable.ic_link
-            ) { onNavigateTo("settings/connections") }
+            if (!isLocalOnly) {
+                SettingsNavItem(
+                    title = "Connection",
+                    subtitle = "Manage server and account",
+                    iconRes = R.drawable.ic_link
+                ) { onNavigateTo("settings/connections") }
+            }
+
+            if (isLocalOnly) {
+                SettingsNavItem(
+                    title = "Library Folder",
+                    subtitle = "Manage local files location",
+                    iconRes = R.drawable.ic_folder
+                ) { onNavigateTo("settings/local_storage") }
+            }
             
             SettingsNavItem(
                 title = "Theming",
@@ -88,6 +100,14 @@ fun SettingsHome(
                 subtitle = "Support the projects and developer",
                 iconRes = R.drawable.ic_card_giftcard
             ) { onNavigateTo("settings/support") }
+
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            ListItem(
+                headlineContent = { Text("Log out", color = MaterialTheme.colorScheme.error) },
+                leadingContent = { Icon(painterResource(R.drawable.ic_lock), contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                modifier = Modifier.clickable { onLogout() }
+            )
         }
     }
 }
@@ -576,6 +596,84 @@ fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) 
         )
         Spacer(modifier = Modifier.height(16.dp))
         content()
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsLocalStorage(
+    viewModel: SettingsViewModel,
+    onPickFolder: () -> Unit,
+    onBack: () -> Unit
+) {
+    val path = viewModel.localLibraryPath
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Library Folder") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent
+                )
+            )
+        }
+    ) { padding ->
+        Column(
+             modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            SettingsSection("Local Storage") {
+                Text(
+                    "Set the root folder for your local books. The app will recursively scan this folder for ePUB and M4B files.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Surface(
+                    onClick = onPickFolder,
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Icon(painterResource(R.drawable.ic_folder), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Current Folder", style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                if (path.isBlank()) "App Internal Storage" else path,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                        Icon(painterResource(R.drawable.ic_edit), contentDescription = null)
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                Text(
+                    "Note: Selecting a folder will request permission to access its contents. If you don't select one, the app will use its internal data folder.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
+        }
     }
 }
 

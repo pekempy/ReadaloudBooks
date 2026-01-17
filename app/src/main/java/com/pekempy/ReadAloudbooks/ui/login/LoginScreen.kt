@@ -125,6 +125,16 @@ fun LoginScreen(
                     Text("Connect", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            TextButton(
+                onClick = { viewModel.onLocalOnlyClick(onLoginSuccess) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !viewModel.isLoading
+            ) {
+                Text("Use local files only", color = MaterialTheme.colorScheme.secondary)
+            }
         }
     }
 }

@@ -22,6 +22,8 @@ import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import java.io.File
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import com.pekempy.ReadAloudbooks.data.UnifiedProgress
 
 class AudiobookViewModel(private val repository: UserPreferencesRepository) : ViewModel() {
@@ -248,49 +250,114 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                 }
                 
                 val apiManager = AppContainer.apiClientManager
-                val apiBook = apiManager.getApi().getBookDetails(bookId)
                 
-                val apiSeries = apiBook.series?.firstOrNull()
-                val apiCollection = apiBook.collections?.firstOrNull()
-                
-                val book = Book(
-                    id = apiBook.uuid,
-                    title = apiBook.title,
-                    author = apiBook.authors.joinToString(", ") { it.name },
-                    narrator = apiBook.narrators?.joinToString(", ") { it.name },
-                    coverUrl = apiManager.getCoverUrl(apiBook.uuid),
-                    audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
-                    ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid),
-                    description = apiBook.description,
-                    hasReadAloud = apiBook.readaloud != null,
-                    hasEbook = apiBook.ebook != null,
-                    hasAudiobook = apiBook.audiobook != null,
-                    syncedUrl = apiManager.getSyncDownloadUrl(apiBook.uuid),
-                    audiobookUrl = apiManager.getAudiobookDownloadUrl(apiBook.uuid),
-                    ebookUrl = apiManager.getEbookDownloadUrl(apiBook.uuid),
-                    series = apiSeries?.name ?: apiCollection?.name,
-                    seriesIndex = apiBook.series?.firstNotNullOfOrNull { it.seriesIndex }
-                        ?: apiBook.collections?.firstNotNullOfOrNull { it.seriesIndex }
-                )
+                val loadedBook: Book? = if (credentials.isLocalOnly) {
+                    com.pekempy.ReadAloudbooks.util.LocalScanner.findBookByLocalId(AppContainer.context, bookId)
+                } else {
+                    val apiBook = apiManager.getApi().getBookDetails(bookId)
+                    val apiSeries = apiBook.series?.firstOrNull()
+                    val apiCollection = apiBook.collections?.firstOrNull()
+                    
+                    Book(
+                        id = apiBook.uuid,
+                        title = apiBook.title,
+                        author = apiBook.authors.joinToString(", ") { it.name },
+                        narrator = apiBook.narrators?.joinToString(", ") { it.name },
+                        coverUrl = apiManager.getCoverUrl(apiBook.uuid),
+                        audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
+                        ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid),
+                        description = apiBook.description,
+                        hasReadAloud = apiBook.readaloud != null,
+                        hasEbook = apiBook.ebook != null,
+                        hasAudiobook = apiBook.audiobook != null,
+                        syncedUrl = apiManager.getSyncDownloadUrl(apiBook.uuid),
+                        audiobookUrl = apiManager.getAudiobookDownloadUrl(apiBook.uuid),
+                        ebookUrl = apiManager.getEbookDownloadUrl(apiBook.uuid),
+                        series = apiSeries?.name ?: apiCollection?.name,
+                        seriesIndex = apiBook.series?.firstNotNullOfOrNull { it.seriesIndex }
+                            ?: apiBook.collections?.firstNotNullOfOrNull { it.seriesIndex }
+                    )
+                }
+
+                if (loadedBook == null) {
+                    withContext(Dispatchers.Main) {
+                        isLoading = false
+                        error = "Book not found"
+                    }
+                    return@launch
+                }
                 
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    currentBook = book
+                    currentBook = loadedBook
                 }
                 repository.saveLastActiveBook(bookId, "audiobook")
 
-                val localFile = filesDir?.let { fDir ->
-                    val bookDir = com.pekempy.ReadAloudbooks.util.DownloadUtils.getBookDir(fDir, book)
-                    val baseName = com.pekempy.ReadAloudbooks.util.DownloadUtils.getBaseFileName(book)
-                    val file = File(bookDir, "$baseName.m4b")
-                    if (file.exists()) file else null
+                val localFile = if (credentials.isLocalOnly) {
+                    val parts = bookId.split("|")
+                    if (parts.size >= 3) {
+                        val rootUriStr = parts[0]
+                        val folderDocId = parts[1]
+                        val rootUri = android.net.Uri.parse(rootUriStr)
+                        
+                        val childrenUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(
+                            rootUri, folderDocId
+                        )
+                        
+                        val projection = arrayOf(
+                            android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                            android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME
+                        )
+                        
+                        var m4bDocId: String? = null
+                        AppContainer.context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                            val docIdCol = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                            val nameCol = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                            
+                            while (cursor.moveToNext()) {
+                                val name = cursor.getString(nameCol) ?: continue
+                                if (name.lowercase().endsWith(".m4b")) {
+                                    m4bDocId = cursor.getString(docIdCol)
+                                    break
+                                }
+                            }
+                        }
+                        
+                        if (m4bDocId != null) {
+                            android.provider.DocumentsContract.buildDocumentUriUsingTree(rootUri, m4bDocId!!)
+                        } else null
+                    } else {
+                        val folderUriStr = bookId.substringBeforeLast("/")
+                        val folderUri = android.net.Uri.parse(folderUriStr)
+                        val folderDoc = DocumentFile.fromTreeUri(AppContainer.context, folderUri)
+                        val filesList = folderDoc?.listFiles()
+                        filesList?.find { doc -> 
+                            doc.name?.lowercase()?.endsWith(".m4b") == true && 
+                            (doc.name?.contains(loadedBook.title, ignoreCase = true) == true || (filesList.size) <= 3)
+                        }?.uri
+                    }
+                } else {
+                    filesDir?.let { fDir ->
+                        val bookDir = com.pekempy.ReadAloudbooks.util.DownloadUtils.getBookDir(fDir, loadedBook)
+                        val baseName = com.pekempy.ReadAloudbooks.util.DownloadUtils.getBaseFileName(loadedBook)
+                        val file = File(bookDir, "$baseName.m4b")
+                        if (file.exists()) android.net.Uri.fromFile(file) else null
+                    }
+                }
+
+                if (localFile == null && credentials.isLocalOnly) {
+                    withContext(Dispatchers.Main) {
+                        isLoading = false
+                        error = "Audiobook file not found"
+                    }
+                    return@launch
                 }
 
                 val mediaMetadata = androidx.media3.common.MediaMetadata.Builder()
-                    .setTitle(book.title)
-                    .setArtist(book.author)
-                    .setSubtitle(book.narrator)
-                    .setDescription(book.description?.take(200))
-                    .setArtworkUri(android.net.Uri.parse(book.audiobookCoverUrl ?: book.coverUrl))
+                    .setTitle(loadedBook.title)
+                    .setArtist(loadedBook.author)
+                    .setSubtitle(loadedBook.narrator)
+                    .setDescription(loadedBook.description?.take(200))
+                    .setArtworkUri(android.net.Uri.parse(loadedBook.audiobookCoverUrl ?: loadedBook.coverUrl))
                     .build()
 
                 val progressStr = repository.getBookProgress(bookId).first()
@@ -301,49 +368,60 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                 }
 
                 val mediaItem = if (localFile != null) {
-                    android.util.Log.d("AudiobookVM", "Playing local file: ${localFile.absolutePath}")
+                    val uri = localFile
+                    val isContentUri = uri.scheme == "content"
                     
-                    val codecConverter = com.pekempy.ReadAloudbooks.util.AudioCodecConverter(appContext ?: throw IllegalStateException("Context not initialized"))
-                    val audioMetadata = codecConverter.getAudioMetadata(localFile.absolutePath)
-                    
-                    val enrichedMetadata = mediaMetadata.buildUpon()
-                        .setExtras(android.os.Bundle().apply { 
-                            putLong("duration_ms", audioMetadata.durationMs) 
-                        })
-                        .build()
-                    
-                    probedDurationMs = audioMetadata.durationMs
-                    probedChapters = audioMetadata.chapters.map { Chapter(it.title, it.startMs, it.durationMs) }
-                    val cachedPath = codecConverter.getCachedPathIfValid(localFile.absolutePath)
-                    
-                    if (cachedPath != null) {
-                        android.util.Log.i("AudiobookVM", "Using existing converted file for playback")
+                    if (isContentUri) {
+                        android.util.Log.d("AudiobookVM", "Playing content:// URI directly")
                         MediaItem.Builder()
-                            .setUri(android.net.Uri.fromFile(File(cachedPath)))
-                            .setMediaMetadata(enrichedMetadata)
-                            .build()
-                    } else if (audioMetadata.codec == "eac3" || audioMetadata.codec == "ac3") {
-                        android.util.Log.i("AudiobookVM", "File needs transcoding. Starting streaming proxy and background conversion.")
-                        viewModelScope.launch {
-                            codecConverter.checkAndConvertIfNeeded(localFile.absolutePath)
-                        }
-                        
-                        val playbackUri = "ffmpeg://durationMs=${audioMetadata.durationMs}//${localFile.absolutePath}"
-                        
-                        MediaItem.Builder()
-                            .setUri(playbackUri)
-                            .setMediaMetadata(enrichedMetadata)
+                            .setUri(uri)
+                            .setMediaMetadata(mediaMetadata)
                             .build()
                     } else {
-                        android.util.Log.d("AudiobookVM", "File supported natively, playing directly")
-                        MediaItem.Builder()
-                            .setUri(localFile.absolutePath)
-                            .setMediaMetadata(enrichedMetadata)
+                        val filePath = uri.path ?: ""
+                        android.util.Log.d("AudiobookVM", "Playing local file: $filePath")
+                        val codecConverter = com.pekempy.ReadAloudbooks.util.AudioCodecConverter(AppContainer.context)
+                        val audioMetadata = codecConverter.getAudioMetadata(filePath)
+                        
+                        val enrichedMetadataFile = mediaMetadata.buildUpon()
+                            .setExtras(android.os.Bundle().apply { 
+                                putLong("duration_ms", audioMetadata.durationMs) 
+                            })
                             .build()
+                        
+                        probedDurationMs = audioMetadata.durationMs
+                        probedChapters = audioMetadata.chapters.map { Chapter(it.title, it.startMs, it.durationMs) }
+                        val cachedPath = codecConverter.getCachedPathIfValid(filePath)
+                        
+                        if (cachedPath != null) {
+                            android.util.Log.i("AudiobookVM", "Using existing converted file for playback")
+                            MediaItem.Builder()
+                                .setUri(android.net.Uri.fromFile(File(cachedPath)))
+                                .setMediaMetadata(enrichedMetadataFile)
+                                .build()
+                        } else if (audioMetadata.codec == "eac3" || audioMetadata.codec == "ac3") {
+                            android.util.Log.i("AudiobookVM", "File needs transcoding. Starting streaming proxy and background conversion.")
+                            viewModelScope.launch {
+                                codecConverter.checkAndConvertIfNeeded(filePath)
+                            }
+                            
+                            val playbackUri = "ffmpeg://durationMs=${audioMetadata.durationMs}//$filePath"
+                            
+                            MediaItem.Builder()
+                                .setUri(playbackUri)
+                                .setMediaMetadata(enrichedMetadataFile)
+                                .build()
+                        } else {
+                            android.util.Log.d("AudiobookVM", "File supported natively, playing directly")
+                            MediaItem.Builder()
+                                .setUri(uri)
+                                .setMediaMetadata(enrichedMetadataFile)
+                                .build()
+                        }
                     }
                 } else {
-                    android.util.Log.d("AudiobookVM", "Streaming from: ${book.audiobookUrl}")
-                    val url = book.audiobookUrl ?: ""
+                    android.util.Log.d("AudiobookVM", "Streaming from: ${loadedBook.audiobookUrl}")
+                    val url = loadedBook.audiobookUrl ?: ""
                     val lowerUrl = url.lowercase()
                     
                     val enrichedMetadataRemote = mediaMetadata.buildUpon()
@@ -352,7 +430,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                     
                     val finalUrl = if (isPotentiallyUnsupported) {
                         android.util.Log.i("AudiobookVM", "Potential unsupported codec or container detected, probing remote metadata...")
-                        val codecConverter = com.pekempy.ReadAloudbooks.util.AudioCodecConverter(appContext!!)
+                        val codecConverter = com.pekempy.ReadAloudbooks.util.AudioCodecConverter(AppContainer.context)
                         val remoteMetadata = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { codecConverter.getAudioMetadata(url) }
                         probedDurationMs = remoteMetadata.durationMs
                         probedChapters = remoteMetadata.chapters.map { Chapter(it.title, it.startMs, it.durationMs) }
@@ -440,8 +518,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                                             source = "Storyteller Server"
                                         )
                                     }
-                                }
- else {
+                                } else {
                                     finalProgressToUse = serverProgress
                                 }
                             } else {
@@ -497,12 +574,12 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                                     seekTo(resMs)
                                     pendingResumeMs = null
                                 }
-                            }
                         }
-                    }
                 }
+            }
+        }
 
-                val perBookSpd = repository.getBookPlaybackSpeed(bookId).first()
+        val perBookSpd = repository.getBookPlaybackSpeed(bookId).first()
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     if (perBookSpd != null) {
                         setSpeed(perBookSpd)

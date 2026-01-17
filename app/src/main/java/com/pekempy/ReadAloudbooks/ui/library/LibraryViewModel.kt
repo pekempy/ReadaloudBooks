@@ -10,7 +10,9 @@ import com.pekempy.ReadAloudbooks.data.api.AppContainer
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
+import java.io.File
 
 class LibraryViewModel(private val repository: UserPreferencesRepository) : ViewModel() {
     private val PREFS_NAME = "download_prefs"
@@ -50,6 +52,7 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     
     var books by mutableStateOf<List<Book>>(emptyList())
     var isLoading by mutableStateOf(false)
+    var isLocalOnly by mutableStateOf(false)
 
     data class DownloadStatus(val progress: Float, val statusText: String)
 
@@ -239,6 +242,22 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
             try {
                 val credentials = repository.userCredentials.first()
                 if (credentials != null) {
+                    isLocalOnly = credentials.isLocalOnly
+                    
+                    if (isLocalOnly) {
+                        com.pekempy.ReadAloudbooks.util.LocalBookMetadataCache.loadCache(AppContainer.context)
+                        val rawBooks = scanLocalBooks()
+                        allBooks = rawBooks.map { book ->
+                            com.pekempy.ReadAloudbooks.util.LocalBookMetadataCache.enrichBook(AppContainer.context, book)
+                        }
+                        applyFiltersAndSort()
+                        updateHomeData()
+                        isLoading = false
+                        
+                        enrichLocalBooksInBackground(rawBooks)
+                        return@launch
+                    }
+
                     val currentSsid = com.pekempy.ReadAloudbooks.util.NetworkUtils.getCurrentSsid(AppContainer.context)
                     val shouldUseLocal = credentials.useLocalOnWifi && 
                                         credentials.wifiSsid.isNotEmpty() &&
@@ -516,6 +535,112 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
         viewModelScope.launch {
             repository.deleteBookProgress(bookId)
             loadBooks()
+        }
+    }
+
+    private suspend fun scanLocalBooks(): List<Book> = withContext(Dispatchers.IO) {
+        val credentials = repository.userCredentials.first()
+        val context = AppContainer.context
+        val rootUri = credentials?.localLibraryPath?.let { android.net.Uri.parse(it) } 
+            ?: android.net.Uri.fromFile(context.filesDir)
+        val bookList = mutableListOf<Book>()
+        
+        com.pekempy.ReadAloudbooks.util.LocalScanner.scanRecursiveFast(context, rootUri, bookList)
+        bookList
+    }
+    
+    private fun enrichLocalBooksInBackground(books: List<Book>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val context = AppContainer.context
+            var updatedCount = 0
+            
+            android.util.Log.d("LibraryViewModel", "Starting background enrichment for ${books.size} books")
+            
+            for (book in books) {
+                val existing = com.pekempy.ReadAloudbooks.util.LocalBookMetadataCache.getCachedMetadata(book.id)
+                
+                val isComplete = existing != null && 
+                    existing.title.isNotBlank() &&
+                    existing.author.isNotBlank() && existing.author != "Unknown" &&
+                    existing.coverPath != null 
+                
+                if (isComplete) {
+                    android.util.Log.d("LibraryViewModel", "Skipping ${book.title} - already has complete metadata")
+                    continue
+                }
+                
+                if (existing != null) {
+                    android.util.Log.d("LibraryViewModel", "Re-extracting ${book.title} - metadata incomplete (author=${existing.author}, cover=${existing.coverPath != null})")
+                }
+                
+                android.util.Log.d("LibraryViewModel", "Enriching: ${book.title} with id: ${book.id.take(100)}...")
+                
+                val metadata = com.pekempy.ReadAloudbooks.util.LocalBookMetadataCache.extractAndCacheMetadata(
+                    context, book.id
+                )
+                
+                if (metadata != null) {
+                    updatedCount++
+                    
+                    withContext(Dispatchers.Main) {
+                        val currentBooks = allBooks.toMutableList()
+                        val index = currentBooks.indexOfFirst { it.id == book.id }
+                        if (index >= 0) {
+                            currentBooks[index] = com.pekempy.ReadAloudbooks.util.LocalBookMetadataCache.enrichBook(context, currentBooks[index])
+                            allBooks = currentBooks
+                            
+                            if (updatedCount % 5 == 0) {
+                                applyFiltersAndSort()
+                                updateHomeData()
+                            }
+                        }
+                    }
+                }
+            }
+            
+
+            
+            if (updatedCount > 0) {
+                withContext(Dispatchers.Main) {
+                    applyFiltersAndSort()
+                    updateHomeData()
+                }
+                android.util.Log.d("LibraryViewModel", "Enriched $updatedCount local books with metadata")
+            }
+        }
+    }
+
+    fun forceRefreshMetadata(book: Book) {
+        if (!isLocalOnly) return
+        
+        viewModelScope.launch {
+            isLoading = true
+            try {
+                com.pekempy.ReadAloudbooks.util.LocalBookMetadataCache.clearMetadata(AppContainer.context, book.id)
+                
+                withContext(Dispatchers.IO) {
+                    val metadata = com.pekempy.ReadAloudbooks.util.LocalBookMetadataCache.extractAndCacheMetadata(
+                        AppContainer.context, book.id
+                    )
+                    
+                    if (metadata != null) {
+                        withContext(Dispatchers.Main) {
+                            val currentBooks = allBooks.toMutableList()
+                            val index = currentBooks.indexOfFirst { it.id == book.id }
+                            if (index >= 0) {
+                                currentBooks[index] = com.pekempy.ReadAloudbooks.util.LocalBookMetadataCache.enrichBook(AppContainer.context, currentBooks[index])
+                                allBooks = currentBooks
+                                applyFiltersAndSort()
+                                updateHomeData()
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("LibraryViewModel", "Failed to force refresh metadata: ${e.message}")
+            } finally {
+                isLoading = false
+            }
         }
     }
 }

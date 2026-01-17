@@ -15,7 +15,9 @@ data class UserCredentials(
     val username: String,
     val token: String? = null,
     val useLocalOnWifi: Boolean = false,
-    val wifiSsid: String = ""
+    val wifiSsid: String = "",
+    val isLocalOnly: Boolean = false,
+    val localLibraryPath: String? = null
 )
 
 class UserPreferencesRepository(private val context: Context) {
@@ -29,6 +31,8 @@ class UserPreferencesRepository(private val context: Context) {
         val USERNAME = stringPreferencesKey("username")
         val TOKEN = stringPreferencesKey("auth_token")
         val IS_LOGGED_IN = booleanPreferencesKey("is_logged_in")
+        val IS_LOCAL_ONLY = booleanPreferencesKey("is_local_only")
+        val LOCAL_LIBRARY_PATH = stringPreferencesKey("local_library_path")
         
         val THEME_MODE = intPreferencesKey("theme_mode")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
@@ -57,7 +61,20 @@ class UserPreferencesRepository(private val context: Context) {
                 username = username,
                 token = preferences[TOKEN],
                 useLocalOnWifi = preferences[USE_LOCAL_ON_WIFI] ?: false,
-                wifiSsid = preferences[WIFI_SSID] ?: ""
+                wifiSsid = preferences[WIFI_SSID] ?: "",
+                isLocalOnly = preferences[IS_LOCAL_ONLY] ?: false,
+                localLibraryPath = preferences[LOCAL_LIBRARY_PATH]
+            )
+        } else if (preferences[IS_LOCAL_ONLY] == true) {
+            UserCredentials(
+                url = "",
+                localUrl = "",
+                username = "Local User",
+                token = null,
+                useLocalOnWifi = false,
+                wifiSsid = "",
+                isLocalOnly = true,
+                localLibraryPath = preferences[LOCAL_LIBRARY_PATH]
             )
         } else {
             null
@@ -101,6 +118,22 @@ class UserPreferencesRepository(private val context: Context) {
             if (wifiSsid.isNotEmpty()) preferences[WIFI_SSID] = wifiSsid else preferences.remove(WIFI_SSID)
             
             preferences[IS_LOGGED_IN] = true
+            preferences[IS_LOCAL_ONLY] = false
+        }
+    }
+
+    suspend fun setLocalOnly(path: String? = null) {
+        context.dataStore.edit { preferences ->
+            preferences[IS_LOGGED_IN] = true
+            preferences[IS_LOCAL_ONLY] = true
+            preferences[USERNAME] = "Local User"
+            path?.let { preferences[LOCAL_LIBRARY_PATH] = it }
+        }
+    }
+
+    suspend fun updateLocalLibraryPath(path: String) {
+        context.dataStore.edit { preferences ->
+            preferences[LOCAL_LIBRARY_PATH] = path
         }
     }
 
