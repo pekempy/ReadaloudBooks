@@ -37,6 +37,11 @@ interface StorytellerApi {
         @Query("restart") restart: Boolean? = null
     )
 
+    @DELETE("api/v2/books/{uuid}/process")
+    suspend fun cancelProcessing(
+        @Path("uuid") uuid: String
+    )
+
     @Multipart
     @PUT("api/v2/books/{uuid}")
     suspend fun updateBook(

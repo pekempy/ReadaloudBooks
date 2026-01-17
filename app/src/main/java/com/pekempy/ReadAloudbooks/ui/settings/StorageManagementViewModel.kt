@@ -20,7 +20,7 @@ data class StorageItem(
 )
 
 data class BookStorageItem(
-    val book: Book?,
+    val book: Book,
     val directory: File,
     val items: List<StorageItem>,
     val totalSize: Long,
@@ -31,6 +31,7 @@ class StorageManagementViewModel(private val repository: com.pekempy.ReadAloudbo
     var bookItems by mutableStateOf<List<BookStorageItem>>(emptyList())
     var isLoading by mutableStateOf(false)
     var selectedBookItem by mutableStateOf<BookStorageItem?>(null)
+    var deleteDialogItem by mutableStateOf<BookStorageItem?>(null)
 
     enum class SortOption { RecentAsc, RecentDesc, SizeAsc, SizeDesc }
     var currentSort by mutableStateOf(SortOption.RecentDesc)
@@ -64,17 +65,17 @@ class StorageManagementViewModel(private val repository: com.pekempy.ReadAloudbo
                 emptyList()
             }
 
-            val itemsByDir = mutableMapOf<java.io.File, MutableList<StorageItem>>()
+
+            val allFiles = mutableListOf<Pair<File, StorageItem>>()
             
             fun scanDir(dir: File) {
                 val files = dir.listFiles() ?: return
-                val localItems = mutableListOf<StorageItem>()
                 files.forEach { file ->
                     if (file.isDirectory) {
                         scanDir(file)
                     } else if (file.name.endsWith(".epub") || file.name.endsWith(".m4b")) {
-                        localItems.add(
-                            StorageItem(
+                        allFiles.add(
+                            dir to StorageItem(
                                 file = file,
                                 name = file.name,
                                 sizeBytes = file.length(),
@@ -83,23 +84,93 @@ class StorageManagementViewModel(private val repository: com.pekempy.ReadAloudbo
                         )
                     }
                 }
-                if (localItems.isNotEmpty()) {
-                    itemsByDir[dir] = localItems
-                }
             }
             
             scanDir(filesDir)
             
-            val finalBookItems = itemsByDir.map { (dir, items) ->
-                val matchingBook = allBooks.find { book -> 
-                    com.pekempy.ReadAloudbooks.util.DownloadUtils.getBookDir(filesDir, book).absolutePath == dir.absolutePath
+            val bookGroups = mutableMapOf<String, MutableList<Pair<File, StorageItem>>>()
+            val unmatchedFiles = mutableListOf<Pair<File, StorageItem>>()
+            
+            allFiles.forEach { (dir, item) ->
+                var matched = false
+                
+                for (book in allBooks) {
+                    val bookDir = com.pekempy.ReadAloudbooks.util.DownloadUtils.getBookDir(filesDir, book)
+                    val baseFileName = com.pekempy.ReadAloudbooks.util.DownloadUtils.getBaseFileName(book)
+                    
+                    if (dir.absolutePath == bookDir.absolutePath && 
+                        (item.name == "$baseFileName.epub" || 
+                         item.name == "$baseFileName (readaloud).epub" || 
+                         item.name == "$baseFileName.m4b")) {
+                        bookGroups.getOrPut(book.id) { mutableListOf() }.add(dir to item)
+                        matched = true
+                        break
+                    }
                 }
-                BookStorageItem(
-                    book = matchingBook,
-                    directory = dir,
-                    items = items,
-                    totalSize = items.sumOf { it.sizeBytes },
-                    lastModified = items.maxOf { it.lastModified }
+                
+                if (!matched) {
+                    unmatchedFiles.add(dir to item)
+                }
+            }
+            
+            val finalBookItems = mutableListOf<BookStorageItem>()
+            
+            bookGroups.forEach { (bookId, fileList) ->
+                val book = allBooks.find { it.id == bookId }!!
+                val dir = fileList.first().first
+                val items = fileList.map { it.second }
+                
+                finalBookItems.add(
+                    BookStorageItem(
+                        book = book,
+                        directory = dir,
+                        items = items,
+                        totalSize = items.sumOf { it.sizeBytes },
+                        lastModified = items.maxOf { it.lastModified }
+                    )
+                )
+            }
+            
+            val unmatchedGroups = unmatchedFiles.groupBy { (dir, item) ->
+                val baseName = item.name
+                    .replace(" (readaloud)", "")
+                    .substringBeforeLast(".")
+                "${dir.absolutePath}/$baseName"
+            }
+            
+            unmatchedGroups.forEach { (key, fileList) ->
+                val dir = fileList.first().first
+                val items = fileList.map { it.second }
+                
+                val parentDir = dir.parentFile
+                val author = if (parentDir != null && parentDir != filesDir) {
+                    parentDir.name
+                } else {
+                    "Unknown Author"
+                }
+                
+                val title = items.first().name
+                    .replace(" (readaloud)", "")
+                    .substringBeforeLast(".")
+                
+                val displayBook = Book(
+                    id = "local_${key.hashCode()}",
+                    title = title,
+                    author = author,
+                    coverUrl = null,
+                    series = null,
+                    seriesIndex = null,
+                    addedDate = items.maxOfOrNull { it.lastModified } ?: 0L
+                )
+                
+                finalBookItems.add(
+                    BookStorageItem(
+                        book = displayBook,
+                        directory = dir,
+                        items = items,
+                        totalSize = items.sumOf { it.sizeBytes },
+                        lastModified = items.maxOf { it.lastModified }
+                    )
                 )
             }
             
@@ -123,19 +194,46 @@ class StorageManagementViewModel(private val repository: com.pekempy.ReadAloudbo
     }
 
     fun deleteBook(item: BookStorageItem) {
+        if (item.items.size > 1) {
+            deleteDialogItem = item
+        } else {
+            confirmDeleteFiles(item, item.items)
+        }
+    }
+
+    fun confirmDeleteFiles(item: BookStorageItem, filesToDelete: List<StorageItem>) {
         viewModelScope.launch {
-            item.items.forEach { it.file.delete() }
-            var currentDir = item.directory
-            while (currentDir.listFiles()?.isEmpty() == true) {
-                val parent = currentDir.parentFile
-                currentDir.delete()
-                if (parent == null) break
-                currentDir = parent
+            filesToDelete.forEach { it.file.delete() }
+            
+            val remainingItems = item.items.filter { it !in filesToDelete }
+            
+            if (remainingItems.isEmpty()) {
+                var currentDir = item.directory
+                while (currentDir.listFiles()?.isEmpty() == true) {
+                    val parent = currentDir.parentFile
+                    currentDir.delete()
+                    if (parent == null) break
+                    currentDir = parent
+                }
+                bookItems = bookItems.filter { it.book.id != item.book.id }
+                if (selectedBookItem?.book?.id == item.book.id) {
+                    selectedBookItem = null
+                }
+            } else {
+                val updatedItem = item.copy(
+                    items = remainingItems,
+                    totalSize = remainingItems.sumOf { it.sizeBytes },
+                    lastModified = remainingItems.maxOf { it.lastModified }
+                )
+                bookItems = bookItems.map { 
+                    if (it.book.id == item.book.id) updatedItem else it
+                }
+                if (selectedBookItem?.book?.id == item.book.id) {
+                    selectedBookItem = updatedItem
+                }
             }
-            bookItems = bookItems.filter { it.directory != item.directory }
-            if (selectedBookItem?.directory == item.directory) {
-                selectedBookItem = null
-            }
+            
+            deleteDialogItem = null
         }
     }
 
@@ -152,9 +250,9 @@ class StorageManagementViewModel(private val repository: com.pekempy.ReadAloudbo
                         lastModified = newFiles.maxOf { f -> f.lastModified }
                     )
                     bookItems = bookItems.map { 
-                        if (it.directory == bookItem.directory) updatedBook else it
+                        if (it.book.id == bookItem.book.id) updatedBook else it
                     }
-                    if (selectedBookItem?.directory == bookItem.directory) {
+                    if (selectedBookItem?.book?.id == bookItem.book.id) {
                         selectedBookItem = updatedBook
                     }
                 }

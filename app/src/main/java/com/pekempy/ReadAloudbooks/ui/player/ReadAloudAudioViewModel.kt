@@ -358,7 +358,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                                 android.util.Log.d("ReadAloudAudioVM", "Synced from player: chap=$currentChapterIndex, pos=$currentPosition, el=$currentElementId")
                             }
                         }
-                        loadProgress(bookId, skipSeek = true)
+                        loadProgress(bookId, skipSeek = false)
                     }
 
                     if (autoPlay && player?.isPlaying == false) {
@@ -636,10 +636,8 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             inputStream.close()
             if (chaptersList.isEmpty()) return null
             
-            // Ensure they are sorted by start offset
             chaptersList.sortBy { it.startOffset }
             
-            // Fix durations if end_ms was missing or zero
             for (i in 0 until chaptersList.size) {
                 if (chaptersList[i].duration <= 0) {
                     val nextStart = if (i + 1 < chaptersList.size) chaptersList[i+1].startOffset else duration

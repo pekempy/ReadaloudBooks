@@ -123,10 +123,30 @@ fun MiniPlayerBar(
                 
                 Spacer(modifier = Modifier.width(12.dp))
                 
-                val currentChapterTitle = remember(readAloudViewModel.currentPosition, readAloudViewModel.chapters) {
-                    if (isReadAloud) {
-                        readAloudViewModel.chapters.find { readAloudViewModel.currentPosition in it.startOffset..(it.startOffset + it.duration) }?.title
-                    } else null
+                val currentChapterTitle by remember {
+                    derivedStateOf {
+                        if (isReadAloud) {
+                            val pos = readAloudViewModel.currentPosition
+                            val chapters = readAloudViewModel.chapters
+                            android.util.Log.d("MiniPlayer", "ReadAloud: pos=$pos, chapters.size=${chapters.size}")
+                            val found = chapters.find { 
+                                pos >= it.startOffset && 
+                                pos < it.startOffset + it.duration 
+                            }
+                            android.util.Log.d("MiniPlayer", "ReadAloud: found chapter: ${found?.title} (start=${found?.startOffset}, dur=${found?.duration})")
+                            found?.title
+                        } else {
+                            val pos = audiobookViewModel.currentPosition
+                            val chapters = audiobookViewModel.chapters
+                            android.util.Log.d("MiniPlayer", "Audiobook: pos=$pos, chapters.size=${chapters.size}")
+                            val found = chapters.find { 
+                                pos >= it.startOffset && 
+                                pos < it.startOffset + it.duration 
+                            }
+                            android.util.Log.d("MiniPlayer", "Audiobook: found chapter: ${found?.title} (start=${found?.startOffset}, dur=${found?.duration})")
+                            found?.title
+                        }
+                    }
                 }
                 
                 Column(modifier = Modifier.weight(1f)) {

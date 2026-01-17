@@ -268,13 +268,18 @@ class ReaderViewModel(
                 totalChapters = spineHrefs.size
 
                 val progressStr = repository.getBookProgress(bookId).first()
+                android.util.Log.d("ReaderViewModel", "Loading progress for $bookId: $progressStr")
                 val progress = UnifiedProgress.fromString(progressStr)
                 var savedAudioMs: Long? = null
                 if (progress != null) {
+                    android.util.Log.d("ReaderViewModel", "Parsed progress: chapter=${progress.chapterIndex}, scroll=${progress.scrollPercent}, audio=${progress.audioTimestampMs}")
                     currentChapterIndex = progress.chapterIndex.coerceIn(0, totalChapters - 1)
                     lastScrollPercent = progress.scrollPercent
                     currentHighlightId = progress.elementId
                     savedAudioMs = if (progress.audioTimestampMs > 0) progress.audioTimestampMs else null
+                    android.util.Log.d("ReaderViewModel", "Applied progress: currentChapterIndex=$currentChapterIndex, lastScrollPercent=$lastScrollPercent")
+                } else {
+                    android.util.Log.w("ReaderViewModel", "No progress found for $bookId, starting from beginning")
                 }
 
                 if (resolvedOverlayMap.isNotEmpty()) {
@@ -526,10 +531,11 @@ class ReaderViewModel(
         }
     }
 
-    fun changeChapter(index: Int, audioPosMs: Long? = null) {
+    fun changeChapter(index: Int, audioPosMs: Long? = null, scrollToEnd: Boolean = false) {
         currentChapterIndex = index
         currentHighlightId = null
-        saveProgress(index, 0f, audioPosMs)
+        val scrollPercent = if (scrollToEnd) 1.0f else 0f
+        saveProgress(index, scrollPercent, audioPosMs)
     }
 
     fun updateFontSize(newSize: Float) {

@@ -291,7 +291,8 @@ fun EpubWebView(
                         @JavascriptInterface
                         fun onPrevChapter() {
                             viewModel.viewModelScope.launch {
-                                viewModel.changeChapter(viewModel.currentChapterIndex - 1)
+                                // Go to previous chapter and jump to the last page (100% scroll)
+                                viewModel.changeChapter(viewModel.currentChapterIndex - 1, scrollToEnd = true)
                             }
                         }
 

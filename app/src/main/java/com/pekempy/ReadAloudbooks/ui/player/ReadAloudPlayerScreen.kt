@@ -608,13 +608,19 @@ fun ReadAloudFullPlayerOverlay(
                 }
             }
             
-            val currentChapterTitle = remember(viewModel.currentPosition, viewModel.chapters) {
-                viewModel.chapters.find { viewModel.currentPosition in it.startOffset..(it.startOffset + it.duration) }?.title
+            val currentChapterTitle by remember {
+                derivedStateOf {
+                    val pos = viewModel.currentPosition
+                    viewModel.chapters.find { 
+                        pos >= it.startOffset && 
+                        pos < it.startOffset + it.duration 
+                    }?.title
+                }
             }
             
             Text(book?.title ?: "Unknown", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-            if (currentChapterTitle != null) {
-                Text(currentChapterTitle, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            currentChapterTitle?.let { title ->
+                Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text(book?.author ?: "Unknown", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
             
@@ -694,6 +700,16 @@ fun ReadAloudMinimalCard(
             
             Spacer(Modifier.width(16.dp))
             
+            val currentChapterTitle by remember {
+                derivedStateOf {
+                    val pos = audiobookViewModel.currentPosition
+                    audiobookViewModel.chapters.find { 
+                        pos >= it.startOffset && 
+                        pos < it.startOffset + it.duration 
+                    }?.title
+                }
+            }
+            
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = book?.title ?: "Unknown",
@@ -703,6 +719,16 @@ fun ReadAloudMinimalCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                
+                currentChapterTitle?.let { title ->
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 
                 Spacer(Modifier.height(4.dp))
                 

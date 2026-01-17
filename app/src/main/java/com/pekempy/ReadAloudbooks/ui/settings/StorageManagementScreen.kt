@@ -1,6 +1,7 @@
 package com.pekempy.ReadAloudbooks.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -153,6 +154,109 @@ fun StorageManagementScreen(
             }
         }
     }
+    
+    viewModel.deleteDialogItem?.let { item ->
+        DeleteFilesDialog(
+            item = item,
+            onDismiss = { viewModel.deleteDialogItem = null },
+            onConfirm = { filesToDelete ->
+                viewModel.confirmDeleteFiles(item, filesToDelete)
+            }
+        )
+    }
+}
+
+@Composable
+fun DeleteFilesDialog(
+    item: BookStorageItem,
+    onDismiss: () -> Unit,
+    onConfirm: (List<StorageItem>) -> Unit
+) {
+    var selectedFiles by remember { mutableStateOf(item.items.toSet()) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete Files") },
+        text = {
+            Column {
+                Text(
+                    "Select which files to delete for \"${item.book.title}\":",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(16.dp))
+                
+                item.items.forEach { fileItem ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { 
+                                selectedFiles = if (fileItem in selectedFiles) {
+                                    selectedFiles - fileItem
+                                } else {
+                                    selectedFiles + fileItem
+                                }
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = fileItem in selectedFiles,
+                            onCheckedChange = { checked ->
+                                selectedFiles = if (checked) {
+                                    selectedFiles + fileItem
+                                } else {
+                                    selectedFiles - fileItem
+                                }
+                            }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            val fileType = when {
+                                fileItem.name.contains("(readaloud)", ignoreCase = true) -> "ReadAloud"
+                                fileItem.name.endsWith(".m4b", ignoreCase = true) -> "Audiobook"
+                                fileItem.name.endsWith(".epub", ignoreCase = true) -> "eBook"
+                                else -> "File"
+                            }
+                            Text(
+                                fileType,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                formatSize(fileItem.sizeBytes),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(8.dp))
+                
+                Text(
+                    "Total to delete: ${formatSize(selectedFiles.sumOf { it.sizeBytes })}",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(selectedFiles.toList()) },
+                enabled = selectedFiles.isNotEmpty()
+            ) {
+                Text("Delete Selected")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -191,7 +295,7 @@ fun StorageBookCard(item: BookStorageItem, onClick: () -> Unit, onDelete: () -> 
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                if (item.book?.coverUrl != null) {
+                if (item.book.coverUrl != null) {
                     AsyncImage(
                         model = item.book.coverUrl,
                         contentDescription = null,
@@ -211,14 +315,14 @@ fun StorageBookCard(item: BookStorageItem, onClick: () -> Unit, onDelete: () -> 
             
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = item.book?.title ?: item.directory.name,
+                    text = item.book.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
                 Text(
-                    text = item.book?.author ?: "Unknown Author",
+                    text = item.book.author,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.secondary,
                     maxLines = 1
@@ -288,7 +392,19 @@ fun ActiveDownloadCard(job: com.pekempy.ReadAloudbooks.data.DownloadJob, onRemov
                         Icon(painterResource(R.drawable.ic_delete), contentDescription = "Clear")
                     }
                 } else {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        IconButton(onClick = { 
+                            com.pekempy.ReadAloudbooks.data.DownloadManager.cancelProcessing(job.book.id)
+                        }) {
+                            Icon(
+                                painterResource(R.drawable.ic_close), 
+                                contentDescription = "Cancel",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
                 }
             }
             Spacer(Modifier.height(8.dp))

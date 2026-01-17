@@ -37,6 +37,19 @@ object DownloadManager {
         }
     }
 
+    fun cancelProcessing(bookId: String) {
+        scope.launch {
+            try {
+                AppContainer.apiClientManager.getApi().cancelProcessing(bookId)
+                android.util.Log.d("DownloadManager", "Cancelled server processing for book: $bookId")
+            } catch (e: Exception) {
+                android.util.Log.w("DownloadManager", "Failed to cancel server processing: ${e.message}")
+            }
+            
+            cancelDownload(bookId)
+        }
+    }
+
     fun downloadAll(book: Book, filesDir: File) {
         download(book, filesDir, DownloadType.All)
     }
