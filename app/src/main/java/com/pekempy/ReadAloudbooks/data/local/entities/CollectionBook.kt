@@ -17,7 +17,7 @@ import androidx.room.Index
         )
     ]
 )
-data class CollectionBook(
+data class BookCollectionBook(
     val collectionId: Long,
     val bookId: String,
     val addedAt: Long = System.currentTimeMillis()

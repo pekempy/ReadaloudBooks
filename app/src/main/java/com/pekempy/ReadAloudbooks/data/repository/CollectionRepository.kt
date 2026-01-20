@@ -1,55 +1,55 @@
 package com.pekempy.ReadAloudbooks.data.repository
 
-import com.pekempy.ReadAloudbooks.data.local.dao.CollectionDao
+import com.pekempy.ReadAloudbooks.data.local.dao.BookCollectionDao
 import com.pekempy.ReadAloudbooks.data.local.entities.BookCollection
-import com.pekempy.ReadAloudbooks.data.local.entities.CollectionBook
+import com.pekempy.ReadAloudbooks.data.local.entities.BookCollectionBook
 import kotlinx.coroutines.flow.Flow
 
-class CollectionRepository(private val collectionDao: CollectionDao) {
+class CollectionRepository(private val collectionDao: BookCollectionDao) {
 
     fun getAllCollections(): Flow<List<BookCollection>> {
-        return collectionDao.getAllCollections()
+        return collectionDao.getAllBookCollections()
     }
 
     fun getCollectionById(id: Long): Flow<BookCollection?> {
-        return collectionDao.getCollectionByIdFlow(id)
+        return collectionDao.getBookCollectionByIdFlow(id)
     }
 
     suspend fun createCollection(collection: BookCollection): Long {
-        return collectionDao.insertCollection(collection)
+        return collectionDao.insertBookCollection(collection)
     }
 
     suspend fun updateCollection(collection: BookCollection) {
-        collectionDao.updateCollection(collection)
+        collectionDao.updateBookCollection(collection)
     }
 
     suspend fun deleteCollection(collection: BookCollection) {
-        collectionDao.deleteCollection(collection)
+        collectionDao.deleteBookCollection(collection)
     }
 
     suspend fun addBookToCollection(collectionId: Long, bookId: String) {
-        val collectionBook = CollectionBook(collectionId, bookId)
-        collectionDao.insertCollectionBook(collectionBook)
+        val collectionBook = BookCollectionBook(collectionId, bookId)
+        collectionDao.insertBookCollectionBook(collectionBook)
     }
 
     suspend fun removeBookFromCollection(collectionId: Long, bookId: String) {
-        val collectionBook = CollectionBook(collectionId, bookId)
-        collectionDao.deleteCollectionBook(collectionBook)
+        val collectionBook = BookCollectionBook(collectionId, bookId)
+        collectionDao.deleteBookCollectionBook(collectionBook)
     }
 
     fun getBooksInCollection(collectionId: Long): Flow<List<String>> {
-        return collectionDao.getBooksInCollection(collectionId)
+        return collectionDao.getBooksInBookCollection(collectionId)
     }
 
     fun getCollectionsForBook(bookId: String): Flow<List<Long>> {
-        return collectionDao.getCollectionsForBook(bookId)
+        return collectionDao.getBookCollectionsForBook(bookId)
     }
 
     suspend fun isBookInCollection(collectionId: Long, bookId: String): Boolean {
-        return collectionDao.isBookInCollection(collectionId, bookId)
+        return collectionDao.isBookInBookCollection(collectionId, bookId)
     }
 
     suspend fun getBookCountInCollection(collectionId: Long): Int {
-        return collectionDao.getBookCountInCollection(collectionId)
+        return collectionDao.getBookCountInBookCollection(collectionId)
     }
 }

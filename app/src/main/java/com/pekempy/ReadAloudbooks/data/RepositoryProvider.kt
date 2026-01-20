@@ -27,7 +27,7 @@ object RepositoryProvider {
             database.readingSessionDao(),
             database.bookMetadataDao()
         )
-        collectionRepository = CollectionRepository(database.collectionDao())
+        collectionRepository = CollectionRepository(database.bookCollectionDao())
         audioBookmarkRepository = AudioBookmarkRepository(database.audioBookmarkDao())
         bookMetadataRepository = BookMetadataRepository(database.bookMetadataDao())
     }
