@@ -908,7 +908,7 @@ fun CollectionsDialog(
                             .heightIn(max = 300.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        androidx.compose.foundation.lazy.items(collections) { collection ->
+                        items(collections) { collection ->
                             var isInCollection by remember { mutableStateOf(false) }
 
                             LaunchedEffect(collection.id, bookId) {
