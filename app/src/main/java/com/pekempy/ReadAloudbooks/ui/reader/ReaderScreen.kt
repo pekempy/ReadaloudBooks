@@ -514,16 +514,19 @@ fun EpubWebView(
                         @JavascriptInterface
                         fun onElementLongPress(id: String, selectedText: String) {
                             android.util.Log.d("ReaderScreen", "onElementLongPress called: id=$id, hasText=${selectedText.isNotBlank()}")
-                            viewModel.longPressedElementId = id
-                            if (selectedText.isNotBlank()) {
-                                android.util.Log.d("ReaderScreen", "Long-press with selection, setting pendingHighlight")
-                                viewModel.pendingHighlight = ReaderViewModel.PendingHighlight(
-                                    chapterIndex = viewModel.currentChapterIndex,
-                                    elementId = id,
-                                    text = selectedText.trim()
-                                )
+                            // Must run on Main thread for Compose recomposition
+                            viewModel.viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                viewModel.longPressedElementId = id
+                                if (selectedText.isNotBlank()) {
+                                    android.util.Log.d("ReaderScreen", "Long-press with selection, setting pendingHighlight")
+                                    viewModel.pendingHighlight = ReaderViewModel.PendingHighlight(
+                                        chapterIndex = viewModel.currentChapterIndex,
+                                        elementId = id,
+                                        text = selectedText.trim()
+                                    )
+                                }
+                                android.util.Log.d("ReaderScreen", "longPressedElementId set to: $id, pendingHighlight=${viewModel.pendingHighlight}")
                             }
-                            android.util.Log.d("ReaderScreen", "longPressedElementId set to: $id, pendingHighlight=${viewModel.pendingHighlight}")
                         }
 
                         @JavascriptInterface
@@ -536,13 +539,16 @@ fun EpubWebView(
                         fun onTextSelected(elementId: String, selectedText: String) {
                             android.util.Log.d("ReaderScreen", "onTextSelected called: elementId=$elementId, text=${selectedText.take(30)}...")
                             if (selectedText.isNotBlank()) {
-                                android.util.Log.d("ReaderScreen", "Setting pendingHighlight")
-                                viewModel.pendingHighlight = ReaderViewModel.PendingHighlight(
-                                    chapterIndex = viewModel.currentChapterIndex,
-                                    elementId = elementId,
-                                    text = selectedText.trim()
-                                )
-                                android.util.Log.d("ReaderScreen", "pendingHighlight set to: ${viewModel.pendingHighlight}, longPressedElementId=${viewModel.longPressedElementId}")
+                                android.util.Log.d("ReaderScreen", "Setting pendingHighlight on Main thread")
+                                // Must run on Main thread for Compose recomposition
+                                viewModel.viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                    viewModel.pendingHighlight = ReaderViewModel.PendingHighlight(
+                                        chapterIndex = viewModel.currentChapterIndex,
+                                        elementId = elementId,
+                                        text = selectedText.trim()
+                                    )
+                                    android.util.Log.d("ReaderScreen", "pendingHighlight set to: ${viewModel.pendingHighlight}, longPressedElementId=${viewModel.longPressedElementId}")
+                                }
                             }
                         }
                     }, "Android")
