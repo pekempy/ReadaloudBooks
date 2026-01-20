@@ -215,6 +215,10 @@ fun EpubWebView(
                         domStorageEnabled = true
                         useWideViewPort = true
                         loadWithOverviewMode = true
+                        allowFileAccessFromFileURLs = true
+                        allowUniversalAccessFromFileURLs = true
+                        allowFileAccess = true
+                        allowContentAccess = true
                     }
                     
                     webViewClient = object : WebViewClient() {
@@ -399,18 +403,31 @@ fun EpubWebView(
 }
 
 fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, initialScrollPercent: Float, accentColor: String, initialHighlightId: String? = null, isReadAloud: Boolean = false): String {
+    val isDefaultFont = userSettings.readerFontFamily == "default"
     val fontFamily = when(userSettings.readerFontFamily) {
         "serif" -> "serif"
         "sans-serif" -> "sans-serif"
         "monospace" -> "monospace"
+        "default" -> ""
         else -> "serif"
     }
+
+    // Extract head and body content from the original HTML, preserving attributes
+    val htmlMatch = Regex("<html([^>]*)>", RegexOption.IGNORE_CASE).find(html)
+    val htmlAttrs = htmlMatch?.groupValues?.get(1) ?: ""
+    
+    val headContent = Regex("<head[^>]*>([\\s\\S]*?)</head>", RegexOption.IGNORE_CASE).find(html)?.groupValues?.get(1) ?: ""
+    
+    val bodyMatch = Regex("<body([^>]*)>([\\s\\S]*?)</body>", RegexOption.IGNORE_CASE).find(html)
+    val bodyAttrs = bodyMatch?.groupValues?.get(1) ?: ""
+    val bodyContent = bodyMatch?.groupValues?.get(2) ?: html
     
     return """
         <!DOCTYPE html>
-        <html>
+        <html $htmlAttrs>
         <head>
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+            $headContent
             <style>
                 :root {
                     --bg-color: ${theme.bg};
@@ -430,12 +447,12 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     height: 100vh;
                     width: 100vw;
                     overflow: hidden;
-                    background-color: var(--bg-color);
-                    color: var(--text-color);
+                    background-color: var(--bg-color) !important;
+                    color: var(--text-color) !important;
                     -webkit-user-select: none;
                     
                     /* Maximize text density */
-                    line-height: 1.5 !important;
+                    line-height: ${if (isDefaultFont) "1.5" else "1.5 !important"};
                     hyphens: auto;
                     -webkit-hyphens: auto;
                     text-align: justify;
@@ -491,15 +508,19 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     overflow-wrap: break-word;
                     -webkit-hyphens: auto;
                     hyphens: auto;
-                    font-size: var(--font-size) !important;
-                    font-family: var(--font-family) !important;
-                    line-height: 1.6 !important;
+                    font-size: ${if (isDefaultFont) "var(--font-size)" else "var(--font-size) !important"};
+                    line-height: ${if (isDefaultFont) "1.6" else "1.6 !important"};
                     color: var(--text-color) !important;
-                    background-color: transparent !important;
+                    ${if (!isDefaultFont) "font-family: var(--font-family) !important;" else ""}
                     max-width: 100% !important;
                     -webkit-user-select: none;
                     user-select: none;
                     -webkit-touch-callout: none;
+                }
+
+                /* Ensure backgrounds don't clash with theme, but don't strip everything */
+                .page, .page *:not(img):not(.highlight):not(.search-highlight) {
+                     background-color: transparent !important;
                 }
 
                 /* Nuclear reset for unwanted lines (ruled paper, global underlining) */
@@ -628,11 +649,10 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                             }
                         }
                         
-                        // Respect word boundaries
                         if (safe < text.length) {
                              const lastSpace = text.lastIndexOf(' ', safe);
                              if (lastSpace > 0) {
-                                 safe = lastSpace + 1; // Include the space on the first page
+                                 safe = lastSpace + 1; 
                              }
                         }
                         
@@ -651,7 +671,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                         
                         for (let k = 0; k < kids.length; k++) {
                             const kid = kids[k];
-                            // Try append
                             subContainer.appendChild(kid);
                             
                             if (currentPageDiv.scrollHeight > pageLimit) {
@@ -802,7 +821,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 function highlightElement(id, retry = 0, animated = true) {
                     if (!id) return;
                     
-                    // Find all parts (original ID + continuations)
                     const parts = Array.from(document.querySelectorAll(`[id="${'$'}{id}"], [data-continuation-of="${'$'}{id}"]`));
                     
                     if (parts.length === 0) {
@@ -810,20 +828,16 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                         return;
                     }
 
-                    // Highlight visual style
                     if (currentHighlightId !== id) {
                          document.querySelectorAll('.highlight').forEach(o => o.classList.remove('highlight'));
                          parts.forEach(el => el.classList.add('highlight'));
                          currentHighlightId = id;
                     } else {
-                         // Ensure new parts are highlighted if something changed
                          parts.forEach(el => el.classList.add('highlight'));
                     }
 
                     const wrapper = document.getElementById('pagination-wrapper');
                     
-                    // HEURISTIC: Short Orphan Check
-                    // If the highlight is short and at the end of the page, checking next content.
                     let totalLen = 0;
                     parts.forEach(p => totalLen += p.textContent.length);
                     
@@ -834,7 +848,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                          if (page && wrapper) {
                              const pIdx = Array.from(wrapper.children).indexOf(page);
                              
-                             // Traverse forward to find next content node
                              let scan = lastPart;
                              let foundNext = null;
                              while(scan && scan !== wrapper) {
@@ -859,7 +872,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                          }
                     }
 
-                    // STANDARD EAGER STRATEGY: Scroll to the LAST page containing any part of the highlight.
                     const lastPart = parts[parts.length - 1];
                     const page = lastPart.closest('.page');
                     
@@ -975,9 +987,9 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 };
             </script>
         </head>
-        <body data-theme="${userSettings.readerTheme}">
+        <body $bodyAttrs data-theme="${userSettings.readerTheme}">
             <div id="content-container">
-                $html
+                $bodyContent
             </div>
         </body>
         </html>
@@ -1050,6 +1062,7 @@ fun ReaderControls(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                FontButton("Default", userSettings.readerFontFamily == "default") { onFontFamilyChange("default") }
                 FontButton("Serif", userSettings.readerFontFamily == "serif") { onFontFamilyChange("serif") }
                 FontButton("Sans", userSettings.readerFontFamily == "sans-serif") { onFontFamilyChange("sans-serif") }
                 FontButton("Mono", userSettings.readerFontFamily == "monospace") { onFontFamilyChange("monospace") }

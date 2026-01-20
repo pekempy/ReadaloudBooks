@@ -204,7 +204,7 @@ class ReaderViewModel(
                     val durationStr = if (line.contains("duration=\"")) line.substringAfter("duration=\"").substringBefore("\"") else null
                     
                     manifestMap[id] = href
-                    val fullPath = (opfDir + href).replace("./", "").replace("//", "/")
+                    val fullPath = normalizePath(opfDir + href)
                     mediaTypeMap[fullPath] = type
                     resourcesMap[fullPath] = fullPath
                     
@@ -216,7 +216,7 @@ class ReaderViewModel(
                 val resolvedOverlayMap = mutableMapOf<String, String>()
                 mediaOverlayMap.forEach { (itemHref, overlayId) ->
                     manifestMap[overlayId]?.let { overlayHref ->
-                        val fullPath = (opfDir + overlayHref).replace("./", "").replace("//", "/")
+                        val fullPath = normalizePath(opfDir + overlayHref)
                         resolvedOverlayMap[itemHref] = fullPath
                     }
                 }
@@ -226,7 +226,7 @@ class ReaderViewModel(
                 spineLines.split("<itemref ").drop(1).forEach { line ->
                     val idref = line.substringAfter("idref=\"").substringBefore("\"")
                     manifestMap[idref]?.let { href ->
-                        val fullPath = (opfDir + href).replace("./", "").replace("//", "/")
+                        val fullPath = normalizePath(opfDir + href)
                         spineHrefs.add(fullPath)
                     }
                 }
@@ -251,7 +251,7 @@ class ReaderViewModel(
                                     var src = point.substringAfter("src=\"").substringBefore("\"")
                                     val ncxDir = if (fullNcxPath.contains("/")) fullNcxPath.substringBeforeLast("/") + "/" else ""
                                     src = src.substringBefore("#") 
-                                    val absPath = (ncxDir + src).replace("./", "").replace("//", "/")
+                                    val absPath = normalizePath(ncxDir + src)
                                     
                                     if (label.isNotBlank()) {
                                         spineTitles[absPath] = label
@@ -566,19 +566,72 @@ class ReaderViewModel(
         val zip = currentZipFile ?: return null
         val book = lazyBook ?: return null
         
-        val cleanHref = href.substringAfter("https://epub-internal/")
-            .substringBefore("?")
-            .substringBefore("#")
+        val decodedHref = try {
+            java.net.URLDecoder.decode(href.substringAfter("https://epub-internal/"), "UTF-8")
+        } catch (e: Exception) {
+            href.substringAfter("https://epub-internal/")
+        }
+        
+        val cleanHref = decodedHref.substringBefore("?").substringBefore("#")
+        val normalizedHref = normalizePath(cleanHref)
 
-        val zipEntryName = book.resources[cleanHref] ?: return null
-        val entry = zip.getEntry(zipEntryName) ?: return null
-        val mimeType = book.mediaTypes[cleanHref] ?: "application/octet-stream"
+        val zipEntryName = book.resources[normalizedHref] ?: book.resources[cleanHref]
+        
+        if (zipEntryName == null) {
+            android.util.Log.w("ReaderViewModel", "Resource not found in map: $normalizedHref (original: $cleanHref)")
+            return null
+        }
+        
+        val entry = zip.getEntry(zipEntryName)
+        if (entry == null) {
+            android.util.Log.e("ReaderViewModel", "Resource entry not found in ZIP: $zipEntryName")
+            return null
+        }
+        
+        var mimeType = book.mediaTypes[normalizedHref] ?: book.mediaTypes[cleanHref] ?: "application/octet-stream"
+        
+        // Ensure proper mime types
+        if (mimeType == "application/octet-stream" || mimeType == "text/plain") {
+            mimeType = when {
+                normalizedHref.endsWith(".otf", ignoreCase = true) -> "font/otf"
+                normalizedHref.endsWith(".ttf", ignoreCase = true) -> "font/ttf"
+                normalizedHref.endsWith(".woff", ignoreCase = true) -> "font/woff"
+                normalizedHref.endsWith(".woff2", ignoreCase = true) -> "font/woff2"
+                normalizedHref.endsWith(".css", ignoreCase = true) -> "text/css"
+                normalizedHref.endsWith(".js", ignoreCase = true) -> "application/javascript"
+                normalizedHref.endsWith(".xhtml", ignoreCase = true) || normalizedHref.endsWith(".html", ignoreCase = true) -> "text/html"
+                normalizedHref.endsWith(".jpg", ignoreCase = true) || normalizedHref.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
+                normalizedHref.endsWith(".png", ignoreCase = true) -> "image/png"
+                normalizedHref.endsWith(".gif", ignoreCase = true) -> "image/gif"
+                normalizedHref.endsWith(".svg", ignoreCase = true) -> "image/svg+xml"
+                else -> mimeType
+            }
+        }
+        
+        val encoding = if (mimeType.startsWith("text/") || mimeType.contains("javascript") || mimeType.contains("xml")) "UTF-8" else null
+        
+        android.util.Log.d("ReaderViewModel", "Serving resource: $zipEntryName as $mimeType (encoding: $encoding)")
         
         return try {
-            WebResourceResponse(mimeType, null, zip.getInputStream(entry))
+            WebResourceResponse(mimeType, encoding, zip.getInputStream(entry))
         } catch (e: Exception) {
+            android.util.Log.e("ReaderViewModel", "Failed to serve resource: $zipEntryName", e)
             null
         }
+    }
+
+    private fun normalizePath(path: String): String {
+        val items = path.split("/")
+        val stack = mutableListOf<String>()
+        for (item in items) {
+            when (item) {
+                "." -> {}
+                ".." -> if (stack.isNotEmpty()) stack.removeAt(stack.size - 1)
+                "" -> { /* ignore empty unless we want to stay absolute, but EPUB paths are relative to root */ }
+                else -> stack.add(item)
+            }
+        }
+        return stack.joinToString("/")
     }
 
     fun getCurrentChapterHtml(): String? {
