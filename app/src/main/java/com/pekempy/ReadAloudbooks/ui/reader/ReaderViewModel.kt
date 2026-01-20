@@ -777,6 +777,7 @@ class ReaderViewModel(
     var selectedHighlightColor by mutableStateOf("#FFEB3B") // Yellow default
     var pendingHighlight by mutableStateOf<PendingHighlight?>(null)
     var highlightsForCurrentChapter = mutableStateOf<List<Highlight>>(emptyList())
+    var longPressedElementId by mutableStateOf<String?>(null)
 
     // Bookmark management
     var bookmarks = mutableStateOf<List<Bookmark>>(emptyList())

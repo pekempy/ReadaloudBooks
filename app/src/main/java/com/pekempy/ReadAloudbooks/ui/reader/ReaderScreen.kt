@@ -48,6 +48,7 @@ fun ReaderScreen(
     var showBookmarksSheet by remember { mutableStateOf(false) }
     var showColorPicker by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
+    var showLongPressMenu by remember { mutableStateOf(false) }
 
     val highlights by viewModel.getHighlightsForBook().collectAsState(initial = emptyList())
     val bookmarks by viewModel.bookmarks
@@ -329,9 +330,34 @@ fun ReaderScreen(
 
         // Handle pending highlight creation
         LaunchedEffect(viewModel.pendingHighlight) {
-            if (viewModel.pendingHighlight != null) {
+            if (viewModel.pendingHighlight != null && !showLongPressMenu) {
                 showColorPicker = true
             }
+        }
+
+        // Handle long press menu
+        LaunchedEffect(viewModel.longPressedElementId) {
+            if (viewModel.longPressedElementId != null) {
+                showLongPressMenu = true
+            }
+        }
+
+        if (showLongPressMenu && viewModel.longPressedElementId != null) {
+            LongPressContextMenu(
+                hasSelection = viewModel.pendingHighlight != null,
+                onHighlight = {
+                    showColorPicker = true
+                },
+                onNavigateToPosition = {
+                    viewModel.jumpToElementRequest.value = viewModel.longPressedElementId
+                    viewModel.longPressedElementId = null
+                },
+                onDismiss = {
+                    showLongPressMenu = false
+                    viewModel.longPressedElementId = null
+                    viewModel.pendingHighlight = null
+                }
+            )
         }
     }
 }
@@ -468,9 +494,16 @@ fun EpubWebView(
                         }
 
                         @JavascriptInterface
-                        fun onElementLongPress(id: String) {
+                        fun onElementLongPress(id: String, selectedText: String) {
                             viewModel.viewModelScope.launch {
-                                viewModel.jumpToElementRequest.value = id
+                                viewModel.longPressedElementId = id
+                                if (selectedText.isNotBlank()) {
+                                    viewModel.pendingHighlight = ReaderViewModel.PendingHighlight(
+                                        chapterIndex = viewModel.currentChapterIndex,
+                                        elementId = id,
+                                        text = selectedText.trim()
+                                    )
+                                }
                             }
                         }
 
@@ -1190,7 +1223,9 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                         target = target.parentElement;
                     }
                     if (target && target.id && window.Android) {
-                        window.Android.onElementLongPress(target.id);
+                        const selection = window.getSelection();
+                        const selectedText = selection && selection.toString().trim();
+                        window.Android.onElementLongPress(target.id, selectedText || "");
                         return false;
                     }
                 };
@@ -1473,7 +1508,7 @@ fun HighlightsSheet(
 
         if (highlights.isEmpty()) {
             Text(
-                "No highlights yet. Long press on text to create a highlight.",
+                "No highlights yet. Select text to create a highlight.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 32.dp)
@@ -1801,6 +1836,59 @@ fun ExportHighlightsDialog(
             }
         },
         confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun LongPressContextMenu(
+    hasSelection: Boolean,
+    onHighlight: () -> Unit,
+    onNavigateToPosition: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Action") },
+        text = {
+            Column {
+                if (hasSelection) {
+                    TextButton(
+                        onClick = {
+                            onHighlight()
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.ic_highlight),
+                            contentDescription = null,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Text("Highlight Text")
+                    }
+                }
+                TextButton(
+                    onClick = {
+                        onNavigateToPosition()
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_play_arrow),
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text("Start Reading Here")
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }
