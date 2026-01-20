@@ -1,5 +1,9 @@
 package com.pekempy.ReadAloudbooks.data
 
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
+
+@Parcelize
 data class Book(
     val id: String,
     val title: String,
@@ -29,4 +33,4 @@ data class Book(
     val ebookCoverUrl: String? = null,
     val audiobookCoverUrl: String? = null,
     val updatedAt: String? = null
-)
+) : Parcelable

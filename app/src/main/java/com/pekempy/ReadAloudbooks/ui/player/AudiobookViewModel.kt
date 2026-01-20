@@ -9,6 +9,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.pekempy.ReadAloudbooks.data.Book
 import com.pekempy.ReadAloudbooks.data.UserPreferencesRepository
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
+import com.pekempy.ReadAloudbooks.service.DownloadService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -589,10 +590,10 @@ class AudiobookViewModel(
                     error = null
                     isLoading = true
                 }
-                
-                com.pekempy.ReadAloudbooks.data.DownloadManager.download(
-                    book, 
-                    context.filesDir, 
+
+                DownloadService.startDownload(
+                    context,
+                    book,
                     com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.Audio
                 )
                 

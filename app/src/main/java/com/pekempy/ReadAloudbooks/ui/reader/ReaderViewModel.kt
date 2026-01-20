@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.pekempy.ReadAloudbooks.data.UserPreferencesRepository
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
 import com.pekempy.ReadAloudbooks.data.UnifiedProgress
+import com.pekempy.ReadAloudbooks.service.DownloadService
 import nl.siegmann.epublib.epub.EpubReader
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -1169,12 +1170,12 @@ class ReaderViewModel(
                      isLoading = true
                  }
                  
-                 val type = if (isReadAloudMode) 
-                    com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.ReadAloud 
-                 else 
+                 val type = if (isReadAloudMode)
+                    com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.ReadAloud
+                 else
                     com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.Ebook
-                    
-                 com.pekempy.ReadAloudbooks.data.DownloadManager.download(book, filesDir, type)
+
+                 DownloadService.startDownload(context, book, type)
                  
              } catch (e: Exception) {
                  e.printStackTrace()
