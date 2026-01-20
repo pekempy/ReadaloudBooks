@@ -338,6 +338,7 @@ fun ReadAloudPlayerScreen(
                         exit = slideOutVertically { it }
                     ) {
                         ReaderControls(
+                            viewModel = readerViewModel,
                             userSettings = userSettings,
                             currentChapter = readerViewModel.currentChapterIndex,
                             totalChapters = readerViewModel.totalChapters,

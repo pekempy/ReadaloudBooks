@@ -469,11 +469,11 @@ fun ReadingStatusSelector(
         ) {
             ReadingStatus.values().forEach { status ->
                 val config = when (status) {
-                    ReadingStatus.NONE -> Triple("None", R.drawable.ic_book)
-                    ReadingStatus.WANT_TO_READ -> Triple("Want to Read", R.drawable.ic_bookmark_add)
-                    ReadingStatus.READING -> Triple("Reading", R.drawable.ic_menu_book)
-                    ReadingStatus.FINISHED -> Triple("Finished", R.drawable.ic_check_circle)
-                    ReadingStatus.DNF -> Triple("Did Not Finish", R.drawable.ic_close)
+                    ReadingStatus.NONE -> Pair("None", R.drawable.ic_book)
+                    ReadingStatus.WANT_TO_READ -> Pair("Want to Read", R.drawable.ic_bookmark_add)
+                    ReadingStatus.READING -> Pair("Reading", R.drawable.ic_menu_book)
+                    ReadingStatus.FINISHED -> Pair("Finished", R.drawable.ic_check_circle)
+                    ReadingStatus.DNF -> Pair("Did Not Finish", R.drawable.ic_close)
                 }
 
                 DropdownMenuItem(

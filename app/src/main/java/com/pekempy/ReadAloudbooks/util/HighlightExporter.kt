@@ -75,7 +75,7 @@ class HighlightExporter {
         // CSV Header
         builder.appendLine("Book Title,Author,Chapter,Chapter Title,Highlighted Text,Note,Color,Date")
 
-        for (highlight in highlights.sortedBy { it.chapterIndex }.thenBy { it.timestamp }) {
+        for (highlight in highlights.sortedWith(compareBy({ it.chapterIndex }, { it.timestamp }))) {
             val chapterTitle = chapterTitles[highlight.chapterIndex] ?: "Chapter ${highlight.chapterIndex + 1}"
             val date = dateFormat.format(Date(highlight.timestamp))
 

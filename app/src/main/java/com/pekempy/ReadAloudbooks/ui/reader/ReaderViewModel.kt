@@ -1075,12 +1075,12 @@ class ReaderViewModel(
         viewModelScope.launch {
             val session = ReadingSession(
                 bookId = bookId,
+                bookTitle = epubTitle,
                 startTime = currentSessionStartTime!!,
                 endTime = currentSessionStartTime!!,
-                startChapter = currentChapterIndex,
-                endChapter = currentChapterIndex,
+                durationMillis = 0,
                 pagesRead = 0,
-                timestamp = currentSessionStartTime!!
+                chapterIndex = currentChapterIndex
             )
             currentSessionId = readingStatisticsRepository.addSession(session)
         }
@@ -1100,12 +1100,12 @@ class ReaderViewModel(
                 val session = ReadingSession(
                     id = sessionId,
                     bookId = bookId,
+                    bookTitle = epubTitle,
                     startTime = startTime,
                     endTime = now,
-                    startChapter = 0, // Would need to track this
-                    endChapter = currentChapterIndex,
+                    durationMillis = duration,
                     pagesRead = 0, // Would need to calculate this
-                    timestamp = startTime
+                    chapterIndex = currentChapterIndex
                 )
                 // Note: We'd need an update method in the repository
                 // For now, this structure is in place
