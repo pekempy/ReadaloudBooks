@@ -54,7 +54,6 @@ class ReadingStatisticsViewModel(
             val weekTime = repository.getTotalReadingTimeThisWeek()
             val monthTime = repository.getTotalReadingTimeThisMonth()
             val todayPages = repository.getTotalPagesReadToday()
-            val booksFinished = repository.getBooksFinishedThisYear()
             val streak = repository.getCurrentReadingStreak()
 
             _stats.value = ReadingStats(
@@ -62,7 +61,7 @@ class ReadingStatisticsViewModel(
                 weekMinutes = TimeUnit.MILLISECONDS.toMinutes(weekTime),
                 monthMinutes = TimeUnit.MILLISECONDS.toMinutes(monthTime),
                 pagesReadToday = todayPages,
-                booksFinishedThisYear = booksFinished,
+                booksFinishedThisYear = 0, // Feature removed
                 currentStreak = streak
             )
         }
