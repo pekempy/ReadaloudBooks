@@ -23,8 +23,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import java.io.File
 import com.pekempy.ReadAloudbooks.data.UnifiedProgress
+import com.pekempy.ReadAloudbooks.data.repository.AudioBookmarkRepository
+import com.pekempy.ReadAloudbooks.data.local.entities.AudioBookmark
+import kotlinx.coroutines.flow.Flow
 
-class AudiobookViewModel(private val repository: UserPreferencesRepository) : ViewModel() {
+class AudiobookViewModel(
+    private val repository: UserPreferencesRepository,
+    private val audioBookmarkRepository: AudioBookmarkRepository
+) : ViewModel() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var player: Player? = null
     
@@ -41,6 +47,9 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
     var error by mutableStateOf<String?>(null)
     var sleepTimerFinishChapter by mutableStateOf(false)
     private var pendingResumeMs: Long? = null
+
+    // Audio bookmark state
+    var audioBookmarks = mutableStateOf<List<AudioBookmark>>(emptyList())
     private var probedDurationMs: Long = 0L
     private var probedChapters: List<Chapter> = emptyList()
     private var nativeRetryCount = 0
@@ -510,8 +519,11 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                         val settings = repository.userSettings.first()
                         setSpeed(settings.playbackSpeed)
                     }
+
+                    // Load audio bookmarks for the current book
+                    loadAudioBookmarks()
                 }
-                
+
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
                     e.printStackTrace()
@@ -838,7 +850,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
         val dur = duration
         val chIdx = currentChapterIndex
         val chList = chapters
-        
+
         if (bookId.isNotEmpty() && dur > 0) {
             saveBookProgress()
             viewModelScope.launch {
@@ -851,7 +863,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
             it.stop()
             it.clearMediaItems()
         }
-        
+
         currentBook = null
         currentPosition = 0
         duration = 0
@@ -860,6 +872,44 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
         progressJob?.cancel()
         sleepTimerJob?.cancel()
         sleepTimerRemaining = 0
+    }
+
+    // === AUDIO BOOKMARK MANAGEMENT ===
+
+    fun loadAudioBookmarks() {
+        val bookId = currentBook?.id ?: return
+        viewModelScope.launch {
+            audioBookmarkRepository.getAudioBookmarksForBook(bookId).collect { bookmarkList ->
+                audioBookmarks.value = bookmarkList
+            }
+        }
+    }
+
+    fun addAudioBookmark(label: String? = null, note: String? = null) {
+        val bookId = currentBook?.id ?: return
+        viewModelScope.launch {
+            val bookmark = AudioBookmark(
+                bookId = bookId,
+                timestampMillis = currentPosition,
+                chapterIndex = if (currentChapterIndex >= 0) currentChapterIndex else null,
+                label = label,
+                note = note,
+                timestamp = System.currentTimeMillis()
+            )
+            audioBookmarkRepository.addAudioBookmark(bookmark)
+            loadAudioBookmarks()
+        }
+    }
+
+    fun deleteAudioBookmark(bookmark: AudioBookmark) {
+        viewModelScope.launch {
+            audioBookmarkRepository.deleteAudioBookmark(bookmark)
+            loadAudioBookmarks()
+        }
+    }
+
+    fun navigateToAudioBookmark(bookmark: AudioBookmark) {
+        seekTo(bookmark.timestampMillis)
     }
 
     override fun onCleared() {

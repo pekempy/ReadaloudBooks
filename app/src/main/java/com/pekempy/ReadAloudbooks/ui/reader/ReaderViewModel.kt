@@ -579,6 +579,41 @@ class ReaderViewModel(
         }
     }
 
+    fun updateBrightness(brightness: Float) {
+        viewModelScope.launch {
+            repository.updateReaderBrightness(brightness)
+            settings = settings?.copy(readerBrightness = brightness)
+        }
+    }
+
+    fun updateLineSpacing(lineSpacing: Float) {
+        viewModelScope.launch {
+            repository.updateReaderLineSpacing(lineSpacing)
+            settings = settings?.copy(readerLineSpacing = lineSpacing)
+        }
+    }
+
+    fun updateMarginSize(marginSize: Int) {
+        viewModelScope.launch {
+            repository.updateReaderMarginSize(marginSize)
+            settings = settings?.copy(readerMarginSize = marginSize)
+        }
+    }
+
+    fun updateFullscreenMode(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateReaderFullscreenMode(enabled)
+            settings = settings?.copy(readerFullscreenMode = enabled)
+        }
+    }
+
+    fun updateTextAlignment(alignment: String) {
+        viewModelScope.launch {
+            repository.updateReaderTextAlignment(alignment)
+            settings = settings?.copy(readerTextAlignment = alignment)
+        }
+    }
+
     fun getResourceResponse(href: String): WebResourceResponse? {
         val zip = currentZipFile ?: return null
         val book = lazyBook ?: return null

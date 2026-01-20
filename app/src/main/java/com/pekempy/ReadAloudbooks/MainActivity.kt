@@ -83,7 +83,10 @@ class MainActivity : ComponentActivity() {
 
         sharedAudiobookViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return AudiobookViewModel(repository) as T
+                return AudiobookViewModel(
+                    repository,
+                    RepositoryProvider.audioBookmarkRepository
+                ) as T
             }
         })[AudiobookViewModel::class.java]
 
@@ -468,7 +471,11 @@ class MainActivity : ComponentActivity() {
                         val detailViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.detail.BookDetailViewModel>(
                             factory = object : ViewModelProvider.Factory {
                                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    return com.pekempy.ReadAloudbooks.ui.detail.BookDetailViewModel(repository) as T
+                                    return com.pekempy.ReadAloudbooks.ui.detail.BookDetailViewModel(
+                                        repository,
+                                        RepositoryProvider.bookMetadataRepository,
+                                        RepositoryProvider.collectionRepository
+                                    ) as T
                                 }
                             }
                         )
@@ -575,6 +582,51 @@ class MainActivity : ComponentActivity() {
                             onBack = { navController.popBackStack() },
                             onSwitchToReadAloud = { id ->
                                 navController.navigate("reader/$id?isReadAloud=true")
+                            }
+                        )
+                    }
+                    composable(
+                        route = "statistics",
+                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
+                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
+                    ) {
+                        val statisticsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.statistics.ReadingStatisticsViewModel>(
+                            factory = object : ViewModelProvider.Factory {
+                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                    return com.pekempy.ReadAloudbooks.ui.statistics.ReadingStatisticsViewModel(
+                                        RepositoryProvider.readingStatisticsRepository
+                                    ) as T
+                                }
+                            }
+                        )
+                        com.pekempy.ReadAloudbooks.ui.statistics.ReadingStatisticsScreen(
+                            viewModel = statisticsViewModel,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable(
+                        route = "collections",
+                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
+                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
+                    ) {
+                        val collectionsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.collections.CollectionsViewModel>(
+                            factory = object : ViewModelProvider.Factory {
+                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                    return com.pekempy.ReadAloudbooks.ui.collections.CollectionsViewModel(
+                                        RepositoryProvider.collectionRepository
+                                    ) as T
+                                }
+                            }
+                        )
+                        com.pekempy.ReadAloudbooks.ui.collections.CollectionsScreen(
+                            viewModel = collectionsViewModel,
+                            onBack = { navController.popBackStack() },
+                            onCollectionClick = { collection ->
+                                // TODO: Navigate to collection detail screen
                             }
                         )
                     }

@@ -1,6 +1,7 @@
 package com.pekempy.ReadAloudbooks.ui.reader
 
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.*
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
@@ -28,6 +30,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.WindowCompat
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,8 +52,56 @@ fun ReaderScreen(
     val highlights by viewModel.getHighlightsForBook().collectAsState(initial = emptyList())
     val bookmarks by viewModel.bookmarks
 
+    val view = LocalView.current
+    val window = (view.context as? android.app.Activity)?.window
+
     LaunchedEffect(bookId) {
         viewModel.loadEpub(bookId, isReadAloud)
+    }
+
+    // Apply brightness setting
+    LaunchedEffect(userSettings?.readerBrightness) {
+        userSettings?.readerBrightness?.let { brightness ->
+            window?.let { w ->
+                val layoutParams = w.attributes
+                layoutParams.screenBrightness = brightness
+                w.attributes = layoutParams
+            }
+        }
+    }
+
+    // Apply fullscreen mode
+    LaunchedEffect(userSettings?.readerFullscreenMode) {
+        userSettings?.readerFullscreenMode?.let { fullscreen ->
+            window?.let { w ->
+                if (fullscreen) {
+                    WindowCompat.setDecorFitsSystemWindows(w, false)
+                    WindowInsetsControllerCompat(w, view).let { controller ->
+                        controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    }
+                } else {
+                    WindowCompat.setDecorFitsSystemWindows(w, true)
+                    WindowInsetsControllerCompat(w, view).show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                }
+            }
+        }
+    }
+
+    // Restore brightness and fullscreen when leaving
+    DisposableEffect(Unit) {
+        onDispose {
+            window?.let { w ->
+                // Restore default brightness
+                val layoutParams = w.attributes
+                layoutParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                w.attributes = layoutParams
+
+                // Restore system bars
+                WindowCompat.setDecorFitsSystemWindows(w, true)
+                WindowInsetsControllerCompat(w, view).show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            }
+        }
     }
 
     viewModel.syncConfirmation?.let { sync ->
@@ -174,6 +226,7 @@ fun ReaderScreen(
                     .navigationBarsPadding()
             ) {
                 ReaderControls(
+                    viewModel = viewModel,
                     userSettings = userSettings,
                     currentChapter = viewModel.currentChapterIndex,
                     totalChapters = viewModel.totalChapters,
@@ -299,8 +352,8 @@ fun EpubWebView(
     val theme = getReaderTheme(userSettings.readerTheme)
     val isReadAloud = viewModel.isReadAloudMode
 
-    
-    key(userSettings.readerTheme, userSettings.readerFontFamily, userSettings.readerFontSize) {
+
+    key(userSettings.readerTheme, userSettings.readerFontFamily, userSettings.readerFontSize, userSettings.readerLineSpacing, userSettings.readerMarginSize, userSettings.readerTextAlignment) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
@@ -447,8 +500,8 @@ fun EpubWebView(
                 val trigger = syncTrigger
                 val chapterPath = viewModel.getCurrentChapterPath()
                 val baseUrl = "https://epub-internal/$chapterPath"
-                
-                val contentSignature = "$baseUrl-${userSettings.readerTheme}-${userSettings.readerFontSize}-${userSettings.readerFontFamily}-$isReadAloud"
+
+                val contentSignature = "$baseUrl-${userSettings.readerTheme}-${userSettings.readerFontSize}-${userSettings.readerFontFamily}-${userSettings.readerLineSpacing}-${userSettings.readerMarginSize}-${userSettings.readerTextAlignment}-$isReadAloud"
                 val lastSignature = webView.tag as? String
                 
                 if (lastSignature != contentSignature) {
@@ -519,7 +572,23 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
         "monospace" -> "monospace"
         else -> "serif"
     }
-    
+
+    // Calculate margins based on margin size setting
+    val horizontalPadding = when(userSettings.readerMarginSize) {
+        0 -> "8px"  // Compact
+        1 -> "16px" // Normal
+        2 -> "32px" // Wide
+        else -> "16px"
+    }
+
+    // Text alignment
+    val textAlign = when(userSettings.readerTextAlignment) {
+        "left" -> "left"
+        "center" -> "center"
+        "justify" -> "justify"
+        else -> "justify"
+    }
+
     return """
         <!DOCTYPE html>
         <html>
@@ -531,13 +600,15 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     --text-color: ${theme.text};
                     --font-size: ${userSettings.readerFontSize}px;
                     --font-family: $fontFamily;
-                    --padding-left: 16px;
-                    --padding-right: 16px;
+                    --padding-left: $horizontalPadding;
+                    --padding-right: $horizontalPadding;
                     --top-padding: 130px;
                     --bottom-padding: ${if (isReadAloud) "140px" else "60px"};
                     --accent-color: $accentColor;
+                    --line-spacing: ${userSettings.readerLineSpacing};
+                    --text-align: $textAlign;
                 }
-                
+
                 html, body {
                     margin: 0;
                     padding: 0;
@@ -550,10 +621,10 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     user-select: text;
 
                     /* Maximize text density */
-                    line-height: 1.5 !important;
+                    line-height: var(--line-spacing) !important;
                     hyphens: auto;
                     -webkit-hyphens: auto;
-                    text-align: justify;
+                    text-align: var(--text-align);
                     text-indent: 1.5em;
                 }
 
@@ -608,13 +679,18 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     hyphens: auto;
                     font-size: var(--font-size) !important;
                     font-family: var(--font-family) !important;
-                    line-height: 1.6 !important;
+                    line-height: var(--line-spacing) !important;
                     color: var(--text-color) !important;
                     background-color: transparent !important;
                     max-width: 100% !important;
                     -webkit-user-select: text;
                     user-select: text;
                     -webkit-touch-callout: default;
+                }
+
+                p, .page p {
+                    text-align: var(--text-align) !important;
+                    line-height: var(--line-spacing) !important;
                 }
 
                 /* Nuclear reset for unwanted lines (ruled paper, global underlining) */
@@ -1131,6 +1207,7 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
 
 @Composable
 fun ReaderControls(
+    viewModel: ReaderViewModel,
     userSettings: UserSettings,
     currentChapter: Int,
     totalChapters: Int,
@@ -1141,6 +1218,8 @@ fun ReaderControls(
     backgroundColor: Color,
     contentColor: Color
 ) {
+    var showAdvancedSettings by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -1164,9 +1243,9 @@ fun ReaderControls(
                 }
             }
             Text("Chapter ${currentChapter + 1} of $totalChapters", style = MaterialTheme.typography.labelSmall)
-            
+
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = contentColor.copy(alpha = 0.2f))
-            
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(painterResource(R.drawable.ic_text_format), contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
@@ -1178,7 +1257,7 @@ fun ReaderControls(
                 )
                 Icon(painterResource(R.drawable.ic_text_format), contentDescription = null, modifier = Modifier.size(24.dp))
             }
-            
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -1188,9 +1267,9 @@ fun ReaderControls(
                 ReaderThemeIcon(userSettings.readerTheme == 2, Color(0xFF121212), Color(0xFFE0E0E0)) { onThemeChange(2) }
                 ReaderThemeIcon(userSettings.readerTheme == 3, Color.Black, Color.White) { onThemeChange(3) }
             }
-            
+
             Spacer(Modifier.height(8.dp))
-            
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -1199,7 +1278,126 @@ fun ReaderControls(
                 FontButton("Sans", userSettings.readerFontFamily == "sans-serif") { onFontFamilyChange("sans-serif") }
                 FontButton("Mono", userSettings.readerFontFamily == "monospace") { onFontFamilyChange("monospace") }
             }
+
+            // Toggle for advanced settings
+            HorizontalDivider(Modifier.padding(vertical = 8.dp), color = contentColor.copy(alpha = 0.2f))
+
+            TextButton(
+                onClick = { showAdvancedSettings = !showAdvancedSettings },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (showAdvancedSettings) "Hide Advanced Settings" else "Show Advanced Settings")
+            }
+
+            if (showAdvancedSettings) {
+                ReaderAdvancedControls(viewModel, userSettings, contentColor)
+            }
         }
+    }
+}
+
+@Composable
+fun ReaderAdvancedControls(
+    viewModel: ReaderViewModel,
+    userSettings: UserSettings,
+    contentColor: Color
+) {
+
+    Column {
+        HorizontalDivider(Modifier.padding(vertical = 8.dp), color = contentColor.copy(alpha = 0.2f))
+
+        // Brightness control
+        Text("Brightness", style = MaterialTheme.typography.labelMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("☀", style = MaterialTheme.typography.bodySmall, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Slider(
+                value = userSettings.readerBrightness,
+                onValueChange = { viewModel.updateBrightness(it) },
+                valueRange = 0.1f..1.0f,
+                modifier = Modifier.weight(1f)
+            )
+            Text("☀", style = MaterialTheme.typography.titleMedium, modifier = Modifier.size(24.dp))
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Line spacing control
+        Text("Line Spacing", style = MaterialTheme.typography.labelMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Slider(
+                value = userSettings.readerLineSpacing,
+                onValueChange = { viewModel.updateLineSpacing(it) },
+                valueRange = 1.0f..2.5f,
+                modifier = Modifier.weight(1f)
+            )
+            Text("${String.format("%.1f", userSettings.readerLineSpacing)}x", modifier = Modifier.width(48.dp))
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Margin size control
+        Text("Margins", style = MaterialTheme.typography.labelMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            MarginButton("Compact", userSettings.readerMarginSize == 0) { viewModel.updateMarginSize(0) }
+            MarginButton("Normal", userSettings.readerMarginSize == 1) { viewModel.updateMarginSize(1) }
+            MarginButton("Wide", userSettings.readerMarginSize == 2) { viewModel.updateMarginSize(2) }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Text alignment control
+        Text("Text Alignment", style = MaterialTheme.typography.labelMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            AlignmentButton("Left", userSettings.readerTextAlignment == "left") { viewModel.updateTextAlignment("left") }
+            AlignmentButton("Center", userSettings.readerTextAlignment == "center") { viewModel.updateTextAlignment("center") }
+            AlignmentButton("Justify", userSettings.readerTextAlignment == "justify") { viewModel.updateTextAlignment("justify") }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Fullscreen mode toggle
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Fullscreen Mode", style = MaterialTheme.typography.labelMedium)
+            Switch(
+                checked = userSettings.readerFullscreenMode,
+                onCheckedChange = { viewModel.updateFullscreenMode(it) }
+            )
+        }
+    }
+}
+
+@Composable
+fun MarginButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        colors = ButtonDefaults.textButtonColors(
+            contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+        )
+    ) {
+        Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+    }
+}
+
+@Composable
+fun AlignmentButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        colors = ButtonDefaults.textButtonColors(
+            contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+        )
+    ) {
+        Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
     }
 }
 

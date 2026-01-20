@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -204,8 +205,43 @@ fun BookDetailScreen(
                                 icon = { Icon(painterResource(R.drawable.ic_list), contentDescription = null) }
                             )
                         }
-                        
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Reading Status and Rating
+                        com.pekempy.ReadAloudbooks.ui.components.ReadingStatusSelector(
+                            currentStatus = viewModel.readingStatus,
+                            onStatusChange = { status ->
+                                viewModel.updateReadingStatus(status)
+                            }
+                        )
+
                         Spacer(modifier = Modifier.height(12.dp))
+
+                        com.pekempy.ReadAloudbooks.ui.components.RatingStars(
+                            rating = viewModel.rating,
+                            onRatingChange = { newRating ->
+                                viewModel.updateRating(newRating)
+                            }
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Collections Button
+                        OutlinedButton(
+                            onClick = { viewModel.showCollectionsDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.ic_folder),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Add to Collection")
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -593,9 +629,18 @@ fun BookDetailScreen(
                     )
                 }
             }
+        }
 
+        // Collections Dialog
+        if (viewModel.showCollectionsDialog && viewModel.book != null) {
+            CollectionsDialog(
+                viewModel = viewModel,
+                bookId = viewModel.book!!.id,
+                onDismiss = { viewModel.showCollectionsDialog = false }
+            )
         }
     }
+}
 }
 
 @Composable
@@ -786,5 +831,160 @@ fun SeriesTag(index: String, modifier: Modifier = Modifier) {
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onTertiaryContainer
         )
+    }
+}
+
+@Composable
+fun CollectionsDialog(
+    viewModel: BookDetailViewModel,
+    bookId: String,
+    onDismiss: () -> Unit
+) {
+    val collections by viewModel.allCollections.collectAsState(initial = emptyList())
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Add to Collections",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            painterResource(R.drawable.ic_close),
+                            contentDescription = "Close"
+                        )
+                    }
+                }
+
+                HorizontalDivider()
+
+                if (collections.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                painterResource(R.drawable.ic_folder),
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "No collections yet",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Create collections from Settings",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                } else {
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 300.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        androidx.compose.foundation.lazy.items(collections) { collection ->
+                            var isInCollection by remember { mutableStateOf(false) }
+
+                            LaunchedEffect(collection.id, bookId) {
+                                isInCollection = viewModel.isBookInCollection(collection.id, bookId)
+                            }
+
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isInCollection) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant
+                                    }
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.toggleBookInCollection(collection.id)
+                                            isInCollection = !isInCollection
+                                        }
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .background(
+                                                color = if (collection.colorHex != null) {
+                                                    Color(android.graphics.Color.parseColor(collection.colorHex))
+                                                } else {
+                                                    MaterialTheme.colorScheme.primary
+                                                },
+                                                shape = RoundedCornerShape(8.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = collection.name.first().uppercase(),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+
+                                    Spacer(Modifier.width(12.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = collection.name,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        if (!collection.description.isNullOrBlank()) {
+                                            Text(
+                                                text = collection.description,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    Checkbox(
+                                        checked = isInCollection,
+                                        onCheckedChange = null
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

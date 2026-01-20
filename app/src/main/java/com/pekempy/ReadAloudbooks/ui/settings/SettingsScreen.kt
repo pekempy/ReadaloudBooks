@@ -84,6 +84,18 @@ fun SettingsHome(
             ) { onNavigateTo("storage") }
 
             SettingsNavItem(
+                title = "Reading Statistics",
+                subtitle = "View your reading progress",
+                iconRes = R.drawable.ic_timeline
+            ) { onNavigateTo("statistics") }
+
+            SettingsNavItem(
+                title = "Collections",
+                subtitle = "Organize your books",
+                iconRes = R.drawable.ic_folder
+            ) { onNavigateTo("collections") }
+
+            SettingsNavItem(
                 title = "Support",
                 subtitle = "Support the projects and developer",
                 iconRes = R.drawable.ic_card_giftcard

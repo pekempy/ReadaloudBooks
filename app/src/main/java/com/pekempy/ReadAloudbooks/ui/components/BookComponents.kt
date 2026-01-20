@@ -10,6 +10,10 @@ import androidx.compose.ui.res.painterResource
 import com.pekempy.ReadAloudbooks.R
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.pekempy.ReadAloudbooks.data.Book
+import com.pekempy.ReadAloudbooks.data.local.entities.ReadingStatus
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -411,5 +416,153 @@ fun SeriesActionMenu(
                 onDismissRequest()
             }
         )
+    }
+}
+
+/**
+ * Reading Status Selector Component
+ * Allows users to select their current reading status for a book
+ */
+@Composable
+fun ReadingStatusSelector(
+    currentStatus: ReadingStatus,
+    onStatusChange: (ReadingStatus) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    val statusConfig = when (currentStatus) {
+        ReadingStatus.NONE -> Triple("Set Status", R.drawable.ic_book, MaterialTheme.colorScheme.onSurfaceVariant)
+        ReadingStatus.WANT_TO_READ -> Triple("Want to Read", R.drawable.ic_bookmark_add, MaterialTheme.colorScheme.primary)
+        ReadingStatus.READING -> Triple("Reading", R.drawable.ic_menu_book, MaterialTheme.colorScheme.secondary)
+        ReadingStatus.FINISHED -> Triple("Finished", R.drawable.ic_check_circle, MaterialTheme.colorScheme.tertiary)
+        ReadingStatus.DNF -> Triple("Did Not Finish", R.drawable.ic_close, MaterialTheme.colorScheme.error)
+    }
+
+    Box(modifier = modifier) {
+        OutlinedButton(
+            onClick = { showMenu = true },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = statusConfig.third
+            ),
+            border = androidx.compose.foundation.BorderStroke(1.dp, statusConfig.third.copy(alpha = 0.5f))
+        ) {
+            Icon(
+                painterResource(statusConfig.second),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(statusConfig.first)
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                painterResource(R.drawable.ic_arrow_drop_down),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false }
+        ) {
+            ReadingStatus.values().forEach { status ->
+                val config = when (status) {
+                    ReadingStatus.NONE -> Triple("None", R.drawable.ic_book)
+                    ReadingStatus.WANT_TO_READ -> Triple("Want to Read", R.drawable.ic_bookmark_add)
+                    ReadingStatus.READING -> Triple("Reading", R.drawable.ic_menu_book)
+                    ReadingStatus.FINISHED -> Triple("Finished", R.drawable.ic_check_circle)
+                    ReadingStatus.DNF -> Triple("Did Not Finish", R.drawable.ic_close)
+                }
+
+                DropdownMenuItem(
+                    text = { Text(config.first) },
+                    leadingIcon = {
+                        Icon(
+                            painterResource(config.second),
+                            contentDescription = null
+                        )
+                    },
+                    trailingIcon = {
+                        if (status == currentStatus) {
+                            Icon(
+                                painterResource(R.drawable.ic_check),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    },
+                    onClick = {
+                        onStatusChange(status)
+                        showMenu = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Rating Stars Component
+ * Allows users to rate a book with 1-5 stars
+ */
+@Composable
+fun RatingStars(
+    rating: Int,
+    onRatingChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    editable: Boolean = true
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "Rating:",
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(end = 4.dp)
+        )
+
+        (1..5).forEach { star ->
+            IconButton(
+                onClick = {
+                    if (editable) {
+                        if (rating == star) {
+                            onRatingChange(0) // Unset if clicking same star
+                        } else {
+                            onRatingChange(star)
+                        }
+                    }
+                },
+                modifier = Modifier.size(32.dp),
+                enabled = editable
+            ) {
+                Icon(
+                    painterResource(
+                        if (star <= rating) R.drawable.ic_star_filled
+                        else R.drawable.ic_star_outline
+                    ),
+                    contentDescription = "Rate $star stars",
+                    tint = if (star <= rating) {
+                        Color(0xFFFFB300) // Amber color for filled stars
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                    },
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+
+        if (rating > 0) {
+            Text(
+                "$rating/5",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp)
+            )
+        }
     }
 }
