@@ -6,11 +6,17 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
+import com.pekempy.ReadAloudbooks.data.RepositoryProvider
+import com.pekempy.ReadAloudbooks.data.local.AppDatabase
 
 class ReadAloudApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         AppContainer.context = this
+
+        // Initialize database and repositories
+        val database = AppDatabase.getDatabase(this)
+        RepositoryProvider.initialize(database)
     }
 
     override fun newImageLoader(): ImageLoader {

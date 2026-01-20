@@ -45,6 +45,7 @@ import com.pekempy.ReadAloudbooks.ui.components.AppNavigationBar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.pekempy.ReadAloudbooks.data.RepositoryProvider
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: UserPreferencesRepository
@@ -94,7 +95,12 @@ class MainActivity : ComponentActivity() {
 
         readerViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return ReaderViewModel(repository) as T
+                return ReaderViewModel(
+                    repository,
+                    RepositoryProvider.highlightRepository,
+                    RepositoryProvider.bookmarkRepository,
+                    RepositoryProvider.readingStatisticsRepository
+                ) as T
             }
         })[ReaderViewModel::class.java]
 

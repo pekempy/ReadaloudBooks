@@ -22,6 +22,12 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.viewinterop.AndroidView
 import com.pekempy.ReadAloudbooks.data.UserSettings
+import com.pekempy.ReadAloudbooks.util.HighlightExporter
+import com.pekempy.ReadAloudbooks.data.Book
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.text.style.TextOverflow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,9 +38,16 @@ fun ReaderScreen(
     onBack: () -> Unit
 ) {
     val userSettings = viewModel.settings
-    
-     var showSearchSheet by remember { mutableStateOf(false) }
-    
+
+    var showSearchSheet by remember { mutableStateOf(false) }
+    var showHighlightsSheet by remember { mutableStateOf(false) }
+    var showBookmarksSheet by remember { mutableStateOf(false) }
+    var showColorPicker by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
+
+    val highlights by viewModel.getHighlightsForBook().collectAsState(initial = emptyList())
+    val bookmarks by viewModel.bookmarks
+
     LaunchedEffect(bookId) {
         viewModel.loadEpub(bookId, isReadAloud)
     }
@@ -135,11 +148,17 @@ fun ReaderScreen(
                     maxLines = 1,
                     color = Color(theme.textInt)
                 )
-                IconButton(onClick = { 
+                IconButton(onClick = {
                     viewModel.clearSearch()
-                    showSearchSheet = true 
+                    showSearchSheet = true
                 }) {
                     Icon(painterResource(R.drawable.ic_search), contentDescription = "Search", tint = Color(theme.textInt))
+                }
+                IconButton(onClick = { showHighlightsSheet = true }) {
+                    Icon(painterResource(R.drawable.ic_highlight), contentDescription = "Highlights", tint = Color(theme.textInt))
+                }
+                IconButton(onClick = { showBookmarksSheet = true }) {
+                    Icon(painterResource(R.drawable.ic_bookmark), contentDescription = "Bookmarks", tint = Color(theme.textInt))
                 }
                 IconButton(onClick = { viewModel.showControls = !viewModel.showControls }) {
                     Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings", tint = Color(theme.textInt))
@@ -177,6 +196,88 @@ fun ReaderScreen(
                         showSearchSheet = false
                     }
                 )
+            }
+        }
+
+        if (showHighlightsSheet) {
+            ModalBottomSheet(onDismissRequest = { showHighlightsSheet = false }) {
+                HighlightsSheet(
+                    highlights = highlights,
+                    onHighlightClick = { highlight ->
+                        viewModel.changeChapter(highlight.chapterIndex)
+                        viewModel.currentHighlightId = highlight.elementId
+                        viewModel.forceScrollUpdate()
+                        showHighlightsSheet = false
+                    },
+                    onDeleteHighlight = { viewModel.deleteHighlight(it) },
+                    onExportClick = { showExportDialog = true }
+                )
+            }
+        }
+
+        if (showBookmarksSheet) {
+            ModalBottomSheet(onDismissRequest = { showBookmarksSheet = false }) {
+                BookmarksSheet(
+                    bookmarks = bookmarks,
+                    onBookmarkClick = { bookmark ->
+                        viewModel.navigateToBookmark(bookmark)
+                        showBookmarksSheet = false
+                    },
+                    onDeleteBookmark = { viewModel.deleteBookmark(it) },
+                    onAddBookmark = {
+                        viewModel.createBookmark()
+                        showBookmarksSheet = false
+                    }
+                )
+            }
+        }
+
+        if (showColorPicker) {
+            ColorPickerDialog(
+                selectedColor = viewModel.selectedHighlightColor,
+                onColorSelected = { color ->
+                    viewModel.selectedHighlightColor = color
+                    viewModel.pendingHighlight?.let { pending ->
+                        viewModel.createHighlight(
+                            chapterIndex = pending.chapterIndex,
+                            elementId = pending.elementId,
+                            text = pending.text,
+                            color = color
+                        )
+                        viewModel.pendingHighlight = null
+                    }
+                    showColorPicker = false
+                },
+                onDismiss = {
+                    showColorPicker = false
+                    viewModel.pendingHighlight = null
+                }
+            )
+        }
+
+        val context = LocalContext.current
+        if (showExportDialog) {
+            ExportHighlightsDialog(
+                onExportMarkdown = {
+                    viewModel.viewModelScope.launch {
+                        viewModel.exportHighlightsToMarkdown(context)
+                        showExportDialog = false
+                    }
+                },
+                onExportCsv = {
+                    viewModel.viewModelScope.launch {
+                        viewModel.exportHighlightsToCsv(context)
+                        showExportDialog = false
+                    }
+                },
+                onDismiss = { showExportDialog = false }
+            )
+        }
+
+        // Handle pending highlight creation
+        LaunchedEffect(viewModel.pendingHighlight) {
+            if (viewModel.pendingHighlight != null) {
+                showColorPicker = true
             }
         }
     }
@@ -325,6 +426,19 @@ fun EpubWebView(
                             android.util.Log.d("EpubWebView", "Reader reported ready.")
                             viewModel.markReady()
                         }
+
+                        @JavascriptInterface
+                        fun onTextSelected(elementId: String, selectedText: String) {
+                            viewModel.viewModelScope.launch {
+                                if (selectedText.isNotBlank()) {
+                                    viewModel.pendingHighlight = ReaderViewModel.PendingHighlight(
+                                        chapterIndex = viewModel.currentChapterIndex,
+                                        elementId = elementId,
+                                        text = selectedText.trim()
+                                    )
+                                }
+                            }
+                        }
                     }, "Android")
                 }
             },
@@ -432,8 +546,9 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     overflow: hidden;
                     background-color: var(--bg-color);
                     color: var(--text-color);
-                    -webkit-user-select: none;
-                    
+                    -webkit-user-select: text;
+                    user-select: text;
+
                     /* Maximize text density */
                     line-height: 1.5 !important;
                     hyphens: auto;
@@ -497,9 +612,9 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     color: var(--text-color) !important;
                     background-color: transparent !important;
                     max-width: 100% !important;
-                    -webkit-user-select: none;
-                    user-select: none;
-                    -webkit-touch-callout: none;
+                    -webkit-user-select: text;
+                    user-select: text;
+                    -webkit-touch-callout: default;
                 }
 
                 /* Nuclear reset for unwanted lines (ruled paper, global underlining) */
@@ -961,6 +1076,36 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     }
                 }, false);
 
+                // Text selection for highlights
+                let selectionTimeout = null;
+                document.addEventListener('selectionchange', function() {
+                    clearTimeout(selectionTimeout);
+                    selectionTimeout = setTimeout(function() {
+                        const selection = window.getSelection();
+                        if (selection && selection.toString().trim().length > 0) {
+                            const selectedText = selection.toString().trim();
+                            let element = selection.anchorNode;
+
+                            // Find parent element with ID
+                            while (element && element.nodeType !== Node.ELEMENT_NODE) {
+                                element = element.parentNode;
+                            }
+                            while (element && !element.id) {
+                                element = element.parentElement;
+                            }
+
+                            if (element && element.id && window.Android) {
+                                window.Android.onTextSelected(element.id, selectedText);
+                            }
+
+                            // Clear selection after capturing
+                            setTimeout(function() {
+                                selection.removeAllRanges();
+                            }, 100);
+                        }
+                    }, 500);
+                });
+
                 window.oncontextmenu = function(event) {
                     event.preventDefault();
                     event.stopPropagation();
@@ -1095,4 +1240,372 @@ fun getReaderTheme(themeId: Int): ReaderThemeData {
         3 -> ReaderThemeData("#000000", "#FFFFFF", 0xFF000000.toInt(), 0xFFFFFFFF.toInt())
         else -> ReaderThemeData("#FFFFFF", "#000000", 0xFFFFFFFF.toInt(), 0xFF000000.toInt())
     }
+}
+
+@Composable
+fun HighlightsSheet(
+    highlights: List<com.pekempy.ReadAloudbooks.data.local.entities.Highlight>,
+    onHighlightClick: (com.pekempy.ReadAloudbooks.data.local.entities.Highlight) -> Unit,
+    onDeleteHighlight: (com.pekempy.ReadAloudbooks.data.local.entities.Highlight) -> Unit,
+    onExportClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Highlights (${highlights.size})",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            if (highlights.isNotEmpty()) {
+                IconButton(onClick = onExportClick) {
+                    Icon(painterResource(R.drawable.ic_share), contentDescription = "Export")
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (highlights.isEmpty()) {
+            Text(
+                "No highlights yet. Long press on text to create a highlight.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 32.dp)
+            )
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                items(highlights) { highlight ->
+                    HighlightItem(
+                        highlight = highlight,
+                        onClick = { onHighlightClick(highlight) },
+                        onDelete = { onDeleteHighlight(highlight) }
+                    )
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HighlightItem(
+    highlight: com.pekempy.ReadAloudbooks.data.local.entities.Highlight,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Chapter ${highlight.chapterIndex + 1}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                IconButton(
+                    onClick = { showDeleteDialog = true },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_delete),
+                        contentDescription = "Delete",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+
+            Text(
+                highlight.text,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
+
+            if (!highlight.note.isNullOrBlank()) {
+                Text(
+                    "Note: ${highlight.note}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            // Color indicator
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .background(
+                        ComposeColor(android.graphics.Color.parseColor(highlight.color)),
+                        shape = CircleShape
+                    )
+            )
+        }
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete Highlight") },
+            text = { Text("Are you sure you want to delete this highlight?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete()
+                    showDeleteDialog = false
+                }) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun BookmarksSheet(
+    bookmarks: List<com.pekempy.ReadAloudbooks.data.local.entities.Bookmark>,
+    onBookmarkClick: (com.pekempy.ReadAloudbooks.data.local.entities.Bookmark) -> Unit,
+    onDeleteBookmark: (com.pekempy.ReadAloudbooks.data.local.entities.Bookmark) -> Unit,
+    onAddBookmark: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Bookmarks (${bookmarks.size})",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            IconButton(onClick = onAddBookmark) {
+                Icon(painterResource(R.drawable.ic_add), contentDescription = "Add Bookmark")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (bookmarks.isEmpty()) {
+            Text(
+                "No bookmarks yet. Tap + to create a bookmark at your current location.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 32.dp)
+            )
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                items(bookmarks) { bookmark ->
+                    BookmarkItem(
+                        bookmark = bookmark,
+                        onClick = { onBookmarkClick(bookmark) },
+                        onDelete = { onDeleteBookmark(bookmark) }
+                    )
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BookmarkItem(
+    bookmark: com.pekempy.ReadAloudbooks.data.local.entities.Bookmark,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    bookmark.label ?: "Chapter ${bookmark.chapterIndex + 1}",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    "Chapter ${bookmark.chapterIndex + 1} • ${(bookmark.scrollPercent * 100).toInt()}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = { showDeleteDialog = true }) {
+                Icon(
+                    painterResource(R.drawable.ic_delete),
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete Bookmark") },
+            text = { Text("Are you sure you want to delete this bookmark?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete()
+                    showDeleteDialog = false
+                }) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun ColorPickerDialog(
+    selectedColor: String,
+    onColorSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = listOf(
+        "#FFEB3B" to "Yellow",
+        "#4CAF50" to "Green",
+        "#2196F3" to "Blue",
+        "#9C27B0" to "Purple",
+        "#FF9800" to "Orange",
+        "#E91E63" to "Pink",
+        "#F44336" to "Red"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose Highlight Color") },
+        text = {
+            Column {
+                colors.forEach { (hex, name) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onColorSelected(hex) }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(
+                                    ComposeColor(android.graphics.Color.parseColor(hex)),
+                                    shape = CircleShape
+                                )
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(name, style = MaterialTheme.typography.bodyLarge)
+                        if (hex == selectedColor) {
+                            Spacer(modifier = Modifier.weight(1f))
+                            Icon(
+                                painterResource(R.drawable.ic_check),
+                                contentDescription = "Selected",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun ExportHighlightsDialog(
+    onExportMarkdown: () -> Unit,
+    onExportCsv: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Export Highlights") },
+        text = {
+            Column {
+                TextButton(
+                    onClick = onExportMarkdown,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        Icon(painterResource(R.drawable.ic_file), contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Export as Markdown (.md)")
+                    }
+                }
+                TextButton(
+                    onClick = onExportCsv,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        Icon(painterResource(R.drawable.ic_file), contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Export as CSV (.csv)")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
