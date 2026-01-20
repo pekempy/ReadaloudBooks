@@ -777,8 +777,9 @@ class ReaderViewModel(
     var showHighlightMenu by mutableStateOf(false)
     var selectedHighlightColor by mutableStateOf("#FFEB3B") // Yellow default
     var pendingHighlight by mutableStateOf<PendingHighlight?>(null)
-    var highlightsForCurrentChapter = mutableStateOf<List<Highlight>>(emptyList())
+    val highlightsForCurrentChapter = mutableStateOf<List<Highlight>>(emptyList())
     var longPressedElementId by mutableStateOf<String?>(null)
+    private var highlightCollectionJob: Job? = null
 
     // Bookmark management
     var bookmarks = mutableStateOf<List<Bookmark>>(emptyList())
@@ -898,7 +899,8 @@ class ReaderViewModel(
 
     fun loadHighlightsForChapter(chapterIndex: Int) {
         val bookId = currentBookId ?: return
-        viewModelScope.launch {
+        highlightCollectionJob?.cancel()
+        highlightCollectionJob = viewModelScope.launch {
             highlightRepository.getHighlightsForChapter(bookId, chapterIndex).collect { highlights ->
                 highlightsForCurrentChapter.value = highlights
             }

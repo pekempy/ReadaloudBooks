@@ -207,8 +207,18 @@ fun ReaderScreen(
                 }) {
                     Icon(painterResource(R.drawable.ic_search), contentDescription = "Search", tint = Color(theme.textInt))
                 }
-                IconButton(onClick = { showHighlightsSheet = true }) {
-                    Icon(painterResource(R.drawable.ic_highlight), contentDescription = "Highlights", tint = Color(theme.textInt))
+                BadgedBox(
+                    badge = {
+                        if (highlights.isNotEmpty()) {
+                            Badge {
+                                Text("${highlights.size}")
+                            }
+                        }
+                    }
+                ) {
+                    IconButton(onClick = { showHighlightsSheet = true }) {
+                        Icon(painterResource(R.drawable.ic_highlight), contentDescription = "Highlights", tint = Color(theme.textInt))
+                    }
                 }
                 IconButton(onClick = { showBookmarksSheet = true }) {
                     Icon(painterResource(R.drawable.ic_bookmark), contentDescription = "Bookmarks", tint = Color(theme.textInt))
@@ -593,6 +603,25 @@ fun EpubWebView(
                          webView.setTag(com.pekempy.ReadAloudbooks.R.id.anchor_tag, pendingAnchor)
                     }
                 }
+
+                // Apply user highlights for current chapter
+                viewModel.highlightsForCurrentChapter.value.let { highlights ->
+                    if (highlights.isNotEmpty()) {
+                        val highlightsJson = highlights.map { h ->
+                            """{"id":${h.id},"elementId":"${h.elementId}","text":"${h.text.replace("\"", "\\\"").replace("\n", "\\n")}","color":"${h.color}"}"""
+                        }.joinToString(",", "[", "]")
+
+                        val highlightsSignature = "highlights_$highlightsJson"
+                        val lastHighlightsSignature = webView.getTag(com.pekempy.ReadAloudbooks.R.id.user_highlights_tag) as? String
+
+                        if (lastHighlightsSignature != highlightsSignature) {
+                            webView.postDelayed({
+                                webView.evaluateJavascript("if (typeof setHighlights === 'function') setHighlights('${highlightsJson.replace("'", "\\'")}')", null)
+                            }, 300)
+                            webView.setTag(com.pekempy.ReadAloudbooks.R.id.user_highlights_tag, highlightsSignature)
+                        }
+                    }
+                }
             }
         )
     }
@@ -778,7 +807,12 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     position: relative !important;
                     z-index: 9999 !important;
                 }
-                
+
+                .user-highlight {
+                    background-color: transparent;
+                    border-radius: 2px;
+                }
+
                 [data-theme="2"] .highlight, [data-theme="3"] .highlight {
                     border-bottom: 2px solid var(--accent-color) !important;
                 }
@@ -1229,6 +1263,62 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                         return false;
                     }
                 };
+
+                // Apply highlights to the current page
+                function applyHighlights(highlights) {
+                    // Remove existing highlight marks
+                    document.querySelectorAll('.user-highlight').forEach(mark => {
+                        const parent = mark.parentNode;
+                        parent.replaceChild(document.createTextNode(mark.textContent), mark);
+                        parent.normalize();
+                    });
+
+                    // Apply new highlights
+                    highlights.forEach(highlight => {
+                        const element = document.getElementById(highlight.elementId);
+                        if (!element) return;
+
+                        // Find and highlight the text
+                        const walker = document.createTreeWalker(
+                            element,
+                            NodeFilter.SHOW_TEXT,
+                            null,
+                            false
+                        );
+
+                        let node;
+                        while (node = walker.nextNode()) {
+                            const text = node.textContent;
+                            const index = text.indexOf(highlight.text);
+
+                            if (index !== -1) {
+                                const range = document.createRange();
+                                range.setStart(node, index);
+                                range.setEnd(node, index + highlight.text.length);
+
+                                const mark = document.createElement('mark');
+                                mark.className = 'user-highlight';
+                                mark.style.backgroundColor = highlight.color;
+                                mark.style.color = 'inherit';
+                                mark.style.padding = '2px 0';
+                                mark.dataset.highlightId = highlight.id;
+
+                                range.surroundContents(mark);
+                                break;
+                            }
+                        }
+                    });
+                }
+
+                // Function to be called from Android
+                function setHighlights(highlightsJson) {
+                    try {
+                        const highlights = JSON.parse(highlightsJson);
+                        applyHighlights(highlights);
+                    } catch (e) {
+                        console.error('Failed to apply highlights:', e);
+                    }
+                }
             </script>
         </head>
         <body data-theme="${userSettings.readerTheme}">
