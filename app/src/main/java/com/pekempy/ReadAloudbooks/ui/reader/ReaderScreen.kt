@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.ui.res.painterResource
 import com.pekempy.ReadAloudbooks.R
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshotFlow
@@ -26,6 +27,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.viewinterop.AndroidView
 import com.pekempy.ReadAloudbooks.data.UserSettings
 import com.pekempy.ReadAloudbooks.util.HighlightExporter
+import com.pekempy.ReadAloudbooks.util.rememberFoldableState
+import com.pekempy.ReadAloudbooks.util.ReaderScreenMode
 import com.pekempy.ReadAloudbooks.data.Book
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -53,6 +56,15 @@ fun ReaderScreen(
 
     val highlights by viewModel.getHighlightsForBook().collectAsState(initial = emptyList())
     val bookmarks by viewModel.bookmarks
+
+    // Foldable device support
+    val foldableState by rememberFoldableState()
+    val isTwoPageMode = foldableState.screenMode == ReaderScreenMode.TWO_PAGE
+
+    // Update ViewModel when fold state changes
+    LaunchedEffect(foldableState.screenMode) {
+        viewModel.updateScreenMode(foldableState.screenMode, foldableState.foldBoundsPx)
+    }
 
     val view = LocalView.current
     val window = (view.context as? android.app.Activity)?.window
@@ -90,6 +102,17 @@ fun ReaderScreen(
         }
     }
 
+    // Adjust status bar icons based on theme (light/dark)
+    LaunchedEffect(userSettings?.readerTheme) {
+        window?.let { w ->
+            val controller = WindowInsetsControllerCompat(w, view)
+            // Themes 0 (white) and 1 (sepia) are light backgrounds - use dark status bar icons
+            // Themes 2 (dark) and 3 (AMOLED black) are dark backgrounds - use light status bar icons
+            val isLightBackground = (userSettings?.readerTheme ?: 0) <= 1
+            controller.isAppearanceLightStatusBars = isLightBackground
+        }
+    }
+
     // Restore brightness and fullscreen when leaving
     DisposableEffect(Unit) {
         onDispose {
@@ -106,11 +129,30 @@ fun ReaderScreen(
         }
     }
 
+    // Collect highlight events from ViewModel using SharedFlow
+    // This bypasses Compose state observation issues
+    LaunchedEffect(Unit) {
+        android.util.Log.e("ReaderScreen", "=== Starting highlightEvents collector ===")
+        viewModel.highlightEvents.collect { event ->
+            android.util.Log.e("ReaderScreen", "=== RECEIVED event: $event ===")
+            when (event) {
+                is ReaderViewModel.HighlightEvent.ShowLongPressMenu -> {
+                    android.util.Log.e("ReaderScreen", "=== SHOWING long press menu for: ${event.elementId} ===")
+                    showLongPressMenu = true
+                }
+                is ReaderViewModel.HighlightEvent.ShowColorPicker -> {
+                    android.util.Log.e("ReaderScreen", "=== SHOWING color picker for: ${event.pendingHighlight.text.take(20)} ===")
+                    showColorPicker = true
+                }
+            }
+        }
+    }
+
     viewModel.syncConfirmation?.let { sync ->
         AlertDialog(
             onDismissRequest = { viewModel.dismissSync() },
             title = { Text("Progress Sync") },
-            text = { 
+            text = {
                 Text("Progress is out of sync with Storyteller.")
             },
             confirmButton = {
@@ -180,7 +222,9 @@ fun ReaderScreen(
                 activeSearchMatchIndex = viewModel.activeSearchMatchIndex,
                 pendingAnchor = viewModel.pendingAnchorId.value,
                 clearSelectionTrigger = viewModel.clearSelectionTrigger,
-                onTap = { viewModel.showControls = !viewModel.showControls }
+                onTap = { viewModel.showControls = !viewModel.showControls },
+                isTwoPageMode = isTwoPageMode,
+                pageGapDp = viewModel.innerScreenSettings?.pageGap ?: 16
             )
 
             Row(
@@ -197,7 +241,7 @@ fun ReaderScreen(
                     Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back", tint = Color(theme.textInt))
                 }
                 Text(
-                    viewModel.epubTitle, 
+                    viewModel.epubTitle + " (v2.1)", 
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleMedium, 
                     maxLines = 1,
@@ -209,25 +253,38 @@ fun ReaderScreen(
                 }) {
                     Icon(painterResource(R.drawable.ic_search), contentDescription = "Search", tint = Color(theme.textInt))
                 }
-                BadgedBox(
-                    badge = {
-                        if (highlights.isNotEmpty()) {
-                            Badge {
-                                Text("${highlights.size}")
-                            }
-                        }
-                    }
-                ) {
+                
+                Box(contentAlignment = Alignment.TopEnd) {
                     IconButton(onClick = { showHighlightsSheet = true }) {
-                        Icon(painterResource(R.drawable.ic_highlight), contentDescription = "Highlights", tint = Color(theme.textInt))
+                        Icon(painterResource(R.drawable.ic_highlight), contentDescription = "Highlights", tint = Color.Magenta)
+                    }
+                    if (highlights.isNotEmpty()) {
+                        Badge(
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .size(8.dp)
+                        )
                     }
                 }
+
                 IconButton(onClick = { showBookmarksSheet = true }) {
                     Icon(painterResource(R.drawable.ic_bookmark), contentDescription = "Bookmarks", tint = Color(theme.textInt))
                 }
                 IconButton(onClick = { viewModel.showControls = !viewModel.showControls }) {
                     Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings", tint = Color(theme.textInt))
                 }
+            }
+
+            // Scrim to dismiss settings when tapping outside
+            if (viewModel.showControls) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null
+                        ) { viewModel.showControls = false }
+                )
             }
 
             AnimatedVisibility(
@@ -243,12 +300,13 @@ fun ReaderScreen(
                     userSettings = userSettings,
                     currentChapter = viewModel.currentChapterIndex,
                     totalChapters = viewModel.totalChapters,
-                    onFontSizeChange = viewModel::updateFontSize,
-                    onThemeChange = viewModel::updateTheme,
-                    onFontFamilyChange = viewModel::updateFontFamily,
+                    onFontSizeChange = if (isTwoPageMode) viewModel::updateInnerFontSize else viewModel::updateFontSize,
+                    onThemeChange = if (isTwoPageMode) viewModel::updateInnerTheme else viewModel::updateTheme,
+                    onFontFamilyChange = if (isTwoPageMode) viewModel::updateInnerFontFamily else viewModel::updateFontFamily,
                     onChapterChange = viewModel::changeChapter,
                     backgroundColor = Color(theme.bgInt).copy(alpha = 0.95f),
-                    contentColor = Color(theme.textInt)
+                    contentColor = Color(theme.textInt),
+                    isTwoPageMode = isTwoPageMode
                 )
             }
         }
@@ -340,36 +398,50 @@ fun ReaderScreen(
             )
         }
 
-        // Handle pending highlight creation - use snapshotFlow for reliable state observation
-        LaunchedEffect(Unit) {
-            snapshotFlow { viewModel.pendingHighlight to showLongPressMenu }
-                .collect { (pending, isLongPressMenuShowing) ->
-                    android.util.Log.d("ReaderScreen", "snapshotFlow pendingHighlight: pending=$pending, showLongPressMenu=$isLongPressMenuShowing")
-                    if (pending != null && !isLongPressMenuShowing && !showColorPicker) {
-                        android.util.Log.d("ReaderScreen", "Showing color picker for drag-select highlight")
-                        showColorPicker = true
-                    }
-                }
-        }
+        if (viewModel.clickedHighlight != null) {
+            val highlight = viewModel.clickedHighlight!!
+            var showEditDialog by remember { mutableStateOf(false) }
 
-        // Handle long press menu - use snapshotFlow for reliable state observation
-        LaunchedEffect(Unit) {
-            snapshotFlow { viewModel.longPressedElementId }
-                .collect { elementId ->
-                    android.util.Log.d("ReaderScreen", "snapshotFlow longPressedElementId: elementId=$elementId")
-                    if (elementId != null && !showLongPressMenu) {
-                        android.util.Log.d("ReaderScreen", "Showing long-press menu")
-                        showLongPressMenu = true
+            if (showEditDialog) {
+                com.pekempy.ReadAloudbooks.ui.components.HighlightDialog(
+                    highlight = highlight,
+                    selectedText = highlight.text,
+                    selectedColor = highlight.color,
+                    onDismiss = { showEditDialog = false },
+                    onSave = { color, note ->
+                        if (color != highlight.color) viewModel.updateHighlightColor(highlight.id, color)
+                        if (note != highlight.note) viewModel.updateHighlightNote(highlight.id, note ?: "")
+                        showEditDialog = false
+                        viewModel.clickedHighlight = null
+                    },
+                    onDelete = {
+                        viewModel.deleteHighlight(highlight)
+                        showEditDialog = false
+                        viewModel.clickedHighlight = null
                     }
-                }
+                )
+            } else {
+                com.pekempy.ReadAloudbooks.ui.components.HighlightActionsSheet(
+                    highlight = highlight,
+                    onEdit = { showEditDialog = true },
+                    onChangeColor = { showEditDialog = true },
+                    onCopy = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("Highlight", highlight.text)
+                        clipboard.setPrimaryClip(clip)
+                        viewModel.clickedHighlight = null
+                    },
+                    onDelete = {
+                        viewModel.deleteHighlight(highlight)
+                        viewModel.clickedHighlight = null
+                    },
+                    onDismiss = { viewModel.clickedHighlight = null }
+                )
+            }
         }
 
         if (showLongPressMenu && viewModel.longPressedElementId != null) {
             LongPressContextMenu(
-                hasSelection = viewModel.pendingHighlight != null,
-                onHighlight = {
-                    showColorPicker = true
-                },
                 onNavigateToPosition = {
                     viewModel.jumpToElementRequest.value = viewModel.longPressedElementId
                     viewModel.longPressedElementId = null
@@ -377,7 +449,6 @@ fun ReaderScreen(
                 onDismiss = {
                     showLongPressMenu = false
                     viewModel.longPressedElementId = null
-                    viewModel.pendingHighlight = null
                 }
             )
         }
@@ -396,13 +467,15 @@ fun EpubWebView(
     activeSearchMatchIndex: Int = 0,
     pendingAnchor: String? = null,
     clearSelectionTrigger: Int = 0,
-    onTap: () -> Unit
+    onTap: () -> Unit,
+    isTwoPageMode: Boolean = false,
+    pageGapDp: Int = 16
 ) {
     val theme = getReaderTheme(userSettings.readerTheme)
     val isReadAloud = viewModel.isReadAloudMode
 
 
-    key(userSettings.readerTheme, userSettings.readerFontFamily, userSettings.readerFontSize, userSettings.readerLineSpacing, userSettings.readerMarginSize, userSettings.readerTextAlignment) {
+    key(userSettings.readerTheme, userSettings.readerFontFamily, userSettings.readerFontSize, userSettings.readerLineSpacing, userSettings.readerMarginSize, userSettings.readerTextAlignment, isTwoPageMode) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
@@ -470,13 +543,17 @@ fun EpubWebView(
                     
                     addJavascriptInterface(object {
                         @JavascriptInterface
-                        fun onBodyClick(x: Float, width: Float) {
+                        fun onBodyClick(x: Float, width: Float, isTwoPage: Boolean) {
                             val ratio = x / width
+                            // In two-page mode, use smaller edge zones (12.5%) to avoid accidental navigation
+                            // In single-page mode, use standard zones (25%)
+                            val leftZone = if (isTwoPage) 0.125f else 0.25f
+                            val rightZone = if (isTwoPage) 0.875f else 0.75f
                             when {
-                                ratio < 0.25f -> {
+                                ratio < leftZone -> {
                                     this@apply.post { this@apply.evaluateJavascript("pageLeft()", null) }
                                 }
-                                ratio > 0.75f -> {
+                                ratio > rightZone -> {
                                     this@apply.post { this@apply.evaluateJavascript("pageRight()", null) }
                                 }
                                 else -> {
@@ -517,20 +594,16 @@ fun EpubWebView(
                         }
 
                         @JavascriptInterface
-                        fun onElementLongPress(id: String, selectedText: String) {
-                            android.util.Log.d("ReaderScreen", "onElementLongPress called: id=$id, hasText=${selectedText.isNotBlank()}")
+                        fun onElementLongPress(id: String) {
+                            android.util.Log.d("ReaderScreen", "onElementLongPress called: id=$id")
                             // Must run on Main thread for Compose recomposition
                             viewModel.viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
                                 viewModel.longPressedElementId = id
-                                if (selectedText.isNotBlank()) {
-                                    android.util.Log.d("ReaderScreen", "Long-press with selection, setting pendingHighlight")
-                                    viewModel.pendingHighlight = ReaderViewModel.PendingHighlight(
-                                        chapterIndex = viewModel.currentChapterIndex,
-                                        elementId = id,
-                                        text = selectedText.trim()
-                                    )
-                                }
-                                android.util.Log.d("ReaderScreen", "longPressedElementId set to: $id, pendingHighlight=${viewModel.pendingHighlight}")
+                                // Long-press is only for navigation - don't set pendingHighlight
+                                // Text selection auto-creates highlights separately
+                                android.util.Log.d("ReaderScreen", "longPressedElementId set to: $id (navigation only)")
+                                // Emit event to trigger UI update
+                                viewModel.emitLongPressEvent(id)
                             }
                         }
 
@@ -544,16 +617,38 @@ fun EpubWebView(
                         fun onTextSelected(elementId: String, selectedText: String) {
                             android.util.Log.d("ReaderScreen", "onTextSelected called: elementId=$elementId, text=${selectedText.take(30)}...")
                             if (selectedText.isNotBlank()) {
-                                android.util.Log.d("ReaderScreen", "Setting pendingHighlight on Main thread")
+                                android.util.Log.d("ReaderScreen", "Auto-creating highlight with current color")
                                 // Must run on Main thread for Compose recomposition
                                 viewModel.viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                                    viewModel.pendingHighlight = ReaderViewModel.PendingHighlight(
+                                    // Directly create highlight with current selected color (no popup)
+                                    viewModel.createHighlight(
                                         chapterIndex = viewModel.currentChapterIndex,
                                         elementId = elementId,
-                                        text = selectedText.trim()
+                                        text = selectedText.trim(),
+                                        color = viewModel.selectedHighlightColor
                                     )
-                                    android.util.Log.d("ReaderScreen", "pendingHighlight set to: ${viewModel.pendingHighlight}, longPressedElementId=${viewModel.longPressedElementId}")
+                                    android.util.Log.d("ReaderScreen", "Highlight created with color: ${viewModel.selectedHighlightColor}")
                                 }
+                            }
+                        }
+
+                        @JavascriptInterface
+                        fun onHighlightClick(idStr: String) {
+                            android.util.Log.d("ReaderScreen", "onHighlightClick called: id=$idStr")
+                            try {
+                                val id = idStr.toLong()
+                                viewModel.viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                    android.util.Log.d("ReaderScreen", "Looking for highlight $id in ${viewModel.highlightsForCurrentChapter.value.size} highlights")
+                                    val highlight = viewModel.highlightsForCurrentChapter.value.find { it.id == id }
+                                    if (highlight != null) {
+                                        android.util.Log.d("ReaderScreen", "Found highlight, setting clickedHighlight")
+                                        viewModel.clickedHighlight = highlight
+                                    } else {
+                                        android.util.Log.d("ReaderScreen", "Highlight $id NOT found in current chapter highlights")
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("ReaderScreen", "Error parsing highlight ID", e)
                             }
                         }
                     }, "Android")
@@ -565,11 +660,11 @@ fun EpubWebView(
                 val chapterPath = viewModel.getCurrentChapterPath()
                 val baseUrl = "https://epub-internal/$chapterPath"
 
-                val contentSignature = "$baseUrl-${userSettings.readerTheme}-${userSettings.readerFontSize}-${userSettings.readerFontFamily}-${userSettings.readerLineSpacing}-${userSettings.readerMarginSize}-${userSettings.readerTextAlignment}-$isReadAloud"
+                val contentSignature = "$baseUrl-${userSettings.readerTheme}-${userSettings.readerFontSize}-${userSettings.readerFontFamily}-${userSettings.readerLineSpacing}-${userSettings.readerMarginSize}-${userSettings.readerTextAlignment}-$isReadAloud-$isTwoPageMode-$pageGapDp-v3"
                 val lastSignature = webView.tag as? String
                 
                 if (lastSignature != contentSignature) {
-                    val styledHtml = wrapHtml(html, userSettings, theme, viewModel.lastScrollPercent, accentHex, highlightId, isReadAloud)
+                    val styledHtml = wrapHtml(html, userSettings, theme, viewModel.lastScrollPercent, accentHex, highlightId, isReadAloud, isTwoPageMode, pageGapDp)
                     android.util.Log.d("EpubWebView", "Reloading content. Signature changed: $contentSignature")
                     webView.loadDataWithBaseURL(baseUrl, styledHtml, "text/html", "UTF-8", null)
                     webView.scrollTo(0, 0)
@@ -629,7 +724,27 @@ fun EpubWebView(
                 viewModel.highlightsForCurrentChapter.value.let { highlights ->
                     val highlightsJson = if (highlights.isNotEmpty()) {
                         highlights.map { h ->
-                            """{"id":${h.id},"elementId":"${h.elementId}","text":"${h.text.replace("\"", "\\\"").replace("\n", "\\n")}","color":"${h.color}"}"""
+                            // Use proper JSON escaping for all characters
+                            val escapedText = buildString {
+                                for (c in h.text) {
+                                    when (c) {
+                                        '\\' -> append("\\\\")
+                                        '"' -> append("\\\"")
+                                        '\n' -> append("\\n")
+                                        '\r' -> append("\\r")
+                                        '\t' -> append("\\t")
+                                        '\b' -> append("\\b")
+                                        '\u000C' -> append("\\f")
+                                        else -> if (c.code < 32) {
+                                            // Escape other control characters as unicode
+                                            append("\\u${c.code.toString(16).padStart(4, '0')}")
+                                        } else {
+                                            append(c)
+                                        }
+                                    }
+                                }
+                            }
+                            """{"id":${h.id},"elementId":"${h.elementId}","text":"${escapedText}","color":"${h.color}"}"""
                         }.joinToString(",", "[", "]")
                     } else {
                         "[]"
@@ -641,7 +756,9 @@ fun EpubWebView(
                     if (lastHighlightsSignature != highlightsSignature) {
                         android.util.Log.d("EpubWebView", "Applying ${highlights.size} highlights to WebView")
                         webView.postDelayed({
-                            webView.evaluateJavascript("if (typeof setHighlights === 'function') setHighlights('${highlightsJson.replace("'", "\\'")}')", null)
+                            // Double-escape backslashes for JS string literal, then escape single quotes
+                            val jsEscaped = highlightsJson.replace("\\", "\\\\").replace("'", "\\'")
+                            webView.evaluateJavascript("if (typeof setHighlights === 'function') setHighlights('$jsEscaped')", null)
                         }, 300)
                         webView.setTag(com.pekempy.ReadAloudbooks.R.id.user_highlights_tag, highlightsSignature)
                     }
@@ -661,7 +778,7 @@ fun EpubWebView(
     }
 }
 
-fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, initialScrollPercent: Float, accentColor: String, initialHighlightId: String? = null, isReadAloud: Boolean = false): String {
+fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, initialScrollPercent: Float, accentColor: String, initialHighlightId: String? = null, isReadAloud: Boolean = false, isTwoPageMode: Boolean = false, pageGapDp: Int = 16): String {
     val fontFamily = when(userSettings.readerFontFamily) {
         "serif" -> "serif"
         "sans-serif" -> "sans-serif"
@@ -699,7 +816,7 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     --padding-left: $horizontalPadding;
                     --padding-right: $horizontalPadding;
                     --top-padding: 130px;
-                    --bottom-padding: ${if (isReadAloud) "140px" else "60px"};
+                    --bottom-padding: ${if (isReadAloud) "180px" else "60px"};
                     --accent-color: $accentColor;
                     --line-spacing: ${userSettings.readerLineSpacing};
                     --text-align: $textAlign;
@@ -843,19 +960,50 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 }
 
                 .user-highlight {
-                    background-color: transparent;
-                    border-radius: 2px;
+                    border-radius: 2px !important;
+                    display: inline !important;
+                    padding: 2px 0 !important;
+                }
+
+                mark.user-highlight {
+                    background-color: #FFEB3B !important;
                 }
 
                 [data-theme="2"] .highlight, [data-theme="3"] .highlight {
                     border-bottom: 2px solid var(--accent-color) !important;
                 }
+
+                ${if (isTwoPageMode) """
+                /* TWO-PAGE MODE STYLES */
+                .page {
+                    width: calc(50vw - ${pageGapDp / 2}px) !important;
+                }
+
+                #pagination-wrapper {
+                    gap: ${pageGapDp}px;
+                }
+
+                /* Visual divider between pages in a spread */
+                .page-divider {
+                    position: fixed;
+                    top: var(--top-padding);
+                    bottom: var(--bottom-padding);
+                    left: 50%;
+                    width: 1px;
+                    background: var(--text-color);
+                    opacity: 0.15;
+                    pointer-events: none;
+                    transform: translateX(-50%);
+                }
+                """ else ""}
             </style>
             <script>
                 let currentPage = 0;
                 let pageCount = 0;
                 let currentHighlightId = null;
                 let elementPageMap = {};
+                const isTwoPageMode = $isTwoPageMode;
+                const pageGapDp = $pageGapDp;
                 let userHighlightsCache = [];  // Store highlights globally
 
                 function getPageWidth() { return window.innerWidth; }
@@ -1063,7 +1211,19 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     const wrapper = document.getElementById('pagination-wrapper');
                     if (wrapper) {
                         wrapper.style.transition = animate ? 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)' : 'none';
-                        wrapper.style.transform = 'translateX(-' + (index * 100) + 'vw)';
+
+                        if (isTwoPageMode) {
+                            // In two-page mode, align to spread boundaries
+                            // Each spread shows 2 pages side by side
+                            const spreadIndex = Math.floor(index / 2);
+                            const pageWidth = 50; // 50vw per page
+                            const gapVw = (pageGapDp / window.innerWidth) * 100; // Convert gap to vw
+                            const offset = spreadIndex * (100 + gapVw);
+                            wrapper.style.transform = 'translateX(-' + offset + 'vw)';
+                        } else {
+                            wrapper.style.transform = 'translateX(-' + (index * 100) + 'vw)';
+                        }
+
                         if (window.Android) {
                              const percent = pageCount > 1 ? index / (pageCount - 1) : 0;
                              let bestId = null;
@@ -1083,19 +1243,42 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 }
                 
                 function pageLeft() {
-                    if (currentPage <= 0) {
-                        if (window.Android) window.Android.onPrevChapter();
-                        return;
+                    if (isTwoPageMode) {
+                        // In two-page mode, navigate by spreads (2 pages)
+                        const currentSpread = Math.floor(currentPage / 2);
+                        if (currentSpread <= 0) {
+                            if (window.Android) window.Android.onPrevChapter();
+                            return;
+                        }
+                        // Go to first page of previous spread
+                        gotoPage((currentSpread - 1) * 2);
+                    } else {
+                        if (currentPage <= 0) {
+                            if (window.Android) window.Android.onPrevChapter();
+                            return;
+                        }
+                        gotoPage(currentPage - 1);
                     }
-                    gotoPage(currentPage - 1);
                 }
-                
+
                 function pageRight() {
-                    if (currentPage >= pageCount - 1) {
-                         if (window.Android) window.Android.onNextChapter();
-                         return;
+                    if (isTwoPageMode) {
+                        // In two-page mode, navigate by spreads (2 pages)
+                        const currentSpread = Math.floor(currentPage / 2);
+                        const maxSpread = Math.floor((pageCount - 1) / 2);
+                        if (currentSpread >= maxSpread) {
+                            if (window.Android) window.Android.onNextChapter();
+                            return;
+                        }
+                        // Go to first page of next spread
+                        gotoPage((currentSpread + 1) * 2);
+                    } else {
+                        if (currentPage >= pageCount - 1) {
+                             if (window.Android) window.Android.onNextChapter();
+                             return;
+                        }
+                        gotoPage(currentPage + 1);
                     }
-                    gotoPage(currentPage + 1);
                 }
                 
                 function highlightElement(id, retry = 0, animated = true) {
@@ -1173,6 +1356,14 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
 
                 window.onload = function() {
                     paginate();
+
+                    // Add page divider for two-page mode
+                    if (isTwoPageMode) {
+                        const divider = document.createElement('div');
+                        divider.className = 'page-divider';
+                        document.body.appendChild(divider);
+                    }
+
                     const highlightId = ${if (initialHighlightId != null) "'$initialHighlightId'" else "null"};
                     const initialPercent = $initialScrollPercent;
                     if (highlightId) {
@@ -1256,7 +1447,7 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     } else if (Math.abs(deltaX) < 10 && deltaTime < 300) {
                         const tapX = e.changedTouches[0].clientX;
                         const width = window.innerWidth;
-                        if (window.Android) window.Android.onBodyClick(tapX, width);
+                        if (window.Android) window.Android.onBodyClick(tapX, width, isTwoPageMode);
                     }
                 }, false);
 
@@ -1288,15 +1479,16 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                             while (element && element.nodeType !== Node.ELEMENT_NODE) {
                                 element = element.parentNode;
                             }
-                            while (element && !element.id) {
+                            while (element && !element.id && !element.getAttribute('data-continuation-of')) {
                                 element = element.parentElement;
                             }
 
-                            console.log("Found element ID:", element ? element.id : "none");
+                            const elementId = element ? (element.id || element.getAttribute('data-continuation-of')) : null;
+                            console.log("Found element ID:", elementId || "none");
 
-                            if (element && element.id && window.Android) {
+                            if (elementId && window.Android) {
                                 console.log("Calling Android.onTextSelected with text: " + selectedText.substring(0, 30) + "...");
-                                window.Android.onTextSelected(element.id, selectedText);
+                                window.Android.onTextSelected(elementId, selectedText);
                             } else {
                                 console.log("NOT calling Android - element:", !!element, "element.id:", element ? element.id : "N/A", "Android:", !!window.Android);
                             }
@@ -1306,34 +1498,75 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                         } else {
                             console.log("No selection or empty selection");
                         }
-                    }, 800);  // Increased delay to ensure long-press is detected first
+                    }, 500);  // Increased delay to ensure long-press is detected first
                 });
 
+                // Disable default context menu completely
                 window.oncontextmenu = function(event) {
-                    console.log("Context menu event triggered (long-press)");
                     event.preventDefault();
-                    event.stopPropagation();
-
-                    // Mark that long-press is handling selection
-                    isLongPressHandled = true;
-
-                    let target = event.target;
-                    while (target && !target.id) {
-                        target = target.parentElement;
-                    }
-
-                    console.log("Long-press target ID:", target ? target.id : "none");
-
-                    if (target && target.id && window.Android) {
-                        const selection = window.getSelection();
-                        const selectedText = selection && selection.toString().trim();
-                        console.log("Long-press calling Android with ID:", target.id, "text:", selectedText ? selectedText.substring(0, 30) : "none");
-                        window.Android.onElementLongPress(target.id, selectedText || "");
-                        return false;
-                    } else {
-                        console.log("NOT calling Android for long-press - target:", !!target, "target.id:", target ? target.id : "N/A", "Android:", !!window.Android);
-                    }
+                    return false;
                 };
+
+                // Custom long-press with 1 second delay and movement detection
+                let longPressTimer = null;
+                let lpStartX = 0;
+                let lpStartY = 0;
+                let longPressTarget = null;
+                const LONG_PRESS_DELAY = 600; // 600ms
+                const MOVE_THRESHOLD = 10; // pixels - if finger moves more than this, it's a drag/selection
+
+                document.addEventListener('touchstart', function(e) {
+                    if (e.touches.length !== 1) return;
+
+                    lpStartX = e.touches[0].clientX;
+                    lpStartY = e.touches[0].clientY;
+                    longPressTarget = e.target;
+
+                    longPressTimer = setTimeout(function() {
+                        console.log("Long-press timer fired (1 second, no movement)");
+                        isLongPressHandled = true;
+
+                        // Clear any text selection that might have started
+                        window.getSelection().removeAllRanges();
+
+                        let target = longPressTarget;
+                        while (target && !target.id && !target.getAttribute('data-continuation-of')) {
+                            target = target.parentElement;
+                        }
+                        const targetId = target ? (target.id || target.getAttribute('data-continuation-of')) : null;
+
+                        if (targetId && window.Android) {
+                            console.log("Long-press calling Android with ID:", targetId);
+                            window.Android.onElementLongPress(targetId);
+                        }
+                    }, LONG_PRESS_DELAY);
+                }, { passive: true });
+
+                document.addEventListener('touchmove', function(e) {
+                    if (longPressTimer && e.touches.length === 1) {
+                        const dx = Math.abs(e.touches[0].clientX - lpStartX);
+                        const dy = Math.abs(e.touches[0].clientY - lpStartY);
+                        if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD) {
+                            // Finger moved - this is a selection drag, not a long-press
+                            console.log("Touch moved, cancelling long-press timer (selection in progress)");
+                            clearTimeout(longPressTimer);
+                            longPressTimer = null;
+                        }
+                    }
+                }, { passive: true });
+
+                document.addEventListener('touchend', function() {
+                    if (longPressTimer) {
+                        console.log("Touch ended before 1 second, cancelling long-press");
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                    }
+                }, { passive: true });
+
+                document.addEventListener('touchcancel', function() {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }, { passive: true });
 
                 // Apply highlights to the current page
                 function applyHighlights(highlights) {
@@ -1345,6 +1578,226 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                         parent.replaceChild(document.createTextNode(mark.textContent), mark);
                         parent.normalize();
                     });
+
+                    // Normalize whitespace for matching
+                    function normalizeWs(str) {
+                        return str.replace(/\s+/g, ' ').trim();
+                    }
+
+                    // Helper function to highlight text that may span multiple text nodes
+                    function highlightTextInElement(element, searchText, color, highlightId) {
+                        // Collect all text nodes with their positions
+                        const textNodes = [];
+                        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+                        let combinedText = '';
+                        let node;
+
+                        while (node = walker.nextNode()) {
+                            textNodes.push({
+                                node: node,
+                                start: combinedText.length,
+                                end: combinedText.length + node.textContent.length
+                            });
+                            combinedText += node.textContent;
+                        }
+
+                        if (textNodes.length === 0) return false;
+
+                        // Find the search text in combined text
+                        const normalizedCombined = normalizeWs(combinedText);
+                        const normalizedSearch = normalizeWs(searchText);
+
+                        // Try exact match first
+                        let matchStart = combinedText.indexOf(searchText);
+                        let matchEnd = matchStart !== -1 ? matchStart + searchText.length : -1;
+
+                        // If not found, try normalized matching
+                        if (matchStart === -1) {
+                            const normMatchStart = normalizedCombined.indexOf(normalizedSearch);
+                            if (normMatchStart !== -1) {
+                                // Map normalized position back to original
+                                // Count characters up to the normalized position
+                                let origPos = 0;
+                                let normPos = 0;
+                                while (normPos < normMatchStart && origPos < combinedText.length) {
+                                    if (/\s/.test(combinedText[origPos])) {
+                                        // Skip extra whitespace in original
+                                        while (origPos < combinedText.length - 1 && /\s/.test(combinedText[origPos + 1])) {
+                                            origPos++;
+                                        }
+                                    }
+                                    origPos++;
+                                    normPos++;
+                                }
+                                matchStart = origPos;
+
+                                // Find end position similarly
+                                let searchLen = normalizedSearch.length;
+                                while (searchLen > 0 && origPos < combinedText.length) {
+                                    if (/\s/.test(combinedText[origPos])) {
+                                        while (origPos < combinedText.length - 1 && /\s/.test(combinedText[origPos + 1])) {
+                                            origPos++;
+                                        }
+                                    }
+                                    origPos++;
+                                    searchLen--;
+                                }
+                                matchEnd = origPos;
+                            }
+                        }
+
+                        if (matchStart === -1) return false;
+
+                        // Find which text nodes contain our match
+                        const nodesToHighlight = [];
+                        for (const tn of textNodes) {
+                            if (tn.end > matchStart && tn.start < matchEnd) {
+                                const nodeStart = Math.max(0, matchStart - tn.start);
+                                const nodeEnd = Math.min(tn.node.textContent.length, matchEnd - tn.start);
+                                nodesToHighlight.push({
+                                    node: tn.node,
+                                    start: nodeStart,
+                                    end: nodeEnd
+                                });
+                            }
+                        }
+
+                        if (nodesToHighlight.length === 0) return false;
+
+                        // Apply highlights to each text node portion (in reverse to preserve positions)
+                        for (let i = nodesToHighlight.length - 1; i >= 0; i--) {
+                            const info = nodesToHighlight[i];
+                            try {
+                                const range = document.createRange();
+                                range.setStart(info.node, info.start);
+                                range.setEnd(info.node, info.end);
+
+                                const mark = document.createElement('mark');
+                                mark.className = 'user-highlight';
+                                mark.setAttribute('style', 'background-color: ' + color + ' !important; color: inherit !important; padding: 2px 0; border-radius: 2px;');
+                                mark.dataset.highlightId = highlightId;
+                                mark.onclick = function(e) {
+                                    e.stopPropagation();
+                                    if (window.Android) {
+                                        window.Android.onHighlightClick(highlightId.toString());
+                                    }
+                                };
+
+                                range.surroundContents(mark);
+                            } catch (e) {
+                                console.error("Failed to highlight node portion:", e);
+                            }
+                        }
+
+                        return nodesToHighlight.length > 0;
+                    }
+
+                    // Helper function to highlight text spanning multiple elements
+                    function highlightTextAcrossElements(elements, searchText, color, highlightId) {
+                        // Collect all text nodes from all elements with their positions
+                        const allTextNodes = [];
+                        let combinedText = '';
+
+                        elements.forEach(element => {
+                            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+                            let node;
+                            while (node = walker.nextNode()) {
+                                allTextNodes.push({
+                                    node: node,
+                                    start: combinedText.length,
+                                    end: combinedText.length + node.textContent.length
+                                });
+                                combinedText += node.textContent;
+                            }
+                        });
+
+                        if (allTextNodes.length === 0) return false;
+
+                        // Normalize whitespace for matching
+                        const normalizedCombined = normalizeWs(combinedText);
+                        const normalizedSearch = normalizeWs(searchText);
+
+                        // Try exact match first
+                        let matchStart = combinedText.indexOf(searchText);
+                        let matchEnd = matchStart !== -1 ? matchStart + searchText.length : -1;
+
+                        // If not found, try normalized matching
+                        if (matchStart === -1) {
+                            const normMatchStart = normalizedCombined.indexOf(normalizedSearch);
+                            if (normMatchStart !== -1) {
+                                // Map normalized position back to original
+                                let origPos = 0;
+                                let normPos = 0;
+                                while (normPos < normMatchStart && origPos < combinedText.length) {
+                                    if (/\s/.test(combinedText[origPos])) {
+                                        while (origPos < combinedText.length - 1 && /\s/.test(combinedText[origPos + 1])) {
+                                            origPos++;
+                                        }
+                                    }
+                                    origPos++;
+                                    normPos++;
+                                }
+                                matchStart = origPos;
+
+                                let searchLen = normalizedSearch.length;
+                                while (searchLen > 0 && origPos < combinedText.length) {
+                                    if (/\s/.test(combinedText[origPos])) {
+                                        while (origPos < combinedText.length - 1 && /\s/.test(combinedText[origPos + 1])) {
+                                            origPos++;
+                                        }
+                                    }
+                                    origPos++;
+                                    searchLen--;
+                                }
+                                matchEnd = origPos;
+                            }
+                        }
+
+                        if (matchStart === -1) return false;
+
+                        // Find which text nodes contain our match
+                        const nodesToHighlight = [];
+                        for (const tn of allTextNodes) {
+                            if (tn.end > matchStart && tn.start < matchEnd) {
+                                const nodeStart = Math.max(0, matchStart - tn.start);
+                                const nodeEnd = Math.min(tn.node.textContent.length, matchEnd - tn.start);
+                                nodesToHighlight.push({
+                                    node: tn.node,
+                                    start: nodeStart,
+                                    end: nodeEnd
+                                });
+                            }
+                        }
+
+                        if (nodesToHighlight.length === 0) return false;
+
+                        // Apply highlights to each text node portion (in reverse to preserve positions)
+                        for (let i = nodesToHighlight.length - 1; i >= 0; i--) {
+                            const info = nodesToHighlight[i];
+                            try {
+                                const range = document.createRange();
+                                range.setStart(info.node, info.start);
+                                range.setEnd(info.node, info.end);
+
+                                const mark = document.createElement('mark');
+                                mark.className = 'user-highlight';
+                                mark.setAttribute('style', 'background-color: ' + color + ' !important; color: inherit !important; padding: 2px 0; border-radius: 2px;');
+                                mark.dataset.highlightId = highlightId;
+                                mark.onclick = function(e) {
+                                    e.stopPropagation();
+                                    if (window.Android) {
+                                        window.Android.onHighlightClick(highlightId.toString());
+                                    }
+                                };
+
+                                range.surroundContents(mark);
+                            } catch (e) {
+                                console.error("Failed to highlight node portion:", e);
+                            }
+                        }
+
+                        return nodesToHighlight.length > 0;
+                    }
 
                     // Apply new highlights
                     highlights.forEach(highlight => {
@@ -1359,45 +1812,43 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                         }
 
                         // Try to highlight in each occurrence (handles pagination splits)
+                        let highlighted = false;
                         elements.forEach(element => {
-                            // Find and highlight the text
-                            const walker = document.createTreeWalker(
-                                element,
-                                NodeFilter.SHOW_TEXT,
-                                null,
-                                false
-                            );
-
-                            let node;
-                            let highlighted = false;
-                            while (node = walker.nextNode()) {
-                                if (highlighted) break;  // Only highlight first occurrence per element
-
-                                const text = node.textContent;
-                                const index = text.indexOf(highlight.text);
-
-                                if (index !== -1) {
-                                    try {
-                                        const range = document.createRange();
-                                        range.setStart(node, index);
-                                        range.setEnd(node, index + highlight.text.length);
-
-                                        const mark = document.createElement('mark');
-                                        mark.className = 'user-highlight';
-                                        mark.style.backgroundColor = highlight.color;
-                                        mark.style.color = 'inherit';
-                                        mark.style.padding = '2px 0';
-                                        mark.dataset.highlightId = highlight.id;
-
-                                        range.surroundContents(mark);
-                                        highlighted = true;
-                                        console.log("Applied highlight ID " + highlight.id + " in element " + highlight.elementId);
-                                    } catch (e) {
-                                        console.error("Failed to apply highlight:", e);
-                                    }
+                            if (!highlighted) {
+                                highlighted = highlightTextInElement(element, highlight.text, highlight.color, highlight.id);
+                                if (highlighted) {
+                                    console.log("Applied highlight ID " + highlight.id + " in element " + highlight.elementId);
                                 }
                             }
                         });
+
+                        // If not found in individual elements, try across all elements combined
+                        // This handles text that spans pagination splits in two-page mode
+                        if (!highlighted && elements.length > 1) {
+                            console.log("Trying cross-element highlight for ID " + highlight.id);
+                            highlighted = highlightTextAcrossElements(Array.from(elements), highlight.text, highlight.color, highlight.id);
+                            if (highlighted) {
+                                console.log("Applied cross-element highlight ID " + highlight.id);
+                            }
+                        }
+
+                        // Final fallback: search entire page content for the text
+                        // This handles cases where page layout changed the element structure
+                        if (!highlighted) {
+                            console.log("Trying global search for highlight ID " + highlight.id);
+                            const wrapper = document.getElementById('pagination-wrapper');
+                            if (wrapper) {
+                                const allPageElements = wrapper.querySelectorAll('.page > *');
+                                highlighted = highlightTextAcrossElements(Array.from(allPageElements), highlight.text, highlight.color, highlight.id);
+                                if (highlighted) {
+                                    console.log("Applied highlight ID " + highlight.id + " via global search");
+                                }
+                            }
+                        }
+
+                        if (!highlighted) {
+                            console.warn("Could not apply highlight ID " + highlight.id + " - text not found: " + highlight.text.substring(0, 50) + "...");
+                        }
                     });
                 }
 
@@ -1442,7 +1893,8 @@ fun ReaderControls(
     onFontFamilyChange: (String) -> Unit,
     onChapterChange: (Int) -> Unit,
     backgroundColor: Color,
-    contentColor: Color
+    contentColor: Color,
+    isTwoPageMode: Boolean = false
 ) {
     var showAdvancedSettings by remember { mutableStateOf(false) }
 
@@ -1454,6 +1906,34 @@ fun ReaderControls(
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
         Column(Modifier.padding(16.dp)) {
+            // Inner screen settings indicator
+            if (isTwoPageMode) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_book),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Inner Screen Settings (Two-Page Mode)",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { if (currentChapter > 0) onChapterChange(currentChapter - 1) }) {
                     Icon(painterResource(R.drawable.ic_skip_previous), contentDescription = "Prev Chapter")
@@ -1810,6 +2290,156 @@ fun HighlightItem(
 }
 
 @Composable
+fun HistorySheet(
+    historyEvents: List<ReaderViewModel.HistoryEvent>,
+    currentAudioPosition: Long,
+    onEventClick: (ReaderViewModel.HistoryEvent) -> Unit
+) {
+    val dateFormat = remember { java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Text(
+            "Navigation History",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            "Tap any entry to return to that position",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (historyEvents.isEmpty()) {
+            Text(
+                "No navigation history yet. History is recorded when you navigate to highlights or change playback state.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 32.dp)
+            )
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                items(historyEvents) { event ->
+                    HistoryItem(
+                        event = event,
+                        dateFormat = dateFormat,
+                        onClick = { onEventClick(event) }
+                    )
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HistoryItem(
+    event: ReaderViewModel.HistoryEvent,
+    dateFormat: java.text.SimpleDateFormat,
+    onClick: () -> Unit
+) {
+    val icon = when (event.type) {
+        ReaderViewModel.HistoryEventType.PLAY -> R.drawable.ic_play_arrow
+        ReaderViewModel.HistoryEventType.PAUSE -> R.drawable.ic_pause
+        ReaderViewModel.HistoryEventType.NAVIGATE -> R.drawable.ic_arrow_forward
+        ReaderViewModel.HistoryEventType.HIGHLIGHT_CLICK -> R.drawable.ic_highlight
+    }
+
+    val typeLabel = when (event.type) {
+        ReaderViewModel.HistoryEventType.PLAY -> "Played"
+        ReaderViewModel.HistoryEventType.PAUSE -> "Paused"
+        ReaderViewModel.HistoryEventType.NAVIGATE -> "Navigated"
+        ReaderViewModel.HistoryEventType.HIGHLIGHT_CLICK -> "Viewed Highlight"
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painterResource(icon),
+                contentDescription = typeLabel,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    event.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    event.chapterTitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        dateFormat.format(java.util.Date(event.timestamp)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "Page ${((event.scrollPercent * 100).toInt())}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (event.audioPositionMs > 0) {
+                        Text(
+                            formatAudioTime(event.audioPositionMs),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            Icon(
+                painterResource(R.drawable.ic_keyboard_arrow_right),
+                contentDescription = "Go to",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+private fun formatAudioTime(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format("%d:%02d", minutes, seconds)
+    }
+}
+
+@Composable
 fun BookmarksSheet(
     bookmarks: List<com.pekempy.ReadAloudbooks.data.local.entities.Bookmark>,
     onBookmarkClick: (com.pekempy.ReadAloudbooks.data.local.entities.Bookmark) -> Unit,
@@ -2036,32 +2666,14 @@ fun ExportHighlightsDialog(
 
 @Composable
 fun LongPressContextMenu(
-    hasSelection: Boolean,
-    onHighlight: () -> Unit,
     onNavigateToPosition: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Action") },
+        title = { Text("Start Playback") },
         text = {
             Column {
-                if (hasSelection) {
-                    TextButton(
-                        onClick = {
-                            onHighlight()
-                            onDismiss()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.ic_highlight),
-                            contentDescription = null,
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
-                        Text("Highlight Text")
-                    }
-                }
                 TextButton(
                     onClick = {
                         onNavigateToPosition()

@@ -4,7 +4,9 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pekempy.ReadAloudbooks.data.UserPreferencesRepository
+import com.pekempy.ReadAloudbooks.data.InnerScreenSettings
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
+import com.pekempy.ReadAloudbooks.util.ReaderScreenMode
 import com.pekempy.ReadAloudbooks.data.UnifiedProgress
 import com.pekempy.ReadAloudbooks.service.DownloadService
 import nl.siegmann.epublib.epub.EpubReader
@@ -25,6 +27,7 @@ import com.pekempy.ReadAloudbooks.data.local.entities.Highlight
 import com.pekempy.ReadAloudbooks.data.local.entities.Bookmark
 import com.pekempy.ReadAloudbooks.data.local.entities.ReadingSession
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asSharedFlow
 
 class ReaderViewModel(
     private val repository: UserPreferencesRepository,
@@ -63,6 +66,29 @@ class ReaderViewModel(
     var showControls by mutableStateOf(false)
     var isReadAloudMode by mutableStateOf(false)
 
+    // Foldable device support
+    var screenMode by mutableStateOf(ReaderScreenMode.SINGLE_PAGE)
+    var innerScreenSettings by mutableStateOf<InnerScreenSettings?>(null)
+    var foldBoundsPx by mutableIntStateOf(0)
+    private var innerSettingsCollectionJob: Job? = null
+
+    // Returns appropriate settings based on screen mode (inner or outer)
+    val activeSettings: com.pekempy.ReadAloudbooks.data.UserSettings?
+        get() = when (screenMode) {
+            ReaderScreenMode.SINGLE_PAGE -> settings
+            ReaderScreenMode.TWO_PAGE -> innerScreenSettings?.let { inner ->
+                settings?.copy(
+                    readerFontSize = inner.readerFontSize,
+                    readerTheme = inner.readerTheme,
+                    readerFontFamily = inner.readerFontFamily,
+                    readerLineSpacing = inner.readerLineSpacing,
+                    readerMarginSize = inner.readerMarginSize,
+                    readerTextAlignment = inner.readerTextAlignment,
+                    readerBrightness = inner.readerBrightness
+                )
+            } ?: settings
+        }
+
     data class SyncSegment(
         val id: String,
         val audioSrc: String,
@@ -75,7 +101,48 @@ class ReaderViewModel(
     var syncTrigger by mutableIntStateOf(0)
     var currentAudioPos by mutableLongStateOf(0L)
     var jumpToElementRequest = mutableStateOf<String?>(null)
-    
+
+    // Track the currently visible element from page navigation (for syncing audio when not playing)
+    var visibleElementId by mutableStateOf<String?>(null)
+
+    // Smart "Return to Reading Position" button
+    data class SavedReadingPosition(
+        val chapterIndex: Int,
+        val elementId: String?,
+        val audioPositionMs: Long,
+        val scrollPercent: Float,
+        val chapterTitle: String
+    )
+
+    var savedReadingPosition by mutableStateOf<SavedReadingPosition?>(null)
+    var showReturnButton by mutableStateOf(false)
+
+    fun saveCurrentPositionForReturn(audioPositionMs: Long) {
+        val chapterTitle = lazyBook?.spineTitles?.get(
+            lazyBook?.spineHrefs?.getOrNull(currentChapterIndex) ?: ""
+        ) ?: "Chapter ${currentChapterIndex + 1}"
+
+        savedReadingPosition = SavedReadingPosition(
+            chapterIndex = currentChapterIndex,
+            elementId = visibleElementId ?: currentHighlightId,
+            audioPositionMs = audioPositionMs,
+            scrollPercent = lastScrollPercent,
+            chapterTitle = chapterTitle
+        )
+        showReturnButton = true
+    }
+
+    fun returnToSavedPosition(): SavedReadingPosition? {
+        val position = savedReadingPosition
+        showReturnButton = false
+        savedReadingPosition = null
+        return position
+    }
+
+    fun dismissReturnButton() {
+        showReturnButton = false
+    }
+
     data class SyncConfirmation(
         val newChapterIndex: Int,
         val newScrollPercent: Float,
@@ -86,8 +153,67 @@ class ReaderViewModel(
         val source: String
     )
     var syncConfirmation by mutableStateOf<SyncConfirmation?>(null)
-    
+
     var pendingAnchorId = mutableStateOf<String?>(null)
+
+    // Reading/Playback History
+    enum class HistoryEventType {
+        PLAY, PAUSE, NAVIGATE, HIGHLIGHT_CLICK
+    }
+
+    data class HistoryEvent(
+        val id: Long = System.currentTimeMillis(),
+        val type: HistoryEventType,
+        val timestamp: Long = System.currentTimeMillis(),
+        val chapterIndex: Int,
+        val chapterTitle: String,
+        val elementId: String?,
+        val audioPositionMs: Long,
+        val scrollPercent: Float,
+        val description: String // e.g., "Paused at Chapter 3", "Navigated to highlight"
+    )
+
+    private val _historyEvents = mutableStateListOf<HistoryEvent>()
+    val historyEvents: List<HistoryEvent> get() = _historyEvents.toList()
+
+    fun addHistoryEvent(type: HistoryEventType, description: String, audioPositionMs: Long = currentAudioPos) {
+        val chapterTitle = lazyBook?.spineTitles?.get(
+            lazyBook?.spineHrefs?.getOrNull(currentChapterIndex) ?: ""
+        ) ?: "Chapter ${currentChapterIndex + 1}"
+
+        val event = HistoryEvent(
+            type = type,
+            chapterIndex = currentChapterIndex,
+            chapterTitle = chapterTitle,
+            elementId = visibleElementId ?: currentHighlightId,
+            audioPositionMs = audioPositionMs,
+            scrollPercent = lastScrollPercent,
+            description = description
+        )
+        _historyEvents.add(0, event) // Add to beginning (most recent first)
+
+        // Keep only last 50 events
+        if (_historyEvents.size > 50) {
+            _historyEvents.removeAt(_historyEvents.size - 1)
+        }
+    }
+
+    fun navigateToHistoryEvent(event: HistoryEvent) {
+        // Add current position to history before navigating
+        addHistoryEvent(HistoryEventType.NAVIGATE, "Before returning to history")
+
+        // Navigate to the history event's position
+        if (event.chapterIndex != currentChapterIndex) {
+            changeChapter(event.chapterIndex, audioPosMs = event.audioPositionMs)
+        }
+        if (event.elementId != null) {
+            currentHighlightId = event.elementId
+            forceScrollUpdate()
+        } else {
+            lastScrollPercent = event.scrollPercent
+            forceScrollUpdate()
+        }
+    }
     
     fun loadEpub(bookId: String, isReadAloud: Boolean) {
         if (currentBookId == bookId && isReadAloudMode == isReadAloud) {
@@ -436,13 +562,18 @@ class ReaderViewModel(
             android.util.Log.d("ReaderViewModel", "Ignoring saveProgress: loading=$isLoading, initialized=$readerInitialized")
             return
         }
-        
+
         lastScrollPercent = scrollPercent
         if (elementId != null && !isReadAloudMode) {
             currentHighlightId = elementId
         }
         if (audioPosMs != null) {
             currentAudioPos = audioPosMs
+        }
+
+        // Track the visible element from page navigation (used for audio sync when not playing)
+        if (elementId != null) {
+            visibleElementId = elementId
         }
         
         viewModelScope.launch {
@@ -615,6 +746,91 @@ class ReaderViewModel(
         }
     }
 
+    // === FOLDABLE DEVICE SUPPORT ===
+
+    fun updateScreenMode(mode: ReaderScreenMode, foldBounds: Int = 0) {
+        val previousMode = screenMode
+        screenMode = mode
+        foldBoundsPx = foldBounds
+
+        if (mode == ReaderScreenMode.TWO_PAGE && previousMode != ReaderScreenMode.TWO_PAGE) {
+            loadInnerScreenSettings()
+        }
+    }
+
+    private fun loadInnerScreenSettings() {
+        innerSettingsCollectionJob?.cancel()
+        innerSettingsCollectionJob = viewModelScope.launch {
+            repository.innerScreenSettings.collect { settings ->
+                innerScreenSettings = settings
+            }
+        }
+    }
+
+    // Inner screen setting update methods
+    fun updateInnerFontSize(size: Float) {
+        viewModelScope.launch {
+            repository.updateInnerReaderFontSize(size)
+            innerScreenSettings = innerScreenSettings?.copy(readerFontSize = size)
+        }
+    }
+
+    fun updateInnerTheme(theme: Int) {
+        viewModelScope.launch {
+            repository.updateInnerReaderTheme(theme)
+            innerScreenSettings = innerScreenSettings?.copy(readerTheme = theme)
+        }
+    }
+
+    fun updateInnerFontFamily(family: String) {
+        viewModelScope.launch {
+            repository.updateInnerReaderFontFamily(family)
+            innerScreenSettings = innerScreenSettings?.copy(readerFontFamily = family)
+        }
+    }
+
+    fun updateInnerLineSpacing(lineSpacing: Float) {
+        viewModelScope.launch {
+            repository.updateInnerReaderLineSpacing(lineSpacing)
+            innerScreenSettings = innerScreenSettings?.copy(readerLineSpacing = lineSpacing)
+        }
+    }
+
+    fun updateInnerMarginSize(marginSize: Int) {
+        viewModelScope.launch {
+            repository.updateInnerReaderMarginSize(marginSize)
+            innerScreenSettings = innerScreenSettings?.copy(readerMarginSize = marginSize)
+        }
+    }
+
+    fun updateInnerTextAlignment(alignment: String) {
+        viewModelScope.launch {
+            repository.updateInnerReaderTextAlignment(alignment)
+            innerScreenSettings = innerScreenSettings?.copy(readerTextAlignment = alignment)
+        }
+    }
+
+    fun updateInnerBrightness(brightness: Float) {
+        viewModelScope.launch {
+            repository.updateInnerReaderBrightness(brightness)
+            innerScreenSettings = innerScreenSettings?.copy(readerBrightness = brightness)
+        }
+    }
+
+    fun updateInnerPageGap(gap: Int) {
+        viewModelScope.launch {
+            repository.updateInnerPageGap(gap)
+            innerScreenSettings = innerScreenSettings?.copy(pageGap = gap)
+        }
+    }
+
+    fun updateInnerShowPageDivider(show: Boolean) {
+        viewModelScope.launch {
+            repository.updateInnerShowPageDivider(show)
+            innerScreenSettings = innerScreenSettings?.copy(showPageDivider = show)
+        }
+    }
+
     fun getResourceResponse(href: String): WebResourceResponse? {
         val zip = currentZipFile ?: return null
         val book = lazyBook ?: return null
@@ -777,10 +993,29 @@ class ReaderViewModel(
     var showHighlightMenu by mutableStateOf(false)
     var selectedHighlightColor by mutableStateOf("#FFEB3B") // Yellow default
     var pendingHighlight by mutableStateOf<PendingHighlight?>(null)
+    var clickedHighlight by mutableStateOf<Highlight?>(null)
     val highlightsForCurrentChapter = mutableStateOf<List<Highlight>>(emptyList())
     var longPressedElementId by mutableStateOf<String?>(null)
     private var highlightCollectionJob: Job? = null
     var clearSelectionTrigger by mutableIntStateOf(0)  // Trigger to clear text selection
+
+    // Event flow for highlight UI events (bypasses Compose state observation issues)
+    sealed class HighlightEvent {
+        data class ShowLongPressMenu(val elementId: String, val pendingHighlight: PendingHighlight?) : HighlightEvent()
+        data class ShowColorPicker(val pendingHighlight: PendingHighlight) : HighlightEvent()
+    }
+    private val _highlightEvents = kotlinx.coroutines.flow.MutableSharedFlow<HighlightEvent>(replay = 0, extraBufferCapacity = 1)
+    val highlightEvents = _highlightEvents.asSharedFlow()
+
+    fun emitLongPressEvent(elementId: String) {
+        android.util.Log.e("ReaderViewModel", "=== EMITTING LongPressMenu event for: $elementId ===")
+        _highlightEvents.tryEmit(HighlightEvent.ShowLongPressMenu(elementId, pendingHighlight))
+    }
+
+    fun emitColorPickerEvent(pending: PendingHighlight) {
+        android.util.Log.e("ReaderViewModel", "=== EMITTING ColorPicker event for: ${pending.text.take(20)} ===")
+        _highlightEvents.tryEmit(HighlightEvent.ShowColorPicker(pending))
+    }
 
     // Bookmark management
     var bookmarks = mutableStateOf<List<Bookmark>>(emptyList())
@@ -945,6 +1180,8 @@ class ReaderViewModel(
     }
 
     fun updateHighlightColor(highlightId: Long, color: String) {
+        // Remember this color for future highlights
+        selectedHighlightColor = color
         viewModelScope.launch {
             val highlight = highlightRepository.getHighlightById(highlightId)
             if (highlight != null) {

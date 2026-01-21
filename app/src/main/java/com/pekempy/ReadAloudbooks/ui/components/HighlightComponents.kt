@@ -256,9 +256,7 @@ fun HighlightActionsSheet(
     highlight: Highlight,
     onEdit: () -> Unit,
     onChangeColor: () -> Unit,
-    onAddNote: () -> Unit,
     onCopy: () -> Unit,
-    onShare: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -276,11 +274,9 @@ fun HighlightActionsSheet(
                 modifier = Modifier.padding(bottom = 8.dp)
             )
 
-            HighlightAction(icon = "✏️", text = "Edit Note", onClick = onEdit)
+            HighlightAction(icon = "✏️", text = "Edit", onClick = onEdit)
             HighlightAction(icon = "🎨", text = "Change Color", onClick = onChangeColor)
-            HighlightAction(icon = "📝", text = "Add Note", onClick = onAddNote)
             HighlightAction(icon = "📋", text = "Copy Text", onClick = onCopy)
-            HighlightAction(icon = "📤", text = "Share", onClick = onShare)
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             HighlightAction(
                 icon = "🗑️",
