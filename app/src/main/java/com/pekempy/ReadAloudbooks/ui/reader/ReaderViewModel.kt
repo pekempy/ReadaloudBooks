@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.first
 import java.io.File
 import java.io.FileInputStream
 import android.webkit.WebResourceResponse
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import com.pekempy.ReadAloudbooks.data.Book
 import com.pekempy.ReadAloudbooks.data.api.Position
 import com.pekempy.ReadAloudbooks.data.api.Locator
@@ -146,31 +148,112 @@ class ReaderViewModel(
                 )
                 
                 val apiManager = AppContainer.apiClientManager
-                val apiBook = apiManager.getApi().getBookDetails(bookId)
+                val credentials = repository.userCredentials.first()
+                val isLocalOnlyMode = credentials?.isLocalOnly ?: false
                 
-                val apiSeries = apiBook.series?.firstOrNull()
-                val apiCollection = apiBook.collections?.firstOrNull()
-                val seriesName = apiSeries?.name ?: apiCollection?.name
-                val seriesIdx = apiSeries?.seriesIndex ?: apiCollection?.seriesIndex
+                val book = if (isLocalOnlyMode) {
+                    com.pekempy.ReadAloudbooks.util.LocalScanner.findBookByLocalId(AppContainer.context, bookId)
+                } else {
+                    val apiBook = apiManager.getApi().getBookDetails(bookId)
+                    val apiSeries = apiBook.series?.firstOrNull()
+                    val apiCollection = apiBook.collections?.firstOrNull()
+                    val seriesName = apiSeries?.name ?: apiCollection?.name
+                    val seriesIdx = apiSeries?.seriesIndex ?: apiCollection?.seriesIndex
 
-                val book = Book(
-                    id = apiBook.uuid,
-                    title = apiBook.title,
-                    author = apiBook.authors.joinToString(", ") { it.name },
-                    series = seriesName,
-                    seriesIndex = seriesIdx,
-                    coverUrl = apiManager.getCoverUrl(apiBook.uuid),
-                    audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
-                    ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid)
-                )
-                
-                val bookDir = DownloadUtils.getBookDir(AppContainer.context.filesDir, book)
-                val baseFileName = DownloadUtils.getBaseFileName(book)
-                val fileName = if (isReadAloud) "$baseFileName (readaloud).epub" else "$baseFileName.epub"
-                val file = File(bookDir, fileName)
-                
-                if (!file.exists()) {
-                    throw Exception("Ebook file not found on disk. Please download it first.")
+                    Book(
+                        id = apiBook.uuid,
+                        title = apiBook.title,
+                        author = apiBook.authors.joinToString(", ") { it.name },
+                        series = seriesName,
+                        seriesIndex = seriesIdx,
+                        coverUrl = apiManager.getCoverUrl(apiBook.uuid),
+                        audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
+                        ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid)
+                    )
+                }
+
+                if (book == null) {
+                    throw Exception("Book not found")
+                }
+
+                val file = if (isLocalOnlyMode) {
+                    val parts = bookId.split("|")
+                    if (parts.size >= 3) {
+                        val rootUriStr = parts[0]
+                        val folderDocId = parts[1]
+                        val rootUri = android.net.Uri.parse(rootUriStr)
+                        
+                        val childrenUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(
+                            rootUri, folderDocId
+                        )
+                        
+                        val projection = arrayOf(
+                            android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                            android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                            android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED
+                        )
+                        
+                        var epubDocId: String? = null
+                        var epubLastModified: Long = 0
+                        AppContainer.context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                            val docIdCol = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                            val nameCol = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                            val modCol = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                            
+                            while (cursor.moveToNext()) {
+                                val name = cursor.getString(nameCol) ?: continue
+                                val lowerName = name.lowercase()
+                                if (lowerName.endsWith(".epub") && !lowerName.contains("(readaloud)")) {
+                                    epubDocId = cursor.getString(docIdCol)
+                                    epubLastModified = cursor.getLong(modCol)
+                                    break
+                                }
+                            }
+                        }
+                        
+                        if (epubDocId == null) throw Exception("EPUB file not found in folder")
+                        
+                        val epubUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(rootUri, epubDocId!!)
+                        
+                        val cacheFile = File(AppContainer.context.cacheDir, "reader_cache_${book.id.hashCode()}.epub")
+                        if (!cacheFile.exists() || cacheFile.lastModified() < epubLastModified) {
+                            AppContainer.context.contentResolver.openInputStream(epubUri)?.use { input ->
+                                cacheFile.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                        }
+                        cacheFile
+                    } else {
+                        val folderUriStr = bookId.substringBeforeLast("/")
+                        val folderUri = android.net.Uri.parse(folderUriStr)
+                        val folderDoc = DocumentFile.fromTreeUri(AppContainer.context, folderUri)
+                        val filesList = folderDoc?.listFiles()
+                        val epubDoc = filesList?.find { doc -> 
+                            doc.name?.lowercase()?.endsWith(".epub") == true && 
+                            (doc.name?.contains(book.title, ignoreCase = true) == true || (filesList.size) <= 3)
+                        } ?: throw Exception("EPUB file not found in folder")
+                        
+                        val cacheFile = File(AppContainer.context.cacheDir, "reader_cache_${book.id.hashCode()}.epub")
+                        val sourceLastModified = epubDoc.lastModified()
+                        if (!cacheFile.exists() || cacheFile.lastModified() < sourceLastModified) {
+                            AppContainer.context.contentResolver.openInputStream(epubDoc.uri)?.use { input ->
+                                cacheFile.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                        }
+                        cacheFile
+                    }
+                } else {
+                    val bookDir = DownloadUtils.getBookDir(AppContainer.context.filesDir, book)
+                    val baseFileName = DownloadUtils.getBaseFileName(book)
+                    val fileName = if (isReadAloud) "$baseFileName (readaloud).epub" else "$baseFileName.epub"
+                    val f = File(bookDir, fileName)
+                    if (!f.exists()) {
+                        throw Exception("Ebook file not found on disk. Please download it first.")
+                    }
+                    f
                 }
 
                 android.util.Log.d("ReaderViewModel", "Lazily opening: ${file.absolutePath}")
@@ -878,6 +961,13 @@ class ReaderViewModel(
         } catch (e: Exception) {}
         currentZipFile = null
         lazyBook = null
+        
+        currentBookId?.let { id ->
+            val cacheFile = File(AppContainer.context.cacheDir, "reader_cache_${id.hashCode()}.epub")
+            if (cacheFile.exists()) {
+                cacheFile.delete()
+            }
+        }
     }
 
     fun redownloadBook(context: android.content.Context) {

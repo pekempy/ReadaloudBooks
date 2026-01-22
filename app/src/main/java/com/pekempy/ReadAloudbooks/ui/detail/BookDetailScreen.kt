@@ -57,7 +57,8 @@ fun BookDetailScreen(
     onSeriesClick: (String) -> Unit,
     onRead: (String, Boolean) -> Unit,
     onNavigateToDownloads: () -> Unit,
-    onEdit: (String) -> Unit
+    onEdit: (String) -> Unit,
+    isLocalOnly: Boolean = false
 ) {
     val context = LocalContext.current
     LaunchedEffect(bookId) {
@@ -92,19 +93,21 @@ fun BookDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = { onEdit(bookId) },
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f), CircleShape)
-                            .size(36.dp)
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.ic_edit), 
-                            contentDescription = "Edit",
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
+                    if (!isLocalOnly) {
+                        IconButton(
+                            onClick = { onEdit(bookId) },
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f), CircleShape)
+                                .size(36.dp)
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.ic_edit), 
+                                contentDescription = "Edit",
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -334,7 +337,7 @@ fun BookDetailScreen(
                         }
 
                         val currentActiveJob = viewModel.activeDownload
-                        if (!book.isDownloaded) {
+                        if (!book.isDownloaded && !viewModel.isLocalOnly) {
                             Button(
                                 onClick = { viewModel.downloadAll(context.filesDir) },
                                 enabled = currentActiveJob == null,
@@ -361,7 +364,7 @@ fun BookDetailScreen(
                                 Row(modifier = Modifier.fillMaxSize()) {
                                     val sections = mutableListOf<@Composable RowScope.() -> Unit>()
 
-                                    if (book.hasReadAloud) {
+                                    if (book.hasReadAloud && (!viewModel.isLocalOnly || book.isReadAloudDownloaded)) {
                                         sections.add {
                                             val isDownloaded = book.isReadAloudDownloaded
                                             val isCurrentReadAloud = readAloudViewModel.currentBook?.id == book.id
@@ -399,7 +402,7 @@ fun BookDetailScreen(
                                             }
                                         }
                                     } else {
-                                        if (book.hasAudiobook) {
+                                        if (book.hasAudiobook && (!viewModel.isLocalOnly || book.isAudiobookDownloaded)) {
                                             sections.add {
                                                 val isDownloaded = book.isAudiobookDownloaded
                                                 val isCurrentAudio = audiobookViewModel.currentBook?.id == book.id
@@ -438,7 +441,7 @@ fun BookDetailScreen(
                                             }
                                         }
 
-                                        if (book.hasEbook) {
+                                        if (book.hasEbook && (!viewModel.isLocalOnly || book.isEbookDownloaded)) {
                                             sections.add {
                                                 val isDownloaded = book.isEbookDownloaded
                                                 Box(
