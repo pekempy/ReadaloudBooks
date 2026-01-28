@@ -7,19 +7,51 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pekempy.ReadAloudbooks.data.Book
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
-import kotlinx.coroutines.launch
-
 import com.pekempy.ReadAloudbooks.data.UserPreferencesRepository
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
-
+import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.compose.runtime.snapshotFlow
 class BookDetailViewModel(private val repository: UserPreferencesRepository) : ViewModel() {
     var book by mutableStateOf<Book?>(null)
     var isLoading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
     var localProgress by mutableStateOf<Float?>(null)
     var serverProgress by mutableStateOf<Float?>(null)
+    
+    private var lastCompletedJobInfo: String? = null
+
+    init {
+        viewModelScope.launch {
+            snapshotFlow { 
+                val currentBookId = book?.id
+                val activeJobs = com.pekempy.ReadAloudbooks.data.DownloadManager.activeDownloads.toList()
+                activeJobs.find { it.book.id == currentBookId && it.isCompleted }
+            }.collect { completedJob ->
+                if (completedJob != null) {
+                    val jobInfo = "${completedJob.book.id}_${completedJob.hashCode()}"
+                    if (lastCompletedJobInfo != jobInfo) {
+                        lastCompletedJobInfo = jobInfo
+                        refreshLocalDownloadStatus()
+                        book?.id?.let { loadBook(it, showLoading = false) }
+                    }
+                }
+            }
+        }
+    }
+
+    fun refreshLocalDownloadStatus() {
+        val currentBook = book ?: return
+        book = currentBook.copy(
+            isDownloaded = com.pekempy.ReadAloudbooks.util.DownloadUtils.isBookDownloaded(AppContainer.context.filesDir, currentBook),
+            isAudiobookDownloaded = com.pekempy.ReadAloudbooks.util.DownloadUtils.isAudiobookDownloaded(AppContainer.context.filesDir, currentBook),
+            isEbookDownloaded = com.pekempy.ReadAloudbooks.util.DownloadUtils.isEbookDownloaded(AppContainer.context.filesDir, currentBook),
+            isReadAloudDownloaded = com.pekempy.ReadAloudbooks.util.DownloadUtils.isReadAloudDownloaded(AppContainer.context.filesDir, currentBook)
+        )
+    }
 
     fun loadBook(uuid: String, showLoading: Boolean = true) {
+
         viewModelScope.launch {
             if (showLoading) {
                 isLoading = true
@@ -41,9 +73,9 @@ class BookDetailViewModel(private val repository: UserPreferencesRepository) : V
                     narrator = response.narrators?.joinToString(", ") { it.name },
                     coverUrl = apiManager.getCoverUrl(response.uuid, response.updatedAt),
                     description = response.description,
-                    hasReadAloud = response.readaloud != null && !response.readaloud.filepath.isNullOrBlank(),
-                    hasEbook = response.ebook != null,
-                    hasAudiobook = response.audiobook != null,
+                    hasReadAloud = response.readaloud != null && !response.readaloud.filepath.isNullOrBlank() && response.readaloud.missing != 1,
+                    hasEbook = response.ebook != null && response.ebook.missing != 1,
+                    hasAudiobook = response.audiobook != null && response.audiobook.missing != 1,
                     syncedUrl = apiManager.getSyncDownloadUrl(response.uuid),
                     audiobookUrl = apiManager.getAudiobookDownloadUrl(response.uuid),
                     ebookUrl = apiManager.getEbookDownloadUrl(response.uuid),

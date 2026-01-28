@@ -203,8 +203,14 @@ class ReaderViewModel(
                     val overlay = if (line.contains("media-overlay=\"")) line.substringAfter("media-overlay=\"").substringBefore("\"") else null
                     val durationStr = if (line.contains("duration=\"")) line.substringAfter("duration=\"").substringBefore("\"") else null
                     
-                    manifestMap[id] = href
-                    val fullPath = normalizePath(opfDir + href)
+                    val decodedHref = try {
+                        java.net.URLDecoder.decode(href, "UTF-8")
+                    } catch (e: Exception) {
+                        href
+                    }
+                    
+                    manifestMap[id] = decodedHref
+                    val fullPath = normalizePath(opfDir + decodedHref)
                     mediaTypeMap[fullPath] = type
                     resourcesMap[fullPath] = fullPath
                     
@@ -575,10 +581,18 @@ class ReaderViewModel(
         val cleanHref = decodedHref.substringBefore("?").substringBefore("#")
         val normalizedHref = normalizePath(cleanHref)
 
-        val zipEntryName = book.resources[normalizedHref] ?: book.resources[cleanHref]
+        var zipEntryName = book.resources[normalizedHref] ?: book.resources[cleanHref]
         
         if (zipEntryName == null) {
-            android.util.Log.w("ReaderViewModel", "Resource not found in map: $normalizedHref (original: $cleanHref)")
+            // Fallback: search for entry ignoring case or with/without leading slash
+            val allEntries = zip.entries().asSequence().map { it.name }.toList()
+            zipEntryName = allEntries.find { it.equals(normalizedHref, ignoreCase = true) }
+                ?: allEntries.find { it.equals(cleanHref, ignoreCase = true) }
+                ?: allEntries.find { it.endsWith("/$normalizedHref", ignoreCase = true) }
+        }
+
+        if (zipEntryName == null) {
+            android.util.Log.w("ReaderViewModel", "Resource not found: $normalizedHref (clean: $cleanHref)")
             return null
         }
         
@@ -597,6 +611,10 @@ class ReaderViewModel(
                 normalizedHref.endsWith(".ttf", ignoreCase = true) -> "font/ttf"
                 normalizedHref.endsWith(".woff", ignoreCase = true) -> "font/woff"
                 normalizedHref.endsWith(".woff2", ignoreCase = true) -> "font/woff2"
+                normalizedHref.endsWith(".eot", ignoreCase = true) -> "application/vnd.ms-fontobject"
+                normalizedHref.endsWith(".ttc", ignoreCase = true) -> "font/collection"
+                normalizedHref.contains("font") && normalizedHref.endsWith(".svg", ignoreCase = true) -> "image/svg+xml"
+                normalizedHref.contains("font") -> "font/ttf" // Fallback for font folder
                 normalizedHref.endsWith(".css", ignoreCase = true) -> "text/css"
                 normalizedHref.endsWith(".js", ignoreCase = true) -> "application/javascript"
                 normalizedHref.endsWith(".xhtml", ignoreCase = true) || normalizedHref.endsWith(".html", ignoreCase = true) -> "text/html"
@@ -610,10 +628,18 @@ class ReaderViewModel(
         
         val encoding = if (mimeType.startsWith("text/") || mimeType.contains("javascript") || mimeType.contains("xml")) "UTF-8" else null
         
-        android.util.Log.d("ReaderViewModel", "Serving resource: $zipEntryName as $mimeType (encoding: $encoding)")
+        if (mimeType.startsWith("font/")) {
+            android.util.Log.d("ReaderViewModel", "Serving FONT: $zipEntryName as $mimeType")
+        }
         
         return try {
-            WebResourceResponse(mimeType, encoding, zip.getInputStream(entry))
+            val response = WebResourceResponse(mimeType, encoding, zip.getInputStream(entry))
+            val headers = mutableMapOf<String, String>()
+            headers["Access-Control-Allow-Origin"] = "*"
+            headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+            headers["Access-Control-Allow-Headers"] = "Content-Type, Range"
+            response.responseHeaders = headers
+            response
         } catch (e: Exception) {
             android.util.Log.e("ReaderViewModel", "Failed to serve resource: $zipEntryName", e)
             null
@@ -642,7 +668,7 @@ class ReaderViewModel(
         val href = book.spineHrefs[currentChapterIndex]
         val entryName = book.resources[href] ?: return null
         val entry = zip.getEntry(entryName) ?: return null
-        val raw = zip.getInputStream(entry).bufferedReader().readText()
+        val raw = zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).readText()
         
         return raw.replace(Regex("<\\?xml[^>]*\\?>", RegexOption.IGNORE_CASE), "").trim()
     }

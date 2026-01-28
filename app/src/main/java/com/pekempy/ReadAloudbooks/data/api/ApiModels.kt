@@ -105,6 +105,7 @@ data class TagResponse(
 data class AudiobookResponse(
     val uuid: String,
     val filepath: String?,
+    val missing: Int? = null,
     val createdAt: String? = null,
     val updatedAt: String? = null
 )
@@ -112,6 +113,7 @@ data class AudiobookResponse(
 data class EbookResponse(
     val uuid: String,
     val filepath: String?,
+    val missing: Int? = null,
     val createdAt: String? = null,
     val updatedAt: String? = null
 )
@@ -120,6 +122,7 @@ data class ReadAloudResponse(
     val uuid: String,
     val status: String? = null,
     val filepath: String? = null,
+    val missing: Int? = null,
     val queuePosition: Int? = null,
     val currentStage: String? = null,
     val stageProgress: Double? = null,

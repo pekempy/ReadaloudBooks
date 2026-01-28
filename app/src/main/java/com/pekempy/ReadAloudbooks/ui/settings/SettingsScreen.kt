@@ -445,7 +445,7 @@ fun SettingsEbook(
             }
 
             SettingsSection("Typeface") {
-                val fonts = listOf("serif" to "Serif", "sans-serif" to "Sans", "monospace" to "Mono")
+                val fonts = listOf("default" to "Default", "serif" to "Serif", "sans-serif" to "Sans", "monospace" to "Mono")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)

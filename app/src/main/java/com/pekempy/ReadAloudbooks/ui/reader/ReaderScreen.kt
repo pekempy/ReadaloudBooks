@@ -219,6 +219,7 @@ fun EpubWebView(
                         allowUniversalAccessFromFileURLs = true
                         allowFileAccess = true
                         allowContentAccess = true
+                        mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                     }
                     
                     webViewClient = object : WebViewClient() {
@@ -452,7 +453,7 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     -webkit-user-select: none;
                     
                     /* Maximize text density */
-                    line-height: ${if (isDefaultFont) "1.5" else "1.5 !important"};
+                    ${if (isDefaultFont) "" else "line-height: 1.5 !important;"}
                     hyphens: auto;
                     -webkit-hyphens: auto;
                     text-align: justify;
@@ -503,15 +504,23 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 }
 
                 /* Standard content styling with support for theme consistency */
-                .page, .page *:not(.highlight):not(.search-highlight) {
+                .page {
+                    font-size: var(--font-size);
+                    line-height: 1.6;
+                    ${if (!isDefaultFont) "font-family: var(--font-family) !important;" else ""}
+                }
+
+                .page *:not(.highlight):not(.search-highlight) {
                     word-wrap: break-word;
                     overflow-wrap: break-word;
                     -webkit-hyphens: auto;
                     hyphens: auto;
-                    font-size: ${if (isDefaultFont) "var(--font-size)" else "var(--font-size) !important"};
-                    line-height: ${if (isDefaultFont) "1.6" else "1.6 !important"};
+                    ${if (!isDefaultFont) """
+                    font-size: var(--font-size) !important;
+                    line-height: 1.6 !important;
+                    font-family: var(--font-family) !important;
+                    """ else ""}
                     color: var(--text-color) !important;
-                    ${if (!isDefaultFont) "font-family: var(--font-family) !important;" else ""}
                     max-width: 100% !important;
                     -webkit-user-select: none;
                     user-select: none;

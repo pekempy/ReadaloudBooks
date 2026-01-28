@@ -307,9 +307,9 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
                                         else if (apiBook.audiobook != null) apiManager.getAudiobookCoverUrl(apiBook.uuid, apiBook.updatedAt)
                                         else apiManager.getCoverUrl(apiBook.uuid, apiBook.updatedAt),
                             description = apiBook.description,
-                            hasReadAloud = apiBook.readaloud != null && !apiBook.readaloud.filepath.isNullOrBlank(),
-                            hasEbook = apiBook.ebook != null,
-                            hasAudiobook = apiBook.audiobook != null,
+                            hasReadAloud = apiBook.readaloud != null && !apiBook.readaloud.filepath.isNullOrBlank() && apiBook.readaloud.missing != 1,
+                            hasEbook = apiBook.ebook != null && apiBook.ebook.missing != 1,
+                            hasAudiobook = apiBook.audiobook != null && apiBook.audiobook.missing != 1,
                             syncedUrl = apiManager.getSyncDownloadUrl(apiBook.uuid),
                             audiobookUrl = apiManager.getAudiobookDownloadUrl(apiBook.uuid),
                             ebookUrl = apiManager.getEbookDownloadUrl(apiBook.uuid),

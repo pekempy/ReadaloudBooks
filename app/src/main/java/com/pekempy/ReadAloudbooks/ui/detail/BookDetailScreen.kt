@@ -64,12 +64,6 @@ fun BookDetailScreen(
         viewModel.loadBook(bookId)
     }
 
-    val activeJob = viewModel.activeDownload
-    LaunchedEffect(activeJob?.isCompleted) {
-        if (activeJob?.isCompleted == true) {
-            viewModel.loadBook(bookId)
-        }
-    }
 
     Scaffold(
         topBar = {
