@@ -24,6 +24,9 @@ import coil.compose.AsyncImage
 import java.text.SimpleDateFormat
 import java.util.*
 import java.io.File
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +35,17 @@ fun StorageManagementScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    
+    val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let {
+            context.contentResolver.takePersistableUriPermission(
+                it,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            viewModel.backupFiles(context, it, context.filesDir)
+        }
+    }
+    
     LaunchedEffect(Unit) {
         viewModel.loadFiles(context.filesDir)
     }
@@ -61,6 +75,12 @@ fun StorageManagementScreen(
                 },
                 actions = {
                     if (viewModel.selectedBookItem == null) {
+                        IconButton(
+                            onClick = { backupLauncher.launch(null) },
+                            enabled = !viewModel.isBackingUp
+                        ) {
+                            Icon(painterResource(R.drawable.ic_download), contentDescription = "Backup Files")
+                        }
                         IconButton(onClick = { showSortMenu = true }) {
                             Icon(painterResource(R.drawable.ic_sort), contentDescription = "Sort")
                         }
@@ -119,6 +139,40 @@ fun StorageManagementScreen(
                             }
                             items(activeDownloads) { job ->
                                 ActiveDownloadCard(job = job, onRemove = { com.pekempy.ReadAloudbooks.data.DownloadManager.removeJob(job) })
+                            }
+                            item {
+                                Spacer(Modifier.height(8.dp))
+                                HorizontalDivider()
+                                Spacer(Modifier.height(8.dp))
+                            }
+                        }
+                        
+                        if (viewModel.isBackingUp) {
+                            item {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                                    )
+                                ) {
+                                    Column(Modifier.padding(16.dp)) {
+                                        Text(
+                                            "Backing Up Files",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(Modifier.height(8.dp))
+                                        LinearProgressIndicator(
+                                            progress = { viewModel.backupProgress },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            viewModel.backupStatus,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
                             }
                             item {
                                 Spacer(Modifier.height(8.dp))

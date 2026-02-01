@@ -35,6 +35,10 @@ class StorageManagementViewModel(private val repository: com.pekempy.ReadAloudbo
 
     enum class SortOption { RecentAsc, RecentDesc, SizeAsc, SizeDesc }
     var currentSort by mutableStateOf(SortOption.RecentDesc)
+    
+    var isBackingUp by mutableStateOf(false)
+    var backupProgress by mutableStateOf(0f)
+    var backupStatus by mutableStateOf("")
 
     fun loadFiles(filesDir: java.io.File) {
         viewModelScope.launch {
@@ -257,6 +261,29 @@ class StorageManagementViewModel(private val repository: com.pekempy.ReadAloudbo
                     }
                 }
             }
+        }
+    }
+    
+    fun backupFiles(context: android.content.Context, destinationUri: android.net.Uri, sourceDir: java.io.File) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            isBackingUp = true
+            backupProgress = 0f
+            backupStatus = "Preparing backup..."
+            
+            val result = BackupHelper.backupFiles(context, destinationUri, sourceDir) { progress, status ->
+                backupProgress = progress
+                backupStatus = status
+            }
+            
+            result.onSuccess { message ->
+                backupStatus = message
+                kotlinx.coroutines.delay(3000)
+            }.onFailure { error ->
+                backupStatus = "Backup failed: ${error.message}"
+                kotlinx.coroutines.delay(3000)
+            }
+            
+            isBackingUp = false
         }
     }
 }
