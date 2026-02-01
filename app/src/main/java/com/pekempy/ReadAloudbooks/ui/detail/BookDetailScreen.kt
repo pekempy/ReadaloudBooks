@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -204,8 +206,8 @@ fun BookDetailScreen(
                                 icon = { Icon(painterResource(R.drawable.ic_list), contentDescription = null) }
                             )
                         }
-                        
-                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Spacer(modifier = Modifier.height(16.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -593,8 +595,8 @@ fun BookDetailScreen(
                     )
                 }
             }
-
         }
+
     }
 }
 
@@ -788,3 +790,4 @@ fun SeriesTag(index: String, modifier: Modifier = Modifier) {
         )
     }
 }
+

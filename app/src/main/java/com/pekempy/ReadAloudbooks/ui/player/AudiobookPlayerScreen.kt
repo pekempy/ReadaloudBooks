@@ -44,6 +44,9 @@ fun AudiobookPlayerScreen(
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showChaptersSheet by remember { mutableStateOf(false) }
     var showSleepTimerSheet by remember { mutableStateOf(false) }
+    var showBookmarksSheet by remember { mutableStateOf(false) }
+    var showAddBookmarkDialog by remember { mutableStateOf(false) }
+    var bookmarkLabel by remember { mutableStateOf("") }
 
     LaunchedEffect(bookId) {
         viewModel.initializePlayer(context)
@@ -263,22 +266,38 @@ fun AudiobookPlayerScreen(
                     }
                 }
 
-                Box(
+                Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                    contentAlignment = Alignment.Center
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(
-                        onClick = { showSpeedSheet = true },
-                        modifier = Modifier.align(Alignment.CenterStart)
+                        onClick = { showSpeedSheet = true }
                     ) {
                         Text("${"%.2f".format(viewModel.playbackSpeed)}x Speed")
                     }
 
-                    IconButton(
-                        onClick = { showChaptersSheet = true },
-                        modifier = Modifier.align(Alignment.CenterEnd)
-                    ) {
-                        Icon(painterResource(R.drawable.ic_list), contentDescription = "Chapters")
+                    Row {
+                        Box(contentAlignment = Alignment.TopCenter) {
+                            IconButton(
+                                onClick = { showBookmarksSheet = true }
+                            ) {
+                                Icon(painterResource(R.drawable.ic_bookmark), contentDescription = "Bookmarks")
+                            }
+                            if (viewModel.audioBookmarks.value.isNotEmpty()) {
+                                Badge(
+                                    modifier = Modifier.padding(top = 8.dp, end = 8.dp)
+                                ) {
+                                    Text("${viewModel.audioBookmarks.value.size}")
+                                }
+                            }
+                        }
+
+                        IconButton(
+                            onClick = { showChaptersSheet = true }
+                        ) {
+                            Icon(painterResource(R.drawable.ic_list), contentDescription = "Chapters")
+                        }
                     }
                 }
             }
@@ -425,6 +444,168 @@ fun AudiobookPlayerScreen(
                             Text("Turn Off")
                         }
                         
+                        Spacer(Modifier.height(32.dp))
+                    }
+                }
+            }
+
+            if (showAddBookmarkDialog) {
+                AlertDialog(
+                    onDismissRequest = {
+                        showAddBookmarkDialog = false
+                        bookmarkLabel = ""
+                    },
+                    title = { Text("Add Bookmark") },
+                    text = {
+                        Column {
+                            Text(
+                                text = "Bookmark at ${FormatUtils.formatTime(viewModel.currentPosition)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            OutlinedTextField(
+                                value = bookmarkLabel,
+                                onValueChange = { bookmarkLabel = it },
+                                label = { Text("Label (optional)") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                viewModel.addAudioBookmark(
+                                    label = bookmarkLabel.ifBlank { null }
+                                )
+                                showAddBookmarkDialog = false
+                                bookmarkLabel = ""
+                            }
+                        ) {
+                            Text("Save")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                showAddBookmarkDialog = false
+                                bookmarkLabel = ""
+                            }
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+            if (showBookmarksSheet) {
+                ModalBottomSheet(onDismissRequest = { showBookmarksSheet = false }) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Bookmarks",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            FilledTonalButton(
+                                onClick = {
+                                    showBookmarksSheet = false
+                                    showAddBookmarkDialog = true
+                                }
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_bookmark_add),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Add")
+                            }
+                        }
+
+                        if (viewModel.audioBookmarks.value.isEmpty()) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().height(100.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "No bookmarks yet",
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
+                        } else {
+                            LazyColumn {
+                                itemsIndexed(viewModel.audioBookmarks.value.sortedBy { it.timestampMillis }) { index, bookmark ->
+                                    ListItem(
+                                        headlineContent = {
+                                            Text(
+                                                bookmark.label ?: "Bookmark ${index + 1}",
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        },
+                                        supportingContent = {
+                                            Column {
+                                                Text(FormatUtils.formatTime(bookmark.timestampMillis))
+                                                if (bookmark.chapterIndex != null && bookmark.chapterIndex in viewModel.chapters.indices) {
+                                                    Text(
+                                                        viewModel.chapters[bookmark.chapterIndex].title,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        leadingContent = {
+                                            Icon(
+                                                painterResource(R.drawable.ic_bookmark),
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        },
+                                        trailingContent = {
+                                            Row {
+                                                IconButton(
+                                                    onClick = {
+                                                        viewModel.navigateToAudioBookmark(bookmark)
+                                                        showBookmarksSheet = false
+                                                    }
+                                                ) {
+                                                    Icon(
+                                                        painterResource(R.drawable.ic_play_arrow),
+                                                        contentDescription = "Play"
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = { viewModel.deleteAudioBookmark(bookmark) }
+                                                ) {
+                                                    Icon(
+                                                        painterResource(R.drawable.ic_delete),
+                                                        contentDescription = "Delete",
+                                                        tint = MaterialTheme.colorScheme.error
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.clickable {
+                                            viewModel.navigateToAudioBookmark(bookmark)
+                                            showBookmarksSheet = false
+                                        }
+                                    )
+                                    if (index < viewModel.audioBookmarks.value.size - 1) {
+                                        HorizontalDivider()
+                                    }
+                                }
+                            }
+                        }
                         Spacer(Modifier.height(32.dp))
                     }
                 }

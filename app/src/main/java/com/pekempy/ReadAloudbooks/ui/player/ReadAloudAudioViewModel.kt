@@ -69,7 +69,10 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
     private var currentZipFile: ZipFile? = null
     private var pendingSeekPosition: Long? = null
     private var loadedSpineHrefs: List<String> = emptyList()
-    
+
+    // Callback for manual seek/skip actions (for "Return to Reading Position" feature)
+    var onManualSeek: ((previousPosition: Long) -> Unit)? = null
+
     data class ClipSegment(
         val elementId: String, 
         val audioSrc: String,
@@ -143,14 +146,19 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
     }
 
     fun loadBook(
-        bookId: String, 
-        smilData: Map<String, List<com.pekempy.ReadAloudbooks.ui.reader.ReaderViewModel.SyncSegment>>, 
+        bookId: String,
+        smilData: Map<String, List<com.pekempy.ReadAloudbooks.ui.reader.ReaderViewModel.SyncSegment>>,
         chapterOffsets: Map<String, Double>,
         spineHrefs: List<String>,
         spineTitles: Map<String, String> = emptyMap(),
         autoPlay: Boolean = true
     ) {
         if (currentBook?.id == bookId && player != null && player?.playbackState != androidx.media3.common.Player.STATE_IDLE) {
+            // If autoPlay is false and player is currently playing, pause it
+            if (!autoPlay && player?.isPlaying == true) {
+                android.util.Log.d("ReadAloudAudioVM", "Book already loaded but autoPlay=false, pausing playback")
+                player?.pause()
+            }
             if (syncConfirmation != null || System.currentTimeMillis() - lastSyncCheckTime < 10000) {
                 isLoading = false
                 return
@@ -342,9 +350,11 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                     if (!isAlreadyPlayingUs) {
                         android.util.Log.d("ReadAloudAudioVM", "Player not playing this book ($bookId). Setting media items...")
                         player?.setMediaItems(mediaItems)
-                        player?.prepare()
-                        
+
+                        // Load progress FIRST to set pendingSeekPosition before player becomes READY
                         loadProgress(bookId)
+
+                        player?.prepare()
                     } else {
                         android.util.Log.i("ReadAloudAudioVM", "RE-ADOPTING active session for book $bookId")
                         p?.let { player ->
@@ -842,12 +852,16 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
     }
 
     fun rewind10s() {
+        val previousPos = currentPosition
         val newPos = (currentPosition - 10000).coerceAtLeast(0)
+        onManualSeek?.invoke(previousPos)
         seekTo(newPos)
     }
 
     fun forward30s() {
+        val previousPos = currentPosition
         val newPos = (currentPosition + 30000).coerceAtMost(duration)
+        onManualSeek?.invoke(previousPos)
         seekTo(newPos)
     }
 

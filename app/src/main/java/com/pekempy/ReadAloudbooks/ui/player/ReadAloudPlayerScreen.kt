@@ -29,10 +29,13 @@ import com.pekempy.ReadAloudbooks.ui.player.AudiobookViewModel
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import com.pekempy.ReadAloudbooks.util.FormatUtils
+import com.pekempy.ReadAloudbooks.util.rememberFoldableState
+import com.pekempy.ReadAloudbooks.util.ReaderScreenMode
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +48,7 @@ fun ReadAloudPlayerScreen(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    val coroutineScope = rememberCoroutineScope()
     DisposableEffect(readAloudAudioViewModel.isPlaying) {
         view.keepScreenOn = readAloudAudioViewModel.isPlaying
         onDispose {
@@ -57,7 +61,58 @@ fun ReadAloudPlayerScreen(
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showChaptersSheet by remember { mutableStateOf(false) }
     var showSearchSheet by remember { mutableStateOf(false) }
-    
+    var showHighlightsSheet by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
+    var showHistorySheet by remember { mutableStateOf(false) }
+    var showBookmarksSheet by remember { mutableStateOf(false) }
+
+    // Collect highlights for the book
+    val highlights by readerViewModel.getHighlightsForBook().collectAsState(initial = emptyList())
+    val bookmarks by readerViewModel.bookmarks
+
+    // Foldable device support
+    val foldableState by rememberFoldableState()
+    val isTwoPageMode = foldableState.screenMode == ReaderScreenMode.TWO_PAGE
+
+    // Update ViewModel when fold state changes
+    LaunchedEffect(foldableState.screenMode) {
+        readerViewModel.updateScreenMode(foldableState.screenMode, foldableState.foldBoundsPx)
+    }
+
+    // Adjust status bar icons based on theme (light/dark)
+    val window = (view.context as? android.app.Activity)?.window
+    LaunchedEffect(userSettings?.readerTheme) {
+        window?.let { w ->
+            val controller = androidx.core.view.WindowInsetsControllerCompat(w, view)
+            // Themes 0 (white) and 1 (sepia) are light backgrounds - use dark status bar icons
+            // Themes 2 (dark) and 3 (AMOLED black) are dark backgrounds - use light status bar icons
+            val isLightBackground = (userSettings?.readerTheme ?: 0) <= 1
+            controller.isAppearanceLightStatusBars = isLightBackground
+        }
+    }
+
+    // Highlight UI state
+    var showColorPicker by remember { mutableStateOf(false) }
+    var showLongPressMenu by remember { mutableStateOf(false) }
+
+    // Collect highlight events from ViewModel using SharedFlow
+    LaunchedEffect(Unit) {
+        android.util.Log.e("ReadAloudPlayerScreen", "=== Starting highlightEvents collector ===")
+        readerViewModel.highlightEvents.collect { event ->
+            android.util.Log.e("ReadAloudPlayerScreen", "=== RECEIVED event: $event ===")
+            when (event) {
+                is ReaderViewModel.HighlightEvent.ShowLongPressMenu -> {
+                    android.util.Log.e("ReadAloudPlayerScreen", "=== SHOWING long press menu ===")
+                    showLongPressMenu = true
+                }
+                is ReaderViewModel.HighlightEvent.ShowColorPicker -> {
+                    android.util.Log.e("ReadAloudPlayerScreen", "=== SHOWING color picker ===")
+                    showColorPicker = true
+                }
+            }
+        }
+    }
+
     LaunchedEffect(bookId) {
         readerViewModel.loadEpub(bookId, isReadAloud = true)
         readAloudAudioViewModel.initializePlayer(context)
@@ -86,6 +141,45 @@ fun ReadAloudPlayerScreen(
         }
     }
 
+    // Track play/pause for history
+    var wasPlaying by remember { mutableStateOf(false) }
+    LaunchedEffect(readAloudAudioViewModel.isPlaying) {
+        // Only record after initial load (when duration is known)
+        if (readAloudAudioViewModel.duration > 0) {
+            if (readAloudAudioViewModel.isPlaying && !wasPlaying) {
+                // Started playing
+                readerViewModel.addHistoryEvent(
+                    ReaderViewModel.HistoryEventType.PLAY,
+                    "Started playback",
+                    readAloudAudioViewModel.currentPosition
+                )
+            } else if (!readAloudAudioViewModel.isPlaying && wasPlaying) {
+                // Paused
+                readerViewModel.addHistoryEvent(
+                    ReaderViewModel.HistoryEventType.PAUSE,
+                    "Paused playback",
+                    readAloudAudioViewModel.currentPosition
+                )
+            }
+        }
+        wasPlaying = readAloudAudioViewModel.isPlaying
+    }
+
+    // Set up callback for manual seek/skip (for "Return to Position" button)
+    LaunchedEffect(Unit) {
+        readAloudAudioViewModel.onManualSeek = { previousPosition ->
+            readerViewModel.saveCurrentPositionForReturn(previousPosition)
+        }
+    }
+
+    // Auto-dismiss return button after 8 seconds
+    LaunchedEffect(readerViewModel.showReturnButton) {
+        if (readerViewModel.showReturnButton) {
+            delay(8000)
+            readerViewModel.dismissReturnButton()
+        }
+    }
+
     LaunchedEffect(readAloudAudioViewModel.isPlaying) {
         if (readAloudAudioViewModel.isPlaying) {
             while (true) {
@@ -109,7 +203,8 @@ fun ReadAloudPlayerScreen(
                 smilData = readerViewModel.syncData,
                 chapterOffsets = readerViewModel.chapterOffsets,
                 spineHrefs = spineHrefs,
-                spineTitles = readerViewModel.lazyBook?.spineTitles ?: emptyMap()
+                spineTitles = readerViewModel.lazyBook?.spineTitles ?: emptyMap(),
+                autoPlay = false  // Don't auto-start playback on resume
             )
         }
     }
@@ -123,8 +218,38 @@ fun ReadAloudPlayerScreen(
         }
     }
 
+    // Sync audio position when user manually navigates pages (while not playing)
+    // Track if initial audio position has been restored to avoid overwriting saved progress
+    var audioPositionInitialized by remember { mutableStateOf(false) }
+    LaunchedEffect(readAloudAudioViewModel.currentPosition, readAloudAudioViewModel.duration, readAloudAudioViewModel.isLoading) {
+        // Mark as initialized once audio has loaded (duration > 0 indicates chapters are ready)
+        // Position could be 0 for fresh starts, so use duration as the indicator
+        if (!readAloudAudioViewModel.isLoading && readAloudAudioViewModel.duration > 0) {
+            audioPositionInitialized = true
+        }
+    }
 
-    
+    // Sync audio to the visible element when user swipes pages (while not playing)
+    // Also save position for "Return" button when manually navigating
+    var lastSavedElementId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(readerViewModel.visibleElementId) {
+        val elementId = readerViewModel.visibleElementId
+        // Only sync reader -> audio when NOT playing (to avoid fighting with audio -> reader sync)
+        // Also wait until audio has initialized its position from saved progress
+        if (!readAloudAudioViewModel.isPlaying && !readAloudAudioViewModel.isLoading && audioPositionInitialized && elementId != null) {
+            // Only seek if audio element is different (to avoid unnecessary seeks)
+            if (elementId != readAloudAudioViewModel.currentElementId) {
+                // Save position for "Return" button BEFORE syncing (only once per navigation sequence)
+                if (lastSavedElementId != readAloudAudioViewModel.currentElementId) {
+                    readerViewModel.saveCurrentPositionForReturn(readAloudAudioViewModel.currentPosition)
+                    lastSavedElementId = readAloudAudioViewModel.currentElementId
+                }
+                android.util.Log.d("ReadAloudPlayerScreen", "User navigated to element $elementId, syncing audio position")
+                readAloudAudioViewModel.seekToElement(elementId)
+            }
+        }
+    }
+
     LaunchedEffect(readerViewModel.jumpToElementRequest.value) {
         readerViewModel.jumpToElementRequest.value?.let { elementId ->
             readAloudAudioViewModel.seekToElement(elementId)
@@ -258,7 +383,9 @@ fun ReadAloudPlayerScreen(
                 activeSearch = readerViewModel.activeSearchHighlight,
                 activeSearchMatchIndex = readerViewModel.activeSearchMatchIndex,
                 pendingAnchor = readerViewModel.pendingAnchorId.value,
-                onTap = {  }
+                onTap = {  },
+                isTwoPageMode = isTwoPageMode,
+                pageGapDp = readerViewModel.innerScreenSettings?.pageGap ?: 16
             )
             
             Row(
@@ -290,14 +417,35 @@ fun ReadAloudPlayerScreen(
                             modifier = Modifier.padding(end = 4.dp)
                         )
                     }
-                    IconButton(onClick = { 
+                    IconButton(onClick = {
                         if (readAloudAudioViewModel.isPlaying) readAloudAudioViewModel.togglePlayPause()
                         readerViewModel.clearSearch()
-                        showSearchSheet = true 
+                        showSearchSheet = true
                     }) {
                         Icon(
                             painterResource(R.drawable.ic_search),
                             contentDescription = "Search",
+                            tint = Color(theme.textInt)
+                        )
+                    }
+                    IconButton(onClick = { showHighlightsSheet = true }) {
+                        Icon(
+                            painterResource(R.drawable.ic_highlight),
+                            contentDescription = "Highlights",
+                            tint = Color(theme.textInt)
+                        )
+                    }
+                    IconButton(onClick = { showBookmarksSheet = true }) {
+                        Icon(
+                            painterResource(R.drawable.ic_bookmark),
+                            contentDescription = "Bookmarks",
+                            tint = Color(theme.textInt)
+                        )
+                    }
+                    IconButton(onClick = { showHistorySheet = true }) {
+                        Icon(
+                            painterResource(R.drawable.ic_history),
+                            contentDescription = "History",
                             tint = Color(theme.textInt)
                         )
                     }
@@ -323,6 +471,60 @@ fun ReadAloudPlayerScreen(
                 }
             }
 
+            // Floating "Return to Reading Position" button
+            AnimatedVisibility(
+                visible = readerViewModel.showReturnButton,
+                enter = fadeIn() + slideInVertically { -it },
+                exit = fadeOut() + slideOutVertically { -it },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 100.dp)  // Below header bar
+            ) {
+                val savedPos = readerViewModel.savedReadingPosition
+                if (savedPos != null) {
+                    ElevatedButton(
+                        onClick = {
+                            val position = readerViewModel.returnToSavedPosition()
+                            if (position != null) {
+                                if (position.chapterIndex != readerViewModel.currentChapterIndex) {
+                                    readerViewModel.changeChapter(position.chapterIndex)
+                                }
+                                if (position.elementId != null) {
+                                    readerViewModel.currentHighlightId = position.elementId
+                                }
+                                readerViewModel.lastScrollPercent = position.scrollPercent
+                                readerViewModel.forceScrollUpdate()
+                                readAloudAudioViewModel.seekTo(position.audioPositionMs)
+                            }
+                        },
+                        colors = ButtonDefaults.elevatedButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        ),
+                        elevation = ButtonDefaults.elevatedButtonElevation(defaultElevation = 6.dp)
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.ic_arrow_back),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Return to ${savedPos.chapterTitle}")
+                    }
+                }
+            }
+
+            // Scrim to dismiss settings when tapping outside
+            if (readerViewModel.showControls && !isPlayerExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null
+                        ) { readerViewModel.showControls = false }
+                )
+            }
+
             AnimatedVisibility(
                 visible = !isPlayerExpanded,
                 enter = fadeIn() + expandVertically(),
@@ -338,6 +540,7 @@ fun ReadAloudPlayerScreen(
                         exit = slideOutVertically { it }
                     ) {
                         ReaderControls(
+                            viewModel = readerViewModel,
                             userSettings = userSettings,
                             currentChapter = readerViewModel.currentChapterIndex,
                             totalChapters = readerViewModel.totalChapters,
@@ -389,6 +592,8 @@ fun ReadAloudPlayerScreen(
                 ChaptersContent(
                     viewModel = readAloudAudioViewModel,
                     onChapterClick = { index ->
+                        // Save current position for "Return" button
+                        readerViewModel.saveCurrentPositionForReturn(readAloudAudioViewModel.currentPosition)
                         readAloudAudioViewModel.skipToChapter(index)
                         showChaptersSheet = false
                     }
@@ -401,11 +606,171 @@ fun ReadAloudPlayerScreen(
                 SearchContent(
                     viewModel = readerViewModel,
                     onResultClick = { result, query ->
+                        // Save current position for "Return" button
+                        readerViewModel.saveCurrentPositionForReturn(readAloudAudioViewModel.currentPosition)
                         readerViewModel.navigateToSearchResult(result, query)
                         showSearchSheet = false
                     }
                 )
             }
+        }
+
+        if (showHighlightsSheet) {
+            ModalBottomSheet(onDismissRequest = { showHighlightsSheet = false }) {
+                HighlightsSheet(
+                    highlights = highlights,
+                    onHighlightClick = { highlight ->
+                        // Save current position for "Return" button
+                        readerViewModel.saveCurrentPositionForReturn(readAloudAudioViewModel.currentPosition)
+                        // Record current position in history before navigating
+                        readerViewModel.addHistoryEvent(
+                            ReaderViewModel.HistoryEventType.HIGHLIGHT_CLICK,
+                            "Before viewing highlight",
+                            readAloudAudioViewModel.currentPosition
+                        )
+                        readerViewModel.changeChapter(highlight.chapterIndex)
+                        readerViewModel.currentHighlightId = highlight.elementId
+                        readerViewModel.forceScrollUpdate()
+                        showHighlightsSheet = false
+                    },
+                    onDeleteHighlight = { readerViewModel.deleteHighlight(it) },
+                    onExportClick = { showExportDialog = true }
+                )
+            }
+        }
+
+        if (showHistorySheet) {
+            ModalBottomSheet(onDismissRequest = { showHistorySheet = false }) {
+                HistorySheet(
+                    historyEvents = readerViewModel.historyEvents,
+                    currentAudioPosition = readAloudAudioViewModel.currentPosition,
+                    onEventClick = { event ->
+                        // Navigate to the history event position
+                        readerViewModel.navigateToHistoryEvent(event)
+                        // Also sync audio position
+                        readAloudAudioViewModel.seekTo(event.audioPositionMs)
+                        showHistorySheet = false
+                    }
+                )
+            }
+        }
+
+        if (showBookmarksSheet) {
+            ModalBottomSheet(onDismissRequest = { showBookmarksSheet = false }) {
+                BookmarksSheet(
+                    bookmarks = bookmarks,
+                    onBookmarkClick = { bookmark ->
+                        readerViewModel.navigateToBookmark(bookmark)
+                        showBookmarksSheet = false
+                    },
+                    onDeleteBookmark = { readerViewModel.deleteBookmark(it) },
+                    onAddBookmark = {
+                        readerViewModel.createBookmark()
+                        showBookmarksSheet = false
+                    }
+                )
+            }
+        }
+
+        if (showExportDialog) {
+            ExportHighlightsDialog(
+                onExportMarkdown = {
+                    coroutineScope.launch {
+                        readerViewModel.exportHighlightsToMarkdown(context)
+                        showExportDialog = false
+                    }
+                },
+                onExportCsv = {
+                    coroutineScope.launch {
+                        readerViewModel.exportHighlightsToCsv(context)
+                        showExportDialog = false
+                    }
+                },
+                onDismiss = { showExportDialog = false }
+            )
+        }
+
+        // Color picker dialog for highlighting
+        if (showColorPicker && readerViewModel.pendingHighlight != null) {
+            ColorPickerDialog(
+                selectedColor = readerViewModel.selectedHighlightColor,
+                onColorSelected = { color ->
+                    readerViewModel.selectedHighlightColor = color
+                    readerViewModel.pendingHighlight?.let { pending ->
+                        readerViewModel.createHighlight(
+                            chapterIndex = pending.chapterIndex,
+                            elementId = pending.elementId,
+                            text = pending.text,
+                            color = color
+                        )
+                    }
+                    showColorPicker = false
+                    showLongPressMenu = false
+                    readerViewModel.pendingHighlight = null
+                    readerViewModel.longPressedElementId = null
+                },
+                onDismiss = {
+                    showColorPicker = false
+                    readerViewModel.pendingHighlight = null
+                }
+            )
+        }
+
+        // Highlight actions when clicking an existing highlight
+        if (readerViewModel.clickedHighlight != null) {
+            val highlight = readerViewModel.clickedHighlight!!
+            var showEditDialog by remember { mutableStateOf(false) }
+
+            if (showEditDialog) {
+                com.pekempy.ReadAloudbooks.ui.components.HighlightDialog(
+                    highlight = highlight,
+                    selectedColor = highlight.color,
+                    onDismiss = { showEditDialog = false },
+                    onSave = { color, note ->
+                        if (color != highlight.color) readerViewModel.updateHighlightColor(highlight.id, color)
+                        if (note != highlight.note) readerViewModel.updateHighlightNote(highlight.id, note ?: "")
+                        showEditDialog = false
+                        readerViewModel.clickedHighlight = null
+                    },
+                    onDelete = {
+                        readerViewModel.deleteHighlight(highlight)
+                        showEditDialog = false
+                        readerViewModel.clickedHighlight = null
+                    }
+                )
+            } else {
+                com.pekempy.ReadAloudbooks.ui.components.HighlightActionsSheet(
+                    highlight = highlight,
+                    onEdit = { showEditDialog = true },
+                    onChangeColor = { showEditDialog = true },
+                    onCopy = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("Highlight", highlight.text)
+                        clipboard.setPrimaryClip(clip)
+                        readerViewModel.clickedHighlight = null
+                    },
+                    onDelete = {
+                        readerViewModel.deleteHighlight(highlight)
+                        readerViewModel.clickedHighlight = null
+                    },
+                    onDismiss = { readerViewModel.clickedHighlight = null }
+                )
+            }
+        }
+
+        // Long press context menu
+        if (showLongPressMenu && readerViewModel.longPressedElementId != null) {
+            LongPressContextMenu(
+                onNavigateToPosition = {
+                    readerViewModel.jumpToElementRequest.value = readerViewModel.longPressedElementId
+                    readerViewModel.longPressedElementId = null
+                    showLongPressMenu = false
+                },
+                onDismiss = {
+                    showLongPressMenu = false
+                    readerViewModel.longPressedElementId = null
+                }
+            )
         }
     }
 }

@@ -43,6 +43,34 @@ class UserPreferencesRepository(private val context: Context) {
 
         val LAST_ACTIVE_BOOK_ID = stringPreferencesKey("last_active_book_id")
         val LAST_ACTIVE_BOOK_TYPE = stringPreferencesKey("last_active_book_type")
+
+        // New reader preferences
+        val READER_BRIGHTNESS = floatPreferencesKey("reader_brightness")
+        val READER_LINE_SPACING = floatPreferencesKey("reader_line_spacing")
+        val READER_MARGIN_SIZE = intPreferencesKey("reader_margin_size")
+        val READER_FULLSCREEN_MODE = booleanPreferencesKey("reader_fullscreen_mode")
+        val READER_TEXT_ALIGNMENT = stringPreferencesKey("reader_text_alignment")
+
+        // Advanced playback settings
+        val SKIP_BACK_SECONDS = intPreferencesKey("skip_back_seconds")
+        val SKIP_FORWARD_SECONDS = intPreferencesKey("skip_forward_seconds")
+        val ENABLE_VOLUME_BOOST = booleanPreferencesKey("enable_volume_boost")
+        val VOLUME_BOOST_LEVEL = floatPreferencesKey("volume_boost_level")
+
+        // Library view preferences
+        val LIBRARY_VIEW_MODE = stringPreferencesKey("library_view_mode")
+        val LIBRARY_GRID_COLUMNS = intPreferencesKey("library_grid_columns")
+
+        // Inner screen (unfolded foldable) reader preferences - separate from outer screen
+        val INNER_READER_FONT_SIZE = floatPreferencesKey("inner_reader_font_size")
+        val INNER_READER_THEME = intPreferencesKey("inner_reader_theme")
+        val INNER_READER_FONT_FAMILY = stringPreferencesKey("inner_reader_font_family")
+        val INNER_READER_LINE_SPACING = floatPreferencesKey("inner_reader_line_spacing")
+        val INNER_READER_MARGIN_SIZE = intPreferencesKey("inner_reader_margin_size")
+        val INNER_READER_TEXT_ALIGNMENT = stringPreferencesKey("inner_reader_text_alignment")
+        val INNER_READER_BRIGHTNESS = floatPreferencesKey("inner_reader_brightness")
+        val INNER_PAGE_GAP = intPreferencesKey("inner_page_gap")
+        val INNER_SHOW_PAGE_DIVIDER = booleanPreferencesKey("inner_show_page_divider")
     }
 
     val userCredentials: Flow<UserCredentials?> = context.dataStore.data.map { preferences ->
@@ -78,7 +106,18 @@ class UserPreferencesRepository(private val context: Context) {
             readerTheme = preferences[READER_THEME] ?: 0,
             readerFontFamily = preferences[READER_FONT_FAMILY] ?: "serif",
             playbackSpeed = preferences[PLAYBACK_SPEED] ?: 1.0f,
-            sleepTimerFinishChapter = preferences[SLEEP_TIMER_FINISH_CHAPTER] ?: false
+            sleepTimerFinishChapter = preferences[SLEEP_TIMER_FINISH_CHAPTER] ?: false,
+            readerBrightness = preferences[READER_BRIGHTNESS] ?: 1.0f,
+            readerLineSpacing = preferences[READER_LINE_SPACING] ?: 1.6f,
+            readerMarginSize = preferences[READER_MARGIN_SIZE] ?: 1,
+            readerFullscreenMode = preferences[READER_FULLSCREEN_MODE] ?: false,
+            readerTextAlignment = preferences[READER_TEXT_ALIGNMENT] ?: "justify",
+            skipBackSeconds = preferences[SKIP_BACK_SECONDS] ?: 10,
+            skipForwardSeconds = preferences[SKIP_FORWARD_SECONDS] ?: 30,
+            enableVolumeBoost = preferences[ENABLE_VOLUME_BOOST] ?: false,
+            volumeBoostLevel = preferences[VOLUME_BOOST_LEVEL] ?: 1.0f,
+            libraryViewMode = preferences[LIBRARY_VIEW_MODE] ?: "grid",
+            libraryGridColumns = preferences[LIBRARY_GRID_COLUMNS] ?: 2
         )
     }
 
@@ -239,6 +278,137 @@ class UserPreferencesRepository(private val context: Context) {
     val lastActiveBook: Flow<Pair<String?, String?>> = context.dataStore.data.map { preferences ->
         preferences[LAST_ACTIVE_BOOK_ID] to preferences[LAST_ACTIVE_BOOK_TYPE]
     }
+
+    // New reader preference methods
+    suspend fun updateReaderBrightness(brightness: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_BRIGHTNESS] = brightness
+        }
+    }
+
+    suspend fun updateReaderLineSpacing(lineSpacing: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_LINE_SPACING] = lineSpacing
+        }
+    }
+
+    suspend fun updateReaderMarginSize(marginSize: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_MARGIN_SIZE] = marginSize
+        }
+    }
+
+    suspend fun updateReaderFullscreenMode(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_FULLSCREEN_MODE] = enabled
+        }
+    }
+
+    suspend fun updateReaderTextAlignment(alignment: String) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_TEXT_ALIGNMENT] = alignment
+        }
+    }
+
+    suspend fun updateSkipBackSeconds(seconds: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[SKIP_BACK_SECONDS] = seconds
+        }
+    }
+
+    suspend fun updateSkipForwardSeconds(seconds: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[SKIP_FORWARD_SECONDS] = seconds
+        }
+    }
+
+    suspend fun updateVolumeBoost(enabled: Boolean, level: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[ENABLE_VOLUME_BOOST] = enabled
+            preferences[VOLUME_BOOST_LEVEL] = level
+        }
+    }
+
+    suspend fun updateLibraryViewMode(viewMode: String) {
+        context.dataStore.edit { preferences ->
+            preferences[LIBRARY_VIEW_MODE] = viewMode
+        }
+    }
+
+    suspend fun updateLibraryGridColumns(columns: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[LIBRARY_GRID_COLUMNS] = columns
+        }
+    }
+
+    // Inner screen (foldable) settings
+    val innerScreenSettings: Flow<InnerScreenSettings> = context.dataStore.data.map { preferences ->
+        InnerScreenSettings(
+            readerFontSize = preferences[INNER_READER_FONT_SIZE] ?: 16f,
+            readerTheme = preferences[INNER_READER_THEME] ?: 0,
+            readerFontFamily = preferences[INNER_READER_FONT_FAMILY] ?: "serif",
+            readerLineSpacing = preferences[INNER_READER_LINE_SPACING] ?: 1.5f,
+            readerMarginSize = preferences[INNER_READER_MARGIN_SIZE] ?: 0,
+            readerTextAlignment = preferences[INNER_READER_TEXT_ALIGNMENT] ?: "justify",
+            readerBrightness = preferences[INNER_READER_BRIGHTNESS] ?: 1.0f,
+            pageGap = preferences[INNER_PAGE_GAP] ?: 16,
+            showPageDivider = preferences[INNER_SHOW_PAGE_DIVIDER] ?: true
+        )
+    }
+
+    suspend fun updateInnerReaderFontSize(size: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[INNER_READER_FONT_SIZE] = size
+        }
+    }
+
+    suspend fun updateInnerReaderTheme(theme: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[INNER_READER_THEME] = theme
+        }
+    }
+
+    suspend fun updateInnerReaderFontFamily(family: String) {
+        context.dataStore.edit { preferences ->
+            preferences[INNER_READER_FONT_FAMILY] = family
+        }
+    }
+
+    suspend fun updateInnerReaderLineSpacing(lineSpacing: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[INNER_READER_LINE_SPACING] = lineSpacing
+        }
+    }
+
+    suspend fun updateInnerReaderMarginSize(marginSize: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[INNER_READER_MARGIN_SIZE] = marginSize
+        }
+    }
+
+    suspend fun updateInnerReaderTextAlignment(alignment: String) {
+        context.dataStore.edit { preferences ->
+            preferences[INNER_READER_TEXT_ALIGNMENT] = alignment
+        }
+    }
+
+    suspend fun updateInnerReaderBrightness(brightness: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[INNER_READER_BRIGHTNESS] = brightness
+        }
+    }
+
+    suspend fun updateInnerPageGap(gap: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[INNER_PAGE_GAP] = gap
+        }
+    }
+
+    suspend fun updateInnerShowPageDivider(show: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[INNER_SHOW_PAGE_DIVIDER] = show
+        }
+    }
 }
 
 data class UserSettings(
@@ -250,5 +420,36 @@ data class UserSettings(
     val readerTheme: Int,
     val readerFontFamily: String,
     val playbackSpeed: Float,
-    val sleepTimerFinishChapter: Boolean
+    val sleepTimerFinishChapter: Boolean,
+    // New reader preferences
+    val readerBrightness: Float = 1.0f, // 0.0 to 1.0
+    val readerLineSpacing: Float = 1.6f, // 1.0 to 2.5
+    val readerMarginSize: Int = 1, // 0=compact, 1=normal, 2=wide
+    val readerFullscreenMode: Boolean = false,
+    val readerTextAlignment: String = "justify", // left, justify, center
+    // Advanced playback settings
+    val skipBackSeconds: Int = 10,
+    val skipForwardSeconds: Int = 30,
+    val enableVolumeBoost: Boolean = false,
+    val volumeBoostLevel: Float = 1.0f,
+    // Library view preferences
+    val libraryViewMode: String = "grid", // grid, list, compact, table
+    val libraryGridColumns: Int = 2
+)
+
+/**
+ * Settings specific to the inner (unfolded) screen on foldable devices.
+ * These are separate from the outer screen settings to allow different
+ * configurations for two-page vs single-page reading modes.
+ */
+data class InnerScreenSettings(
+    val readerFontSize: Float = 16f,  // Slightly smaller default for two-page
+    val readerTheme: Int = 0,
+    val readerFontFamily: String = "serif",
+    val readerLineSpacing: Float = 1.5f,
+    val readerMarginSize: Int = 0,  // Compact margins for two-page
+    val readerTextAlignment: String = "justify",
+    val readerBrightness: Float = 1.0f,
+    val pageGap: Int = 16,  // Gap between two pages in dp
+    val showPageDivider: Boolean = true
 )

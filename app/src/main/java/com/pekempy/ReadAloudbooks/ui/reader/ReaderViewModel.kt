@@ -4,8 +4,11 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pekempy.ReadAloudbooks.data.UserPreferencesRepository
+import com.pekempy.ReadAloudbooks.data.InnerScreenSettings
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
+import com.pekempy.ReadAloudbooks.util.ReaderScreenMode
 import com.pekempy.ReadAloudbooks.data.UnifiedProgress
+import com.pekempy.ReadAloudbooks.service.DownloadService
 import nl.siegmann.epublib.epub.EpubReader
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -17,9 +20,20 @@ import com.pekempy.ReadAloudbooks.data.api.Position
 import com.pekempy.ReadAloudbooks.data.api.Locator
 import com.pekempy.ReadAloudbooks.data.api.Locations
 import com.pekempy.ReadAloudbooks.util.DownloadUtils
+import com.pekempy.ReadAloudbooks.data.repository.HighlightRepository
+import com.pekempy.ReadAloudbooks.data.repository.BookmarkRepository
+import com.pekempy.ReadAloudbooks.data.repository.ReadingStatisticsRepository
+import com.pekempy.ReadAloudbooks.data.local.entities.Highlight
+import com.pekempy.ReadAloudbooks.data.local.entities.Bookmark
+import com.pekempy.ReadAloudbooks.data.local.entities.ReadingSession
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asSharedFlow
 
 class ReaderViewModel(
-    private val repository: UserPreferencesRepository
+    private val repository: UserPreferencesRepository,
+    private val highlightRepository: HighlightRepository,
+    private val bookmarkRepository: BookmarkRepository,
+    private val readingStatisticsRepository: ReadingStatisticsRepository
 ) : ViewModel() {
     private var lastSyncedProgress: com.pekempy.ReadAloudbooks.data.UnifiedProgress? = null
     private var readerInitialized = false
@@ -52,6 +66,29 @@ class ReaderViewModel(
     var showControls by mutableStateOf(false)
     var isReadAloudMode by mutableStateOf(false)
 
+    // Foldable device support
+    var screenMode by mutableStateOf(ReaderScreenMode.SINGLE_PAGE)
+    var innerScreenSettings by mutableStateOf<InnerScreenSettings?>(null)
+    var foldBoundsPx by mutableIntStateOf(0)
+    private var innerSettingsCollectionJob: Job? = null
+
+    // Returns appropriate settings based on screen mode (inner or outer)
+    val activeSettings: com.pekempy.ReadAloudbooks.data.UserSettings?
+        get() = when (screenMode) {
+            ReaderScreenMode.SINGLE_PAGE -> settings
+            ReaderScreenMode.TWO_PAGE -> innerScreenSettings?.let { inner ->
+                settings?.copy(
+                    readerFontSize = inner.readerFontSize,
+                    readerTheme = inner.readerTheme,
+                    readerFontFamily = inner.readerFontFamily,
+                    readerLineSpacing = inner.readerLineSpacing,
+                    readerMarginSize = inner.readerMarginSize,
+                    readerTextAlignment = inner.readerTextAlignment,
+                    readerBrightness = inner.readerBrightness
+                )
+            } ?: settings
+        }
+
     data class SyncSegment(
         val id: String,
         val audioSrc: String,
@@ -64,7 +101,48 @@ class ReaderViewModel(
     var syncTrigger by mutableIntStateOf(0)
     var currentAudioPos by mutableLongStateOf(0L)
     var jumpToElementRequest = mutableStateOf<String?>(null)
-    
+
+    // Track the currently visible element from page navigation (for syncing audio when not playing)
+    var visibleElementId by mutableStateOf<String?>(null)
+
+    // Smart "Return to Reading Position" button
+    data class SavedReadingPosition(
+        val chapterIndex: Int,
+        val elementId: String?,
+        val audioPositionMs: Long,
+        val scrollPercent: Float,
+        val chapterTitle: String
+    )
+
+    var savedReadingPosition by mutableStateOf<SavedReadingPosition?>(null)
+    var showReturnButton by mutableStateOf(false)
+
+    fun saveCurrentPositionForReturn(audioPositionMs: Long) {
+        val chapterTitle = lazyBook?.spineTitles?.get(
+            lazyBook?.spineHrefs?.getOrNull(currentChapterIndex) ?: ""
+        ) ?: "Chapter ${currentChapterIndex + 1}"
+
+        savedReadingPosition = SavedReadingPosition(
+            chapterIndex = currentChapterIndex,
+            elementId = visibleElementId ?: currentHighlightId,
+            audioPositionMs = audioPositionMs,
+            scrollPercent = lastScrollPercent,
+            chapterTitle = chapterTitle
+        )
+        showReturnButton = true
+    }
+
+    fun returnToSavedPosition(): SavedReadingPosition? {
+        val position = savedReadingPosition
+        showReturnButton = false
+        savedReadingPosition = null
+        return position
+    }
+
+    fun dismissReturnButton() {
+        showReturnButton = false
+    }
+
     data class SyncConfirmation(
         val newChapterIndex: Int,
         val newScrollPercent: Float,
@@ -75,8 +153,67 @@ class ReaderViewModel(
         val source: String
     )
     var syncConfirmation by mutableStateOf<SyncConfirmation?>(null)
-    
+
     var pendingAnchorId = mutableStateOf<String?>(null)
+
+    // Reading/Playback History
+    enum class HistoryEventType {
+        PLAY, PAUSE, NAVIGATE, HIGHLIGHT_CLICK
+    }
+
+    data class HistoryEvent(
+        val id: Long = System.currentTimeMillis(),
+        val type: HistoryEventType,
+        val timestamp: Long = System.currentTimeMillis(),
+        val chapterIndex: Int,
+        val chapterTitle: String,
+        val elementId: String?,
+        val audioPositionMs: Long,
+        val scrollPercent: Float,
+        val description: String // e.g., "Paused at Chapter 3", "Navigated to highlight"
+    )
+
+    private val _historyEvents = mutableStateListOf<HistoryEvent>()
+    val historyEvents: List<HistoryEvent> get() = _historyEvents.toList()
+
+    fun addHistoryEvent(type: HistoryEventType, description: String, audioPositionMs: Long = currentAudioPos) {
+        val chapterTitle = lazyBook?.spineTitles?.get(
+            lazyBook?.spineHrefs?.getOrNull(currentChapterIndex) ?: ""
+        ) ?: "Chapter ${currentChapterIndex + 1}"
+
+        val event = HistoryEvent(
+            type = type,
+            chapterIndex = currentChapterIndex,
+            chapterTitle = chapterTitle,
+            elementId = visibleElementId ?: currentHighlightId,
+            audioPositionMs = audioPositionMs,
+            scrollPercent = lastScrollPercent,
+            description = description
+        )
+        _historyEvents.add(0, event) // Add to beginning (most recent first)
+
+        // Keep only last 50 events
+        if (_historyEvents.size > 50) {
+            _historyEvents.removeAt(_historyEvents.size - 1)
+        }
+    }
+
+    fun navigateToHistoryEvent(event: HistoryEvent) {
+        // Add current position to history before navigating
+        addHistoryEvent(HistoryEventType.NAVIGATE, "Before returning to history")
+
+        // Navigate to the history event's position
+        if (event.chapterIndex != currentChapterIndex) {
+            changeChapter(event.chapterIndex, audioPosMs = event.audioPositionMs)
+        }
+        if (event.elementId != null) {
+            currentHighlightId = event.elementId
+            forceScrollUpdate()
+        } else {
+            lastScrollPercent = event.scrollPercent
+            forceScrollUpdate()
+        }
+    }
     
     fun loadEpub(bookId: String, isReadAloud: Boolean) {
         if (currentBookId == bookId && isReadAloudMode == isReadAloud) {
@@ -402,6 +539,11 @@ class ReaderViewModel(
 
                 withContext(Dispatchers.Main) {
                     isLoading = false
+                    // Initialize highlights and bookmarks
+                    loadHighlightsForChapter(currentChapterIndex)
+                    loadBookmarks()
+                    // Start reading session
+                    startReadingSession()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -420,13 +562,18 @@ class ReaderViewModel(
             android.util.Log.d("ReaderViewModel", "Ignoring saveProgress: loading=$isLoading, initialized=$readerInitialized")
             return
         }
-        
+
         lastScrollPercent = scrollPercent
         if (elementId != null && !isReadAloudMode) {
             currentHighlightId = elementId
         }
         if (audioPosMs != null) {
             currentAudioPos = audioPosMs
+        }
+
+        // Track the visible element from page navigation (used for audio sync when not playing)
+        if (elementId != null) {
+            visibleElementId = elementId
         }
         
         viewModelScope.launch {
@@ -536,6 +683,8 @@ class ReaderViewModel(
         currentHighlightId = null
         val scrollPercent = if (scrollToEnd) 1.0f else 0f
         saveProgress(index, scrollPercent, audioPosMs)
+        // Load highlights for new chapter
+        loadHighlightsForChapter(index)
     }
 
     fun updateFontSize(newSize: Float) {
@@ -559,6 +708,126 @@ class ReaderViewModel(
             val bookId = currentBookId ?: return@launch
             repository.saveBookReaderSettings(bookId, fontSize = null, theme = null, fontFamily = family)
             settings = settings?.copy(readerFontFamily = family)
+        }
+    }
+
+    fun updateBrightness(brightness: Float) {
+        viewModelScope.launch {
+            repository.updateReaderBrightness(brightness)
+            settings = settings?.copy(readerBrightness = brightness)
+        }
+    }
+
+    fun updateLineSpacing(lineSpacing: Float) {
+        viewModelScope.launch {
+            repository.updateReaderLineSpacing(lineSpacing)
+            settings = settings?.copy(readerLineSpacing = lineSpacing)
+        }
+    }
+
+    fun updateMarginSize(marginSize: Int) {
+        viewModelScope.launch {
+            repository.updateReaderMarginSize(marginSize)
+            settings = settings?.copy(readerMarginSize = marginSize)
+        }
+    }
+
+    fun updateFullscreenMode(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateReaderFullscreenMode(enabled)
+            settings = settings?.copy(readerFullscreenMode = enabled)
+        }
+    }
+
+    fun updateTextAlignment(alignment: String) {
+        viewModelScope.launch {
+            repository.updateReaderTextAlignment(alignment)
+            settings = settings?.copy(readerTextAlignment = alignment)
+        }
+    }
+
+    // === FOLDABLE DEVICE SUPPORT ===
+
+    fun updateScreenMode(mode: ReaderScreenMode, foldBounds: Int = 0) {
+        val previousMode = screenMode
+        screenMode = mode
+        foldBoundsPx = foldBounds
+
+        if (mode == ReaderScreenMode.TWO_PAGE && previousMode != ReaderScreenMode.TWO_PAGE) {
+            loadInnerScreenSettings()
+        }
+    }
+
+    private fun loadInnerScreenSettings() {
+        innerSettingsCollectionJob?.cancel()
+        innerSettingsCollectionJob = viewModelScope.launch {
+            repository.innerScreenSettings.collect { settings ->
+                innerScreenSettings = settings
+            }
+        }
+    }
+
+    // Inner screen setting update methods
+    fun updateInnerFontSize(size: Float) {
+        viewModelScope.launch {
+            repository.updateInnerReaderFontSize(size)
+            innerScreenSettings = innerScreenSettings?.copy(readerFontSize = size)
+        }
+    }
+
+    fun updateInnerTheme(theme: Int) {
+        viewModelScope.launch {
+            repository.updateInnerReaderTheme(theme)
+            innerScreenSettings = innerScreenSettings?.copy(readerTheme = theme)
+        }
+    }
+
+    fun updateInnerFontFamily(family: String) {
+        viewModelScope.launch {
+            repository.updateInnerReaderFontFamily(family)
+            innerScreenSettings = innerScreenSettings?.copy(readerFontFamily = family)
+        }
+    }
+
+    fun updateInnerLineSpacing(lineSpacing: Float) {
+        viewModelScope.launch {
+            repository.updateInnerReaderLineSpacing(lineSpacing)
+            innerScreenSettings = innerScreenSettings?.copy(readerLineSpacing = lineSpacing)
+        }
+    }
+
+    fun updateInnerMarginSize(marginSize: Int) {
+        viewModelScope.launch {
+            repository.updateInnerReaderMarginSize(marginSize)
+            innerScreenSettings = innerScreenSettings?.copy(readerMarginSize = marginSize)
+        }
+    }
+
+    fun updateInnerTextAlignment(alignment: String) {
+        viewModelScope.launch {
+            repository.updateInnerReaderTextAlignment(alignment)
+            innerScreenSettings = innerScreenSettings?.copy(readerTextAlignment = alignment)
+        }
+    }
+
+    fun updateInnerBrightness(brightness: Float) {
+        viewModelScope.launch {
+            repository.updateInnerReaderBrightness(brightness)
+            innerScreenSettings = innerScreenSettings?.copy(readerBrightness = brightness)
+        }
+    }
+
+    fun updateInnerPageGap(gap: Int) {
+        viewModelScope.launch {
+            repository.updateInnerPageGap(gap)
+            innerScreenSettings = innerScreenSettings?.copy(pageGap = gap)
+        }
+    }
+
+    fun updateInnerShowPageDivider(show: Boolean) {
+        viewModelScope.launch {
+            repository.updateInnerShowPageDivider(show)
+            innerScreenSettings = innerScreenSettings?.copy(showPageDivider = show)
         }
     }
 
@@ -719,6 +988,50 @@ class ReaderViewModel(
     var searchJob: Job? = null
     var activeSearchHighlight by mutableStateOf<String?>(null)
     var activeSearchMatchIndex by mutableIntStateOf(0)
+
+    // Highlight management
+    var showHighlightMenu by mutableStateOf(false)
+    var selectedHighlightColor by mutableStateOf("#FFEB3B") // Yellow default
+    var pendingHighlight by mutableStateOf<PendingHighlight?>(null)
+    var clickedHighlight by mutableStateOf<Highlight?>(null)
+    val highlightsForCurrentChapter = mutableStateOf<List<Highlight>>(emptyList())
+    var longPressedElementId by mutableStateOf<String?>(null)
+    private var highlightCollectionJob: Job? = null
+    var clearSelectionTrigger by mutableIntStateOf(0)  // Trigger to clear text selection
+
+    // Event flow for highlight UI events (bypasses Compose state observation issues)
+    sealed class HighlightEvent {
+        data class ShowLongPressMenu(val elementId: String, val pendingHighlight: PendingHighlight?) : HighlightEvent()
+        data class ShowColorPicker(val pendingHighlight: PendingHighlight) : HighlightEvent()
+    }
+    private val _highlightEvents = kotlinx.coroutines.flow.MutableSharedFlow<HighlightEvent>(replay = 0, extraBufferCapacity = 1)
+    val highlightEvents = _highlightEvents.asSharedFlow()
+
+    fun emitLongPressEvent(elementId: String) {
+        android.util.Log.e("ReaderViewModel", "=== EMITTING LongPressMenu event for: $elementId ===")
+        _highlightEvents.tryEmit(HighlightEvent.ShowLongPressMenu(elementId, pendingHighlight))
+    }
+
+    fun emitColorPickerEvent(pending: PendingHighlight) {
+        android.util.Log.e("ReaderViewModel", "=== EMITTING ColorPicker event for: ${pending.text.take(20)} ===")
+        _highlightEvents.tryEmit(HighlightEvent.ShowColorPicker(pending))
+    }
+
+    // Bookmark management
+    var bookmarks = mutableStateOf<List<Bookmark>>(emptyList())
+    var showBookmarkDialog by mutableStateOf(false)
+
+    // Reading session tracking
+    private var currentSessionStartTime: Long? = null
+    private var currentSessionId: Long? = null
+
+    data class PendingHighlight(
+        val chapterIndex: Int,
+        val elementId: String,
+        val text: String,
+        val startOffset: Int = 0,
+        val endOffset: Int = 0
+    )
     
     fun search(query: String) {
         searchJob?.cancel()
@@ -815,11 +1128,246 @@ class ReaderViewModel(
 
     fun dismissSync() {
         syncConfirmation = null
-        saveProgress() 
+        saveProgress()
+    }
+
+    // === HIGHLIGHT MANAGEMENT ===
+
+    fun loadHighlightsForChapter(chapterIndex: Int) {
+        val bookId = currentBookId ?: return
+        highlightCollectionJob?.cancel()
+        highlightCollectionJob = viewModelScope.launch {
+            highlightRepository.getHighlightsForChapter(bookId, chapterIndex).collect { highlights ->
+                highlightsForCurrentChapter.value = highlights
+            }
+        }
+    }
+
+    fun createHighlight(
+        chapterIndex: Int,
+        elementId: String,
+        text: String,
+        color: String = selectedHighlightColor,
+        note: String? = null
+    ) {
+        val bookId = currentBookId ?: return
+        viewModelScope.launch {
+            val highlight = Highlight(
+                bookId = bookId,
+                chapterIndex = chapterIndex,
+                elementId = elementId,
+                text = text,
+                color = color,
+                note = note,
+                timestamp = System.currentTimeMillis()
+            )
+            highlightRepository.addHighlight(highlight)
+            loadHighlightsForChapter(chapterIndex)
+
+            // Clear text selection after creating highlight
+            delay(100)  // Small delay to ensure highlight is applied first
+            clearSelectionTrigger++
+        }
+    }
+
+    fun updateHighlightNote(highlightId: Long, note: String) {
+        viewModelScope.launch {
+            val highlight = highlightRepository.getHighlightById(highlightId)
+            if (highlight != null) {
+                highlightRepository.updateHighlight(highlight.copy(note = note))
+            }
+        }
+    }
+
+    fun updateHighlightColor(highlightId: Long, color: String) {
+        // Remember this color for future highlights
+        selectedHighlightColor = color
+        viewModelScope.launch {
+            val highlight = highlightRepository.getHighlightById(highlightId)
+            if (highlight != null) {
+                highlightRepository.updateHighlight(highlight.copy(color = color))
+            }
+        }
+    }
+
+    fun deleteHighlight(highlight: Highlight) {
+        viewModelScope.launch {
+            highlightRepository.deleteHighlight(highlight)
+            loadHighlightsForChapter(currentChapterIndex)
+        }
+    }
+
+    fun getHighlightsForBook(): Flow<List<Highlight>> {
+        val bookId = currentBookId ?: return kotlinx.coroutines.flow.flowOf(emptyList())
+        return highlightRepository.getHighlightsForBook(bookId)
+    }
+
+    suspend fun exportHighlightsToMarkdown(context: android.content.Context) {
+        val bookId = currentBookId ?: return
+        try {
+            // Get book details
+            val apiManager = AppContainer.apiClientManager
+            val apiBook = apiManager.getApi().getBookDetails(bookId)
+
+            val book = Book(
+                id = apiBook.uuid,
+                title = apiBook.title,
+                author = apiBook.authors.joinToString(", ") { it.name },
+                series = apiBook.series?.firstOrNull()?.name ?: apiBook.collections?.firstOrNull()?.name,
+                seriesIndex = apiBook.series?.firstOrNull()?.seriesIndex ?: apiBook.collections?.firstOrNull()?.seriesIndex,
+                coverUrl = apiManager.getCoverUrl(apiBook.uuid),
+                audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
+                ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid)
+            )
+
+            // Get all highlights
+            val allHighlights = highlightRepository.getHighlightsForBook(bookId).first()
+
+            // Build chapter titles map
+            val chapterTitles = lazyBook?.spineTitles?.mapKeys { entry ->
+                lazyBook?.spineHrefs?.indexOf(entry.key) ?: -1
+            }?.filterKeys { it >= 0 } ?: emptyMap()
+
+            // Export
+            val exporter = com.pekempy.ReadAloudbooks.util.HighlightExporter()
+            exporter.saveAndShareMarkdown(context, book, allHighlights, chapterTitles)
+        } catch (e: Exception) {
+            android.util.Log.e("ReaderViewModel", "Failed to export highlights", e)
+        }
+    }
+
+    suspend fun exportHighlightsToCsv(context: android.content.Context) {
+        val bookId = currentBookId ?: return
+        try {
+            // Get book details
+            val apiManager = AppContainer.apiClientManager
+            val apiBook = apiManager.getApi().getBookDetails(bookId)
+
+            val book = Book(
+                id = apiBook.uuid,
+                title = apiBook.title,
+                author = apiBook.authors.joinToString(", ") { it.name },
+                series = apiBook.series?.firstOrNull()?.name ?: apiBook.collections?.firstOrNull()?.name,
+                seriesIndex = apiBook.series?.firstOrNull()?.seriesIndex ?: apiBook.collections?.firstOrNull()?.seriesIndex,
+                coverUrl = apiManager.getCoverUrl(apiBook.uuid),
+                audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
+                ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid)
+            )
+
+            // Get all highlights
+            val allHighlights = highlightRepository.getHighlightsForBook(bookId).first()
+
+            // Build chapter titles map
+            val chapterTitles = lazyBook?.spineTitles?.mapKeys { entry ->
+                lazyBook?.spineHrefs?.indexOf(entry.key) ?: -1
+            }?.filterKeys { it >= 0 } ?: emptyMap()
+
+            // Export
+            val exporter = com.pekempy.ReadAloudbooks.util.HighlightExporter()
+            exporter.saveAndShareCsv(context, book, allHighlights, chapterTitles)
+        } catch (e: Exception) {
+            android.util.Log.e("ReaderViewModel", "Failed to export highlights", e)
+        }
+    }
+
+    // === BOOKMARK MANAGEMENT ===
+
+    fun loadBookmarks() {
+        val bookId = currentBookId ?: return
+        viewModelScope.launch {
+            bookmarkRepository.getBookmarksForBook(bookId).collect { bookmarkList ->
+                bookmarks.value = bookmarkList
+            }
+        }
+    }
+
+    fun createBookmark(label: String? = null) {
+        val bookId = currentBookId ?: return
+        viewModelScope.launch {
+            val bookmark = Bookmark(
+                bookId = bookId,
+                chapterIndex = currentChapterIndex,
+                scrollPercent = lastScrollPercent,
+                elementId = currentHighlightId,
+                label = label,
+                timestamp = System.currentTimeMillis()
+            )
+            bookmarkRepository.addBookmark(bookmark)
+            loadBookmarks()
+        }
+    }
+
+    fun deleteBookmark(bookmark: Bookmark) {
+        viewModelScope.launch {
+            bookmarkRepository.deleteBookmark(bookmark)
+            loadBookmarks()
+        }
+    }
+
+    fun navigateToBookmark(bookmark: Bookmark) {
+        changeChapter(bookmark.chapterIndex)
+        lastScrollPercent = bookmark.scrollPercent
+        currentHighlightId = bookmark.elementId
+        forceScrollUpdate()
+    }
+
+    // === READING SESSION TRACKING ===
+
+    fun startReadingSession() {
+        val bookId = currentBookId ?: return
+        if (currentSessionStartTime != null) return // Already tracking
+
+        currentSessionStartTime = System.currentTimeMillis()
+        viewModelScope.launch {
+            val session = ReadingSession(
+                bookId = bookId,
+                bookTitle = epubTitle,
+                startTime = currentSessionStartTime!!,
+                endTime = currentSessionStartTime!!,
+                durationMillis = 0,
+                pagesRead = 0,
+                chapterIndex = currentChapterIndex
+            )
+            currentSessionId = readingStatisticsRepository.addSession(session)
+        }
+    }
+
+    fun updateReadingSession() {
+        val sessionId = currentSessionId ?: return
+        val startTime = currentSessionStartTime ?: return
+        val bookId = currentBookId ?: return
+
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val duration = now - startTime
+
+            // Only update if session is at least 10 seconds
+            if (duration >= 10_000) {
+                val session = ReadingSession(
+                    id = sessionId,
+                    bookId = bookId,
+                    bookTitle = epubTitle,
+                    startTime = startTime,
+                    endTime = now,
+                    durationMillis = duration,
+                    pagesRead = 0, // Would need to calculate this
+                    chapterIndex = currentChapterIndex
+                )
+                // Note: We'd need an update method in the repository
+                // For now, this structure is in place
+            }
+        }
+    }
+
+    fun endReadingSession() {
+        updateReadingSession()
+        currentSessionStartTime = null
+        currentSessionId = null
     }
 
     override fun onCleared() {
         super.onCleared()
+        endReadingSession()
         try {
             currentZipFile?.close()
         } catch (e: Exception) {}
@@ -866,12 +1414,12 @@ class ReaderViewModel(
                      isLoading = true
                  }
                  
-                 val type = if (isReadAloudMode) 
-                    com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.ReadAloud 
-                 else 
+                 val type = if (isReadAloudMode)
+                    com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.ReadAloud
+                 else
                     com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.Ebook
-                    
-                 com.pekempy.ReadAloudbooks.data.DownloadManager.download(book, filesDir, type)
+
+                 DownloadService.startDownload(context, book, type)
                  
              } catch (e: Exception) {
                  e.printStackTrace()

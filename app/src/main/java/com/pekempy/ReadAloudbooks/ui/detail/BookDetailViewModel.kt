@@ -7,12 +7,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pekempy.ReadAloudbooks.data.Book
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
+import com.pekempy.ReadAloudbooks.service.DownloadService
 import kotlinx.coroutines.launch
 
 import com.pekempy.ReadAloudbooks.data.UserPreferencesRepository
 import kotlinx.coroutines.flow.first
 
-class BookDetailViewModel(private val repository: UserPreferencesRepository) : ViewModel() {
+class BookDetailViewModel(
+    private val repository: UserPreferencesRepository
+) : ViewModel() {
     var book by mutableStateOf<Book?>(null)
     var isLoading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
@@ -99,22 +102,22 @@ class BookDetailViewModel(private val repository: UserPreferencesRepository) : V
 
     fun downloadAll(filesDir: java.io.File) {
         val currentBook = book ?: return
-        com.pekempy.ReadAloudbooks.data.DownloadManager.downloadAll(currentBook, filesDir)
+        DownloadService.startDownload(AppContainer.context, currentBook, com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.All)
     }
 
     fun downloadAudiobook(filesDir: java.io.File) {
         val currentBook = book ?: return
-        com.pekempy.ReadAloudbooks.data.DownloadManager.download(currentBook, filesDir, com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.Audio)
+        DownloadService.startDownload(AppContainer.context, currentBook, com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.Audio)
     }
 
     fun downloadEbook(filesDir: java.io.File) {
         val currentBook = book ?: return
-        com.pekempy.ReadAloudbooks.data.DownloadManager.download(currentBook, filesDir, com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.Ebook)
+        DownloadService.startDownload(AppContainer.context, currentBook, com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.Ebook)
     }
 
     fun downloadReadAloud(filesDir: java.io.File) {
         val currentBook = book ?: return
-        com.pekempy.ReadAloudbooks.data.DownloadManager.download(currentBook, filesDir, com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.ReadAloud)
+        DownloadService.startDownload(AppContainer.context, currentBook, com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.ReadAloud)
     }
 
     fun createReadAloud() {

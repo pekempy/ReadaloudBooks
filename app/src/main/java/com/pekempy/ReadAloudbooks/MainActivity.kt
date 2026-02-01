@@ -45,6 +45,7 @@ import com.pekempy.ReadAloudbooks.ui.components.AppNavigationBar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.pekempy.ReadAloudbooks.data.RepositoryProvider
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: UserPreferencesRepository
@@ -82,7 +83,10 @@ class MainActivity : ComponentActivity() {
 
         sharedAudiobookViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return AudiobookViewModel(repository) as T
+                return AudiobookViewModel(
+                    repository,
+                    RepositoryProvider.audioBookmarkRepository
+                ) as T
             }
         })[AudiobookViewModel::class.java]
 
@@ -94,7 +98,12 @@ class MainActivity : ComponentActivity() {
 
         readerViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return ReaderViewModel(repository) as T
+                return ReaderViewModel(
+                    repository,
+                    RepositoryProvider.highlightRepository,
+                    RepositoryProvider.bookmarkRepository,
+                    RepositoryProvider.readingStatisticsRepository
+                ) as T
             }
         })[ReaderViewModel::class.java]
 
@@ -462,7 +471,9 @@ class MainActivity : ComponentActivity() {
                         val detailViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.detail.BookDetailViewModel>(
                             factory = object : ViewModelProvider.Factory {
                                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    return com.pekempy.ReadAloudbooks.ui.detail.BookDetailViewModel(repository) as T
+                                    return com.pekempy.ReadAloudbooks.ui.detail.BookDetailViewModel(
+                                        repository
+                                    ) as T
                                 }
                             }
                         )
@@ -570,6 +581,27 @@ class MainActivity : ComponentActivity() {
                             onSwitchToReadAloud = { id ->
                                 navController.navigate("reader/$id?isReadAloud=true")
                             }
+                        )
+                    }
+                    composable(
+                        route = "statistics",
+                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
+                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
+                    ) {
+                        val statisticsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.statistics.ReadingStatisticsViewModel>(
+                            factory = object : ViewModelProvider.Factory {
+                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                    return com.pekempy.ReadAloudbooks.ui.statistics.ReadingStatisticsViewModel(
+                                        RepositoryProvider.readingStatisticsRepository
+                                    ) as T
+                                }
+                            }
+                        )
+                        com.pekempy.ReadAloudbooks.ui.statistics.ReadingStatisticsScreen(
+                            viewModel = statisticsViewModel,
+                            onBack = { navController.popBackStack() }
                         )
                     }
                     }

@@ -4,4 +4,6 @@
     <item name="search_tag" type="id"/>
     <item name="anchor_tag" type="id"/>
     <item name="trigger_tag" type="id"/>
+    <item name="user_highlights_tag" type="id"/>
+    <item name="clear_selection_tag" type="id"/>
 </resources>

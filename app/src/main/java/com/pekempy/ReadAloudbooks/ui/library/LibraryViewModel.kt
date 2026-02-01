@@ -7,6 +7,7 @@ import com.pekempy.ReadAloudbooks.data.Book
 import com.pekempy.ReadAloudbooks.data.UserCredentials
 import com.pekempy.ReadAloudbooks.data.UserPreferencesRepository
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
+import com.pekempy.ReadAloudbooks.service.DownloadService
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -430,8 +431,8 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     fun downloadBook(book: Book) {
         addPendingDownload(book.id)
         downloadingBooks[book.id] = DownloadStatus(0f, "Queued")
-        
-        com.pekempy.ReadAloudbooks.data.DownloadManager.downloadAll(book, AppContainer.context.filesDir)
+
+        DownloadService.startDownload(AppContainer.context, book, com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.All)
     }
 
     fun downloadSeries(seriesName: String) {

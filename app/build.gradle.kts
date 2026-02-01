@@ -4,6 +4,8 @@ import java.io.FileInputStream
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.devtools.ksp") version "1.9.24-1.0.20"
+    id("kotlin-parcelize")
 }
 
 android {
@@ -33,6 +35,13 @@ android {
     }
 
     signingConfigs {
+        getByName("debug") {
+            storeFile = file("${rootProject.projectDir}/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+
         create("release") {
             val keystorePropertiesFile = rootProject.file("keystore.properties")
             val keystoreProperties = Properties()
@@ -118,6 +127,21 @@ dependencies {
         exclude(group = "net.sf.kxml")
     }
     implementation("org.slf4j:slf4j-android:1.7.36")
+
+    // Room database
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
+
+    // Work Manager for background tasks
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // Sensors for shake detection
+    implementation("androidx.core:core-ktx:1.12.0")
+
+    // Foldable device support
+    implementation("androidx.window:window:1.2.0")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
