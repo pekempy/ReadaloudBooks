@@ -40,8 +40,19 @@ class ApiClientManager {
         baseUrl = cleanUrl
         token = authToken
 
-        val logging = HttpLoggingInterceptor().apply {
+        val logging = HttpLoggingInterceptor(object : HttpLoggingInterceptor.Logger {
+            override fun log(message: String) {
+                val logMsg = if (cleanUrl.isNotEmpty()) {
+                    message.replace(cleanUrl, "REDACTED_URL")
+                } else {
+                    message
+                }
+                android.util.Log.d("ApiClientManager", logMsg)
+            }
+        }).apply {
             level = HttpLoggingInterceptor.Level.BODY
+            redactHeader("Cookie")
+            redactHeader("Set-Cookie")
         }
 
         val authInterceptor = Interceptor { chain ->

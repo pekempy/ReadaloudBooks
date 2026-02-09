@@ -55,11 +55,12 @@ object DownloadUtils {
         val eExists = isEbookDownloaded(filesDir, book)
         val rExists = isReadAloudDownloaded(filesDir, book)
         
-        if (aExists || eExists || rExists) {
-            android.util.Log.d("DownloadUtils", "Found downloaded content for ${book.title}: Audio=$aExists, Ebook=$eExists, ReadAloud=$rExists")
-            val bookDir = getBookDir(filesDir, book)
-            android.util.Log.d("DownloadUtils", "Book directory: ${bookDir.absolutePath}")
-        }
+        // Logs removed to reduce noise
+        // if (aExists || eExists || rExists) {
+        //     android.util.Log.d("DownloadUtils", "Found downloaded content for ${book.title}: Audio=$aExists, Ebook=$eExists, ReadAloud=$rExists")
+        //     val bookDir = getBookDir(filesDir, book)
+        //     android.util.Log.d("DownloadUtils", "Book directory: ${bookDir.absolutePath}")
+        // }
         
         return aExists || eExists || rExists
     }
