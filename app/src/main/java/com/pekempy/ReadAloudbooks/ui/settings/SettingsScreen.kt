@@ -258,6 +258,27 @@ fun SettingsTheming(
                 }
              }
 
+             SettingsSection("Navigation Bar") {
+                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                         Text("Show Books")
+                         Switch(checked = viewModel.showBooksTab, onCheckedChange = { viewModel.updateShowBooksTab(it) })
+                     }
+                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                         Text("Show Authors")
+                         Switch(checked = viewModel.showAuthorsTab, onCheckedChange = { viewModel.updateShowAuthorsTab(it) })
+                     }
+                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                         Text("Show Series")
+                         Switch(checked = viewModel.showSeriesTab, onCheckedChange = { viewModel.updateShowSeriesTab(it) })
+                     }
+                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                         Text("Show Collections")
+                         Switch(checked = viewModel.showCollectionsTab, onCheckedChange = { viewModel.updateShowCollectionsTab(it) })
+                     }
+                 }
+             }
+
              SettingsSection("Dynamic Colour") {
                  Row(
                     modifier = Modifier.fillMaxWidth(),

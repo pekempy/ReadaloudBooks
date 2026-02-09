@@ -43,6 +43,11 @@ class UserPreferencesRepository(private val context: Context) {
 
         val LAST_ACTIVE_BOOK_ID = stringPreferencesKey("last_active_book_id")
         val LAST_ACTIVE_BOOK_TYPE = stringPreferencesKey("last_active_book_type")
+
+        val SHOW_BOOKS_TAB = booleanPreferencesKey("show_books_tab")
+        val SHOW_AUTHORS_TAB = booleanPreferencesKey("show_authors_tab")
+        val SHOW_SERIES_TAB = booleanPreferencesKey("show_series_tab")
+        val SHOW_COLLECTIONS_TAB = booleanPreferencesKey("show_collections_tab")
     }
 
     val userCredentials: Flow<UserCredentials?> = context.dataStore.data.map { preferences ->
@@ -78,7 +83,11 @@ class UserPreferencesRepository(private val context: Context) {
             readerTheme = preferences[READER_THEME] ?: 0,
             readerFontFamily = preferences[READER_FONT_FAMILY] ?: "serif",
             playbackSpeed = preferences[PLAYBACK_SPEED] ?: 1.0f,
-            sleepTimerFinishChapter = preferences[SLEEP_TIMER_FINISH_CHAPTER] ?: false
+            sleepTimerFinishChapter = preferences[SLEEP_TIMER_FINISH_CHAPTER] ?: false,
+            showBooksTab = preferences[SHOW_BOOKS_TAB] ?: true,
+            showAuthorsTab = preferences[SHOW_AUTHORS_TAB] ?: true,
+            showSeriesTab = preferences[SHOW_SERIES_TAB] ?: true,
+            showCollectionsTab = preferences[SHOW_COLLECTIONS_TAB] ?: true
         )
     }
 
@@ -239,6 +248,21 @@ class UserPreferencesRepository(private val context: Context) {
     val lastActiveBook: Flow<Pair<String?, String?>> = context.dataStore.data.map { preferences ->
         preferences[LAST_ACTIVE_BOOK_ID] to preferences[LAST_ACTIVE_BOOK_TYPE]
     }
+    suspend fun updateShowBooksTab(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[SHOW_BOOKS_TAB] = enabled }
+    }
+
+    suspend fun updateShowAuthorsTab(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[SHOW_AUTHORS_TAB] = enabled }
+    }
+
+    suspend fun updateShowSeriesTab(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[SHOW_SERIES_TAB] = enabled }
+    }
+
+    suspend fun updateShowCollectionsTab(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[SHOW_COLLECTIONS_TAB] = enabled }
+    }
 }
 
 data class UserSettings(
@@ -250,5 +274,9 @@ data class UserSettings(
     val readerTheme: Int,
     val readerFontFamily: String,
     val playbackSpeed: Float,
-    val sleepTimerFinishChapter: Boolean
+    val sleepTimerFinishChapter: Boolean,
+    val showBooksTab: Boolean,
+    val showAuthorsTab: Boolean,
+    val showSeriesTab: Boolean,
+    val showCollectionsTab: Boolean
 )

@@ -15,6 +15,7 @@ data class Book(
     val ebookUrl: String? = null,
     val addedDate: Long = 0L,
     val series: String? = null,
+    val collection: String? = null,
     val seriesIndex: String? = null,
     val isDownloaded: Boolean = false,
     val isAudiobookDownloaded: Boolean = false,

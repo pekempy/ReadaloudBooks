@@ -55,7 +55,7 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
 
     var downloadingBooks = mutableStateMapOf<String, DownloadStatus>()
 
-    enum class ViewMode { Home, Library, Authors, Series, Downloads, Processing }
+    enum class ViewMode { Home, Library, Authors, Series, Collections, Downloads, Processing }
     var currentViewMode by mutableStateOf(ViewMode.Home)
     
     private val LIMIT = 100
@@ -165,6 +165,17 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
                 loadBooks()
             } catch (e: Exception) {
                 android.util.Log.e("LibraryViewModel", "Failed to retry processing for $bookId: ${e.message}")
+            }
+        }
+    }
+
+    fun resumeProcessing(bookId: String) {
+        viewModelScope.launch {
+            try {
+                AppContainer.apiClientManager.getApi().processBook(bookId)
+                loadBooks()
+            } catch (e: Exception) {
+                android.util.Log.e("LibraryViewModel", "Failed to resume processing for $bookId: ${e.message}")
             }
         }
     }
@@ -313,7 +324,8 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
                             syncedUrl = apiManager.getSyncDownloadUrl(apiBook.uuid),
                             audiobookUrl = apiManager.getAudiobookDownloadUrl(apiBook.uuid),
                             ebookUrl = apiManager.getEbookDownloadUrl(apiBook.uuid),
-                            series = apiSeries?.name ?: apiCollection?.name,
+                            series = apiSeries?.name,
+                            collection = apiCollection?.name,
                             seriesIndex = apiBook.series?.firstNotNullOfOrNull { it.seriesIndex }
                                 ?: apiBook.collections?.firstNotNullOfOrNull { it.seriesIndex },
                             addedDate = System.currentTimeMillis(),
@@ -467,6 +479,7 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
             when (currentViewMode) {
                 ViewMode.Authors -> allBooks.filter { it.author == selectedFilter }
                 ViewMode.Series -> allBooks.filter { it.series == selectedFilter }
+                ViewMode.Collections -> allBooks.filter { it.collection == selectedFilter }
                 ViewMode.Processing -> allBooks.filter { it.isReadAloudQueued }
                 ViewMode.Downloads -> allBooks.filter { downloadingBooks.containsKey(it.id) }
                 else -> allBooks
@@ -536,12 +549,21 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
         return allSeries.take((currentPage + 1) * LIMIT)
     }
 
+    fun getUniqueCollections(): List<String> {
+        val allCollections = getFilteredMasterList().mapNotNull { it.collection }.distinct().sortedBy { com.pekempy.ReadAloudbooks.util.StringUtils.normalizeTitle(it) }
+        return allCollections.take((currentPage + 1) * LIMIT)
+    }
+
     fun getCoversForAuthor(author: String): List<String> {
         return allBooks.filter { it.author == author }.mapNotNull { it.coverUrl }.distinct().take(4)
     }
 
     fun getCoversForSeries(series: String): List<String> {
         return allBooks.filter { it.series == series }.mapNotNull { it.coverUrl }.distinct().take(4)
+    }
+
+    fun getCoversForCollection(collection: String): List<String> {
+        return allBooks.filter { it.collection == collection }.mapNotNull { it.coverUrl }.distinct().take(4)
     }
 
     fun deleteProgress(bookId: String) {

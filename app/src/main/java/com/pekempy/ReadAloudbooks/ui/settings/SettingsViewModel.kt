@@ -25,6 +25,11 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
     var readerTheme by mutableStateOf(0)
     var readerFontFamily by mutableStateOf("serif")
     var playbackSpeed by mutableStateOf(1.0f)
+    
+    var showBooksTab by mutableStateOf(true)
+    var showAuthorsTab by mutableStateOf(true)
+    var showSeriesTab by mutableStateOf(true)
+    var showCollectionsTab by mutableStateOf(true)
 
     init {
         viewModelScope.launch {
@@ -38,6 +43,10 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
                 readerFontFamily = settings.readerFontFamily
                 playbackSpeed = settings.playbackSpeed
                 sleepTimerFinishChapter = settings.sleepTimerFinishChapter
+                showBooksTab = settings.showBooksTab
+                showAuthorsTab = settings.showAuthorsTab
+                showSeriesTab = settings.showSeriesTab
+                showCollectionsTab = settings.showCollectionsTab
             }
         }
         viewModelScope.launch {
@@ -99,5 +108,25 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
     fun updatePlaybackSpeed(speed: Float) {
         playbackSpeed = speed
         viewModelScope.launch { repository.updatePlaybackSpeed(speed) }
+    }
+
+    fun updateShowBooksTab(enabled: Boolean) {
+        showBooksTab = enabled
+        viewModelScope.launch { repository.updateShowBooksTab(enabled) }
+    }
+
+    fun updateShowAuthorsTab(enabled: Boolean) {
+        showAuthorsTab = enabled
+        viewModelScope.launch { repository.updateShowAuthorsTab(enabled) }
+    }
+
+    fun updateShowSeriesTab(enabled: Boolean) {
+        showSeriesTab = enabled
+        viewModelScope.launch { repository.updateShowSeriesTab(enabled) }
+    }
+
+    fun updateShowCollectionsTab(enabled: Boolean) {
+        showCollectionsTab = enabled
+        viewModelScope.launch { repository.updateShowCollectionsTab(enabled) }
     }
 }

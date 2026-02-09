@@ -161,6 +161,7 @@ fun LibraryScreen(
                                     LibraryViewModel.ViewMode.Series -> "Series"
                                     LibraryViewModel.ViewMode.Downloads -> "Active Downloads"
                                     LibraryViewModel.ViewMode.Processing -> "Server Processing"
+                                    LibraryViewModel.ViewMode.Collections -> "Collections"
                                 },
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold
@@ -574,6 +575,32 @@ fun LibraryScreen(
                                     }
                                 }
                             }
+                        } else if (targetMode == LibraryViewModel.ViewMode.Collections) {
+                            val collections = viewModel.getUniqueCollections()
+                            val listState = rememberLazyListState()
+
+                            LaunchedEffect(listState.firstVisibleItemIndex) {
+                                if (collections.isNotEmpty() && listState.layoutInfo.visibleItemsInfo.isNotEmpty()) {
+                                    val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.last().index
+                                    if (lastVisibleIndex >= collections.size - 5) {
+                                        viewModel.loadNextPage()
+                                    }
+                                }
+                            }
+
+                            LazyColumn(
+                                state = listState,
+                                contentPadding = contentPadding,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(collections) { c ->
+                                    CategoryListItem(
+                                        name = c,
+                                        covers = viewModel.getCoversForCollection(c),
+                                        onClick = { viewModel.selectFilter(c) }
+                                    )
+                                }
+                            }
                         } else if (targetMode == LibraryViewModel.ViewMode.Downloads) {
                             val activeDownloads = com.pekempy.ReadAloudbooks.data.DownloadManager.activeDownloads
                             val downloadOrder = activeDownloads.map { it.book.id }
@@ -726,16 +753,39 @@ fun LibraryScreen(
 
                                                         if (isError) {
                                                             Spacer(Modifier.width(8.dp))
-                                                            IconButton(
-                                                                onClick = { viewModel.retryProcessing(book.id) },
-                                                                modifier = Modifier.size(24.dp)
-                                                            ) {
-                                                                Icon(
-                                                                    painterResource(R.drawable.ic_history),
-                                                                    contentDescription = "Retry",
-                                                                    modifier = Modifier.size(16.dp),
-                                                                    tint = MaterialTheme.colorScheme.primary
-                                                                )
+                                                            var showRetryMenu by remember { mutableStateOf(false) }
+                                                            Box {
+                                                                IconButton(
+                                                                    onClick = { showRetryMenu = true },
+                                                                    modifier = Modifier.size(24.dp)
+                                                                ) {
+                                                                    Icon(
+                                                                        painterResource(R.drawable.ic_history),
+                                                                        contentDescription = "Retry",
+                                                                        modifier = Modifier.size(16.dp),
+                                                                        tint = MaterialTheme.colorScheme.primary
+                                                                    )
+                                                                }
+                                                                
+                                                                DropdownMenu(
+                                                                    expanded = showRetryMenu,
+                                                                    onDismissRequest = { showRetryMenu = false }
+                                                                ) {
+                                                                    DropdownMenuItem(
+                                                                        text = { Text("Restart (Clear Cache)") },
+                                                                        onClick = { 
+                                                                            viewModel.retryProcessing(book.id)
+                                                                            showRetryMenu = false
+                                                                        }
+                                                                    )
+                                                                    DropdownMenuItem(
+                                                                        text = { Text("Resume") },
+                                                                        onClick = { 
+                                                                            viewModel.resumeProcessing(book.id)
+                                                                            showRetryMenu = false
+                                                                        }
+                                                                    )
+                                                                }
                                                             }
                                                         }
                                                     }

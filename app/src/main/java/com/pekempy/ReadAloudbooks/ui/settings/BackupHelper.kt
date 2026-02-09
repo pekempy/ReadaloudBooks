@@ -50,11 +50,11 @@ object BackupHelper {
                     var currentDir = destRoot
                     for (i in 0 until pathParts.size - 1) {
                         val dirName = pathParts[i]
-                        val existing = currentDir.findFile(dirName)
+                        val existing = currentDir?.findFile(dirName)
                         currentDir = if (existing != null && existing.isDirectory) {
                             existing
                         } else {
-                            currentDir.createDirectory(dirName) ?: throw Exception("Failed to create directory: $dirName")
+                            currentDir?.createDirectory(dirName) ?: throw Exception("Failed to create directory: $dirName")
                         }
                     }
                     
@@ -66,8 +66,8 @@ object BackupHelper {
                         else -> "application/octet-stream"
                     }
                     
-                    val destFile = currentDir.findFile(fileName)?.also { it.delete() } 
-                        ?: currentDir.createFile(mimeType, fileName)
+                    val destFile = currentDir?.findFile(fileName)?.also { it.delete() } 
+                        ?: currentDir?.createFile(mimeType, fileName)
                     
                     if (destFile != null) {
                         context.contentResolver.openOutputStream(destFile.uri)?.use { output ->

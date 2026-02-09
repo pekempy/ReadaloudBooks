@@ -19,7 +19,11 @@ fun AppNavigationBar(
     hasDownloads: Boolean = false,
     downloadCount: Int = 0,
     hasProcessing: Boolean = false,
-    processingCount: Int = 0
+    processingCount: Int = 0,
+    showBooks: Boolean = true,
+    showAuthors: Boolean = true,
+    showSeries: Boolean = true,
+    showCollections: Boolean = true
 ) {
     val isLibraryRoute = currentRoute?.startsWith("library") == true
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -36,33 +40,50 @@ fun AppNavigationBar(
                 onViewModeChange(LibraryViewModel.ViewMode.Home)
             }
         )
-        NavigationBarItem(
-            icon = { Icon(painterResource(R.drawable.ic_book), contentDescription = null) },
-            label = { Text("Books", maxLines = 1) },
-            selected = currentViewMode == LibraryViewModel.ViewMode.Library,
-            onClick = {
-                onNavigateToLibrary()
-                onViewModeChange(LibraryViewModel.ViewMode.Library)
-            }
-        )
-        NavigationBarItem(
-            icon = { Icon(painterResource(R.drawable.ic_person), contentDescription = null) },
-            label = { Text("Authors", maxLines = 1) },
-            selected = currentViewMode == LibraryViewModel.ViewMode.Authors,
-            onClick = {
-                onNavigateToLibrary()
-                onViewModeChange(LibraryViewModel.ViewMode.Authors)
-            }
-        )
-        NavigationBarItem(
-            icon = { Icon(painterResource(R.drawable.ic_list), contentDescription = null) },
-            label = { Text("Series", maxLines = 1) },
-            selected = currentViewMode == LibraryViewModel.ViewMode.Series,
-            onClick = {
-                onNavigateToLibrary()
-                onViewModeChange(LibraryViewModel.ViewMode.Series)
-            }
-        )
+        if (showBooks) {
+            NavigationBarItem(
+                icon = { Icon(painterResource(R.drawable.ic_book), contentDescription = null) },
+                label = { Text("Books", maxLines = 1) },
+                selected = currentViewMode == LibraryViewModel.ViewMode.Library,
+                onClick = {
+                    onNavigateToLibrary()
+                    onViewModeChange(LibraryViewModel.ViewMode.Library)
+                }
+            )
+        }
+        if (showAuthors) {
+            NavigationBarItem(
+                icon = { Icon(painterResource(R.drawable.ic_person), contentDescription = null) },
+                label = { Text("Authors", maxLines = 1) },
+                selected = currentViewMode == LibraryViewModel.ViewMode.Authors,
+                onClick = {
+                    onNavigateToLibrary()
+                    onViewModeChange(LibraryViewModel.ViewMode.Authors)
+                }
+            )
+        }
+        if (showSeries) {
+            NavigationBarItem(
+                icon = { Icon(painterResource(R.drawable.ic_list), contentDescription = null) },
+                label = { Text("Series", maxLines = 1) },
+                selected = currentViewMode == LibraryViewModel.ViewMode.Series,
+                onClick = {
+                    onNavigateToLibrary()
+                    onViewModeChange(LibraryViewModel.ViewMode.Series)
+                }
+            )
+        }
+        if (showCollections) {
+            NavigationBarItem(
+                icon = { Icon(painterResource(R.drawable.ic_folder), contentDescription = null) },
+                label = { Text("Collections", maxLines = 1) },
+                selected = currentViewMode == LibraryViewModel.ViewMode.Collections,
+                onClick = {
+                    onNavigateToLibrary()
+                    onViewModeChange(LibraryViewModel.ViewMode.Collections)
+                }
+            )
+        }
         
         if (hasProcessing && hasDownloads) {
             val totalCount = processingCount + downloadCount
