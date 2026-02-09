@@ -238,6 +238,22 @@ class BookRepository(private val context: Context, private val userPrefsRepo: Us
     }
 
     /**
+     * Fetch all books specifically for the processing tab, directly from server API.
+     * Does NOT interact with the local database.
+     */
+    suspend fun getServerProcessingBooks(): List<Book> {
+        val apiManager = AppContainer.apiClientManager
+        // We have to list all books to find the processing ones as there is no specific endpoint
+        val allBooks = apiManager.getApi().listBooks()
+        
+        return allBooks
+            .filter { it.readaloud != null }
+            .map { buildBookFromApiResponse(it, apiManager) }
+            .filter { it.isReadAloudQueued || it.processingStatus == "ERROR" || it.processingStatus == "QUEUED" || it.processingStatus == "PROCESSING" }
+            .sortedBy { it.queuePosition ?: Int.MAX_VALUE }
+    }
+
+    /**
      * Get all books from local database
      */
     fun getAllBooksFromLocal(): List<Book> {

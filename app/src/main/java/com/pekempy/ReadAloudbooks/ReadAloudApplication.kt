@@ -14,11 +14,15 @@ class ReadAloudApplication : Application(), ImageLoaderFactory {
     }
 
     override fun newImageLoader(): ImageLoader {
-        val client = AppContainer.apiClientManager.okHttpClient 
-            ?: okhttp3.OkHttpClient()
-            
         return ImageLoader.Builder(this)
-            .okHttpClient(client)
+            .callFactory { 
+                // Return a Call.Factory that always delegates to the current AppContainer client
+                // This ensures we use the authenticated client even if it's updated after Coil init
+                okhttp3.Call.Factory { request ->
+                    val client = AppContainer.apiClientManager.okHttpClient ?: okhttp3.OkHttpClient()
+                    client.newCall(request)
+                }
+            }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))

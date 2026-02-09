@@ -58,6 +58,9 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     data class DownloadStatus(val progress: Float, val statusText: String)
 
     var downloadingBooks = mutableStateMapOf<String, DownloadStatus>()
+    
+    // Pure server-side list for Processing tab, decoupled from local DB
+    private var serverProcessingList = mutableStateListOf<Book>()
 
     enum class ViewMode { Home, Library, Authors, Series, Collections, Downloads, Processing }
     var currentViewMode by mutableStateOf(ViewMode.Home)
@@ -78,8 +81,8 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     var continueSeriesBooks by mutableStateOf<List<Book>>(emptyList())
     var downloadedBooks by mutableStateOf<List<Book>>(emptyList())
     
-    val totalProcessingCount: Int get() = allBooks.count { it.isReadAloudQueued }
-    val hasProcessing: Boolean get() = allBooks.any { it.isReadAloudQueued }
+    val totalProcessingCount: Int get() = serverProcessingList.size
+    val hasProcessing: Boolean get() = serverProcessingList.isNotEmpty()
     
     var selectedFilter: String? by mutableStateOf(null)
     
@@ -125,7 +128,7 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
         startPollingProcessingBooks()
         startPeriodicSync()
         startPollingOfflineStatus()
-        loadBooks()
+        loadBooks(forceSync = true)
     }
 
     private fun startPollingOfflineStatus() {
@@ -157,20 +160,19 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
         viewModelScope.launch {
             while (isActive) {
                 if (!isOfflineMode) {
-                    val processingBooks = allBooks.filter { it.isReadAloudQueued }
-                    if (processingBooks.isNotEmpty()) {
-                        processingBooks.forEach { book ->
-                            try {
-                                val details = AppContainer.apiClientManager.getApi().getBookDetails(book.id)
-                                val ra = details.readaloud
-                                if (ra != null) {
-                                    bookRepository.updateProcessingStatus(book.id, ra)
-                                }
-                            } catch (e: Exception) {
-                                android.util.Log.w("LibraryVM", "Failed to poll status for ${book.id}")
-                            }
+                    try {
+                        val serverBooks = bookRepository.getServerProcessingBooks()
+                        
+                        // Update the list state
+                        serverProcessingList.clear()
+                        serverProcessingList.addAll(serverBooks)
+                        
+                        // If user is currently looking at the processing tab, force a refresh
+                        if (currentViewMode == ViewMode.Processing) {
+                            applyFiltersAndSort()
                         }
-                        refreshFromLocal()
+                    } catch (e: Exception) {
+                        android.util.Log.e("LibraryVM", "Failed to fetch server processing list: ${e.message}")
                     }
                 }
                 kotlinx.coroutines.delay(5000)
@@ -481,13 +483,13 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
                     }
                 }
                 ViewMode.Collections -> allBooks.filter { it.collection == selectedFilter }
-                ViewMode.Processing -> allBooks.filter { it.isReadAloudQueued }
+                ViewMode.Processing -> serverProcessingList
                 ViewMode.Downloads -> allBooks.filter { downloadingBooks.containsKey(it.id) }
                 else -> allBooks
             }
         } else {
             when (currentViewMode) {
-                ViewMode.Processing -> allBooks.filter { it.isReadAloudQueued }
+                ViewMode.Processing -> serverProcessingList
                 ViewMode.Downloads -> allBooks.filter { downloadingBooks.containsKey(it.id) }
                 else -> allBooks
             }
