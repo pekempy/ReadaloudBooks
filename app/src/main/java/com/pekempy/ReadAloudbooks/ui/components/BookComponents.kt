@@ -33,7 +33,8 @@ fun BookItem(
     onClick: () -> Unit, 
     onLongClick: (() -> Unit)? = null,
     onDownloadClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isOfflineMode: Boolean = false
 ) {
     val isDownloading = downloadProgress != null
     Card(
@@ -57,7 +58,12 @@ fun BookItem(
                 contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
-                    model = book.coverUrl,
+                    model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                        .data(book.coverUrl)
+                        .crossfade(true)
+                        .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                        .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                        .build(),
                     contentDescription = null,
                     modifier = Modifier
                         .fillMaxSize()
@@ -67,7 +73,12 @@ fun BookItem(
                 )
 
                 AsyncImage(
-                    model = book.coverUrl,
+                    model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                        .data(book.coverUrl)
+                        .crossfade(true)
+                        .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                        .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                        .build(),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
@@ -91,7 +102,7 @@ fun BookItem(
                             .padding(8.dp)
                             .clip(CircleShape)
                             .background(Color.Black.copy(alpha = 0.6f))
-                            .clickable(enabled = !isDownloading) { onDownloadClick() }
+                            .clickable(enabled = !isDownloading && !isOfflineMode) { onDownloadClick() }
                             .padding(8.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -105,10 +116,10 @@ fun BookItem(
                             )
                         }
                         Icon(
-                            painter = painterResource(R.drawable.ic_download),
+                            painter = painterResource(if (isOfflineMode) R.drawable.ic_warning else R.drawable.ic_download),
                             contentDescription = "Download",
                             modifier = Modifier.size(20.dp),
-                            tint = if (book.isDownloaded) Color.Green else Color.LightGray
+                            tint = if (book.isDownloaded) Color.Green else if (isOfflineMode) Color.Gray.copy(alpha = 0.5f) else Color.LightGray
                         )
                     }
                 }
@@ -308,7 +319,10 @@ fun BookActionMenu(
     onMarkFinished: (Book) -> Unit,
     onMarkUnread: (Book) -> Unit,
     onEdit: (Book) -> Unit,
-    onRemoveFromHome: ((Book) -> Unit)? = null
+    onRemoveFromHome: ((Book) -> Unit)? = null,
+    onDownload: ((Book) -> Unit)? = null,
+    onCreateReadAloud: ((Book) -> Unit)? = null,
+    isOfflineMode: Boolean = false
 ) {
     if (book == null) return
 
@@ -368,6 +382,34 @@ fun BookActionMenu(
             }
         )
 
+        if (onDownload != null && !book.isDownloaded) {
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Download") },
+                leadingIcon = { Icon(painterResource(R.drawable.ic_download), contentDescription = null) },
+                onClick = {
+                    onDownload(book)
+                    onDismissRequest()
+                },
+                enabled = !isOfflineMode
+            )
+        }
+
+        if (onCreateReadAloud != null && !book.hasReadAloud && book.hasEbook && book.hasAudiobook && !book.isReadAloudQueued) {
+            if (onDownload == null || book.isDownloaded) {
+                HorizontalDivider()
+            }
+            DropdownMenuItem(
+                text = { Text("Create Read Aloud") },
+                leadingIcon = { Icon(painterResource(R.drawable.ic_menu_book), contentDescription = null) },
+                onClick = {
+                    onCreateReadAloud(book)
+                    onDismissRequest()
+                },
+                enabled = !isOfflineMode
+            )
+        }
+
         DropdownMenuItem(
             text = { Text("Edit Metadata") },
             leadingIcon = { Icon(painterResource(R.drawable.ic_edit), contentDescription = null) },
@@ -395,7 +437,8 @@ fun SeriesActionMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     seriesName: String?,
-    onDownloadSeries: (String) -> Unit
+    onDownloadSeries: (String) -> Unit,
+    isOfflineMode: Boolean = false
 ) {
     if (seriesName == null) return
 
@@ -409,7 +452,8 @@ fun SeriesActionMenu(
             onClick = {
                 onDownloadSeries(seriesName)
                 onDismissRequest()
-            }
+            },
+            enabled = !isOfflineMode
         )
     }
 }

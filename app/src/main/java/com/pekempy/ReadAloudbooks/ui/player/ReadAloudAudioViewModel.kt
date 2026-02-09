@@ -199,7 +199,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                         }
                     }
                 } catch (e: Exception) {
-                    android.util.Log.w("ReadAloudAudioVM", "Failed to check server progress: ${e.message}")
+                    android.util.Log.w("ReadAloudAudioVM", "Failed to check server progress (offline?): ${e.message}")
                 }
                 isLoading = false
             }
@@ -213,24 +213,31 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             
             try {
                 val apiManager = AppContainer.apiClientManager
-                val apiBook = apiManager.getApi().getBookDetails(bookId)
+                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
                 
-                val apiSeries = apiBook.series?.firstOrNull()
-                val apiCollection = apiBook.collections?.firstOrNull()
-                
-                val book = Book(
-                    id = apiBook.uuid,
-                    title = apiBook.title,
-                    author = apiBook.authors.joinToString(", ") { it.name },
-                    narrator = apiBook.narrators?.joinToString(", ") { it.name },
-                    coverUrl = apiManager.getCoverUrl(apiBook.uuid),
-                    audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
-                    ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid),
-                    description = apiBook.description,
-                    series = apiSeries?.name ?: apiCollection?.name,
-                    seriesIndex = apiBook.series?.firstNotNullOfOrNull { it.seriesIndex }
-                        ?: apiBook.collections?.firstNotNullOfOrNull { it.seriesIndex }
-                )
+                val book = try {
+                    val apiBook = apiManager.getApi().getBookDetails(bookId)
+                    
+                    val apiSeries = apiBook.series?.firstOrNull()
+                    val apiCollection = apiBook.collections?.firstOrNull()
+                    
+                    Book(
+                        id = apiBook.uuid,
+                        title = apiBook.title,
+                        author = apiBook.authors.joinToString(", ") { it.name },
+                        narrator = apiBook.narrators?.joinToString(", ") { it.name },
+                        coverUrl = apiManager.getCoverUrl(apiBook.uuid),
+                        audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
+                        ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid),
+                        description = apiBook.description,
+                        series = apiSeries?.name ?: apiCollection?.name,
+                        seriesIndex = apiBook.series?.firstNotNullOfOrNull { it.seriesIndex }
+                            ?: apiBook.collections?.firstNotNullOfOrNull { it.seriesIndex }
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("ReadAloudAudioVM", "Failed to get book details from API, trying local: ${e.message}")
+                    bookRepo.getBook(bookId) ?: throw Exception("Book details not found locally or on server.")
+                }
                 
                 withContext(Dispatchers.Main) {
                     currentBook = book
@@ -396,24 +403,30 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val apiManager = AppContainer.apiClientManager
-                val apiBook = apiManager.getApi().getBookDetails(bookId)
-                
-                val apiSeries = apiBook.series?.firstOrNull()
-                val apiCollection = apiBook.collections?.firstOrNull()
-                
-                val book = Book(
-                    id = apiBook.uuid,
-                    title = apiBook.title,
-                    author = apiBook.authors.joinToString(", ") { it.name },
-                    narrator = apiBook.narrators?.joinToString(", ") { it.name },
-                    coverUrl = apiManager.getCoverUrl(apiBook.uuid),
-                    audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
-                    ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid),
-                    description = apiBook.description,
-                    series = apiSeries?.name ?: apiCollection?.name,
-                    seriesIndex = apiBook.series?.firstNotNullOfOrNull { it.seriesIndex }
-                        ?: apiBook.collections?.firstNotNullOfOrNull { it.seriesIndex }
-                )
+                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
+                val book = try {
+                    val apiBook = apiManager.getApi().getBookDetails(bookId)
+                    
+                    val apiSeries = apiBook.series?.firstOrNull()
+                    val apiCollection = apiBook.collections?.firstOrNull()
+                    
+                    Book(
+                        id = apiBook.uuid,
+                        title = apiBook.title,
+                        author = apiBook.authors.joinToString(", ") { it.name },
+                        narrator = apiBook.narrators?.joinToString(", ") { it.name },
+                        coverUrl = apiManager.getCoverUrl(apiBook.uuid),
+                        audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
+                        ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid),
+                        description = apiBook.description,
+                        series = apiSeries?.name ?: apiCollection?.name,
+                        seriesIndex = apiBook.series?.firstNotNullOfOrNull { it.seriesIndex }
+                            ?: apiBook.collections?.firstNotNullOfOrNull { it.seriesIndex }
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("ReadAloudAudioVM", "Failed to restore book details from API, trying local: ${e.message}")
+                    bookRepo.getBook(bookId) ?: throw Exception("Book details not found locally or on server.")
+                }
                 
                 val progressStr = repository.getBookProgress(bookId).first()
                 val progress = com.pekempy.ReadAloudbooks.data.UnifiedProgress.fromString(progressStr)
@@ -658,49 +671,49 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         val localProgress = UnifiedProgress.fromString(progressStr)
         var finalProgressToUse = localProgress
         
-        try {
-            val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
-            lastSyncCheckTime = System.currentTimeMillis()
-            if (serverPos != null) {
-                val serverProgress = UnifiedProgress.fromPosition(serverPos, chapters.size)
-                val localLastUpdated = localProgress?.lastUpdated ?: 0L
-                
-                if (serverProgress.lastUpdated > localLastUpdated) {
-                    if (duration > 0) {
-                        val serverPercent = (serverProgress.getOverallProgress() * 100).coerceIn(0f, 100f)
-                        
-                        val localUnified = UnifiedProgress(
-                            chapterIndex = localProgress?.chapterIndex ?: 0,
-                            elementId = localProgress?.elementId,
-                            audioTimestampMs = localProgress?.audioTimestampMs ?: 0L,
-                            scrollPercent = localProgress?.scrollPercent ?: 0f,
-                            lastUpdated = localProgress?.lastUpdated ?: 0L,
-                            totalChapters = chapters.size.coerceAtLeast(1),
-                            totalDurationMs = duration
-                        )
-                        val localPercent = (localUnified.getOverallProgress() * 100).coerceIn(0f, 100f)
-                        
-                        if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
-                            withContext(Dispatchers.Main) {
-                                syncConfirmation = SyncConfirmation(
-                                    newPositionMs = serverProgress.audioTimestampMs,
-                                    progressPercent = serverPercent.coerceIn(0f, 100f),
-                                    localProgressPercent = localPercent.coerceIn(0f, 100f),
-                                    source = "Storyteller Server"
-                                )
+            try {
+                val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
+                lastSyncCheckTime = System.currentTimeMillis()
+                if (serverPos != null) {
+                    val serverProgress = UnifiedProgress.fromPosition(serverPos, chapters.size)
+                    val localLastUpdated = localProgress?.lastUpdated ?: 0L
+                    
+                    if (serverProgress.lastUpdated > localLastUpdated) {
+                        if (duration > 0) {
+                            val serverPercent = (serverProgress.getOverallProgress() * 100).coerceIn(0f, 100f)
+                            
+                            val localUnified = UnifiedProgress(
+                                chapterIndex = localProgress?.chapterIndex ?: 0,
+                                elementId = localProgress?.elementId,
+                                audioTimestampMs = localProgress?.audioTimestampMs ?: 0L,
+                                scrollPercent = localProgress?.scrollPercent ?: 0f,
+                                lastUpdated = localProgress?.lastUpdated ?: 0L,
+                                totalChapters = chapters.size.coerceAtLeast(1),
+                                totalDurationMs = duration
+                            )
+                            val localPercent = (localUnified.getOverallProgress() * 100).coerceIn(0f, 100f)
+                            
+                            if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
+                                withContext(Dispatchers.Main) {
+                                    syncConfirmation = SyncConfirmation(
+                                        newPositionMs = serverProgress.audioTimestampMs,
+                                        progressPercent = serverPercent.coerceIn(0f, 100f),
+                                        localProgressPercent = localPercent.coerceIn(0f, 100f),
+                                        source = "Storyteller Server"
+                                    )
+                                }
                             }
-                        }
  else {
+                                finalProgressToUse = serverProgress
+                            }
+                        } else {
                             finalProgressToUse = serverProgress
                         }
-                    } else {
-                        finalProgressToUse = serverProgress
                     }
                 }
+            } catch (e: Exception) {
+                android.util.Log.w("ReadAloudAudioVM", "Failed to fetch server progress early (offline?): ${e.message}")
             }
-        } catch (e: Exception) {
-            android.util.Log.w("ReadAloudAudioVM", "Failed to fetch server progress early: ${e.message}")
-        }
         
         finalProgressToUse?.let {
             if (skipSeek) return@let
@@ -998,10 +1011,13 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             repository.saveBookProgress(bookId, progress.toString())
             
             try {
-                val position = progress.toPosition()
-                android.util.Log.d("ReadAloudAudioVM", "Uploading ReadAloud progress: $position")
-                AppContainer.apiClientManager.getApi().updatePosition(bookId, position)
-                android.util.Log.d("ReadAloudAudioVM", "Successfully synced ReadAloud progress to server")
+                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
+                if (!bookRepo.isOfflineMode) {
+                    val position = progress.toPosition()
+                    android.util.Log.d("ReadAloudAudioVM", "Uploading ReadAloud progress: $position")
+                    AppContainer.apiClientManager.getApi().updatePosition(bookId, position)
+                    android.util.Log.d("ReadAloudAudioVM", "Successfully synced ReadAloud progress to server")
+                }
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 409) {
                     android.util.Log.i("ReadAloudAudioVM", "Server has newer or same ReadAloud position (409). Skipping sync.")

@@ -23,7 +23,13 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.graphics.Brush
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlin.math.roundToInt
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.pekempy.ReadAloudbooks.util.LogExporter
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,8 +66,8 @@ fun SettingsHome(
             ) { onNavigateTo("settings/connections") }
             
             SettingsNavItem(
-                title = "Theming",
-                subtitle = "Customize appearance",
+                title = "Appearance",
+                subtitle = "Customise appearance",
                 iconRes = R.drawable.ic_palette
             ) { onNavigateTo("settings/theming") }
             
@@ -199,6 +205,86 @@ fun SettingsConnections(
                     enabled = hasChanges
                 ) {
                     Text("Save Changes")
+                }
+            }
+            
+            SettingsSection("Sync Settings") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Sync Frequency", style = MaterialTheme.typography.bodyMedium)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            0 to "None",
+                            60 to "1h",
+                            180 to "3h",
+                            720 to "12h",
+                            1440 to "24h"
+                        ).forEach { (mins, label) ->
+                            FilterChip(
+                                selected = viewModel.syncFrequency == mins,
+                                onClick = { viewModel.updateSyncFrequency(mins) },
+                                label = { Text(label, maxLines = 1) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    
+                    if (viewModel.lastSyncTime > 0) {
+                        val lastSyncText = remember(viewModel.lastSyncTime) {
+                            val now = System.currentTimeMillis()
+                            val diff = now - viewModel.lastSyncTime
+                            val minutes = diff / (60 * 1000)
+                            val hours = minutes / 60
+                            val days = hours / 24
+                            
+                            when {
+                                days > 0 -> "$days day${if (days > 1) "s" else ""} ago"
+                                hours > 0 -> "$hours hour${if (hours > 1) "s" else ""} ago"
+                                minutes > 0 -> "$minutes minute${if (minutes > 1) "s" else ""} ago"
+                                else -> "Just now"
+                            }
+                        }
+                        Text(
+                            "Last synced: $lastSyncText",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    
+                    var syncResult by remember { mutableStateOf<String?>(null) }
+                    val coroutineScope = rememberCoroutineScope()
+                    
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                syncResult = null
+                                val success = viewModel.forceSync()
+                                syncResult = if (success) "Sync successful!" else "Sync failed. Check connection."
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !viewModel.isSyncing
+                    ) {
+                        if (viewModel.isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(if (viewModel.isSyncing) "Syncing..." else "Force Sync Now")
+                    }
+                    
+                    syncResult?.let { result ->
+                        Text(
+                            result,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (result.contains("successful")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
             
@@ -481,6 +567,20 @@ fun SettingsEbook(
                     }
                 }
             }
+
+            SettingsSection("Reader Controls") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Hide mini-player with controls", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = viewModel.readerHidePlayerWithControls,
+                        onCheckedChange = { viewModel.updateReaderHidePlayerWithControls(it) }
+                    )
+                }
+            }
         }
     }
 }
@@ -619,7 +719,28 @@ fun SettingsSupport(
     onBack: () -> Unit,
     onOpenUrl: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                val logText = LogExporter.getLogcatText()
+                val success = LogExporter.saveLogToFile(context, uri, logText)
+                if (success) {
+                    snackbarHostState.showSnackbar("Logcat saved successfully")
+                } else {
+                    snackbarHostState.showSnackbar("Failed to save logcat")
+                }
+            }
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Support") },
@@ -671,6 +792,17 @@ fun SettingsSupport(
                     iconRes = R.drawable.ic_book,
                     onClick = { onOpenUrl("https://hardcover.app/supporter") }
                 )
+                
+                SettingsSection("Debug & Support") {
+                    SupportItem(
+                        title = "Save LogCat",
+                        subtitle = "Export app logs for troubleshooting",
+                        iconRes = R.drawable.ic_code,
+                        onClick = {
+                            createDocumentLauncher.launch("readaloud_log_${System.currentTimeMillis()}.txt")
+                        }
+                    )
+                }
             }
             
             Text(

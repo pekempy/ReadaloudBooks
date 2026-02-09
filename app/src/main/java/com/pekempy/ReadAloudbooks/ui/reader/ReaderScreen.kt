@@ -8,6 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.res.painterResource
 import com.pekempy.ReadAloudbooks.R
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,6 +36,7 @@ fun ReaderScreen(
     val userSettings = viewModel.settings
     
      var showSearchSheet by remember { mutableStateOf(false) }
+     var showContentsSheet by remember { mutableStateOf(false) }
     
     LaunchedEffect(bookId) {
         viewModel.loadEpub(bookId, isReadAloud)
@@ -115,56 +118,69 @@ fun ReaderScreen(
                 onTap = { viewModel.showControls = !viewModel.showControls }
             )
 
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .background(Color(theme.bgInt).copy(alpha = 0.95f))
-                    .statusBarsPadding()
-                    .height(56.dp) 
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back", tint = Color(theme.textInt))
-                }
-                Text(
-                    viewModel.epubTitle, 
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleMedium, 
-                    maxLines = 1,
-                    color = Color(theme.textInt)
-                )
-                IconButton(onClick = { 
-                    viewModel.clearSearch()
-                    showSearchSheet = true 
-                }) {
-                    Icon(painterResource(R.drawable.ic_search), contentDescription = "Search", tint = Color(theme.textInt))
-                }
-                IconButton(onClick = { viewModel.showControls = !viewModel.showControls }) {
-                    Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings", tint = Color(theme.textInt))
+            if (viewModel.showControls) {
+                AnimatedVisibility(
+                    visible = viewModel.showControls,
+                    enter = slideInVertically { -it },
+                    exit = slideOutVertically { -it },
+                    modifier = Modifier.align(Alignment.TopCenter)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(theme.bgInt).copy(alpha = 0.95f))
+                            .statusBarsPadding()
+                            .height(56.dp)
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onBack) {
+                            Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back", tint = Color(theme.textInt))
+                        }
+                        Text(
+                            viewModel.epubTitle,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            color = Color(theme.textInt)
+                        )
+                        IconButton(onClick = {
+                            viewModel.clearSearch()
+                            showSearchSheet = true
+                        }) {
+                            Icon(painterResource(R.drawable.ic_search), contentDescription = "Search", tint = Color(theme.textInt))
+                        }
+                        IconButton(onClick = { showContentsSheet = true }) {
+                            Icon(painterResource(R.drawable.ic_list), contentDescription = "Contents", tint = Color(theme.textInt))
+                        }
+                        IconButton(onClick = { viewModel.showControls = !viewModel.showControls }) {
+                            Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings", tint = Color(theme.textInt))
+                        }
+                    }
                 }
             }
 
-            AnimatedVisibility(
-                visible = viewModel.showControls,
-                enter = slideInVertically { it },
-                exit = slideOutVertically { it },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-            ) {
-                ReaderControls(
-                    userSettings = userSettings,
-                    currentChapter = viewModel.currentChapterIndex,
-                    totalChapters = viewModel.totalChapters,
-                    onFontSizeChange = viewModel::updateFontSize,
-                    onThemeChange = viewModel::updateTheme,
-                    onFontFamilyChange = viewModel::updateFontFamily,
-                    onChapterChange = viewModel::changeChapter,
-                    backgroundColor = Color(theme.bgInt).copy(alpha = 0.95f),
-                    contentColor = Color(theme.textInt)
-                )
+            if (viewModel.showControls) {
+                AnimatedVisibility(
+                    visible = viewModel.showControls,
+                    enter = slideInVertically { it },
+                    exit = slideOutVertically { it },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                ) {
+                    ReaderControls(
+                        userSettings = userSettings,
+                        currentChapter = viewModel.currentChapterIndex,
+                        totalChapters = viewModel.totalChapters,
+                        onFontSizeChange = viewModel::updateFontSize,
+                        onThemeChange = viewModel::updateTheme,
+                        onFontFamilyChange = viewModel::updateFontFamily,
+                        onChapterChange = viewModel::changeChapter,
+                        backgroundColor = Color(theme.bgInt).copy(alpha = 0.95f),
+                        contentColor = Color(theme.textInt)
+                    )
+                }
             }
         }
         
@@ -177,6 +193,52 @@ fun ReaderScreen(
                         showSearchSheet = false
                     }
                 )
+            }
+        }
+
+        if (showContentsSheet) {
+            ModalBottomSheet(onDismissRequest = { showContentsSheet = false }) {
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    Text(
+                        text = "Contents",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    
+                    val chapters = viewModel.lazyBook?.spineHrefs ?: emptyList()
+                    val titles = viewModel.lazyBook?.spineTitles ?: emptyMap()
+                    val hasParts = titles.values.any { it.contains("Part", ignoreCase = true) }
+
+                    LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                        itemsIndexed(chapters) { index, href ->
+                            val title = titles[href] ?: "Chapter ${index + 1}"
+                            val isPart = title.contains("Part", ignoreCase = true)
+                            val isChapter = title.contains("Chapter", ignoreCase = true)
+                            val indent = if (hasParts && isChapter && !isPart) 32.dp else 0.dp
+                            
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        text = title,
+                                        fontWeight = if (isPart) FontWeight.Bold else FontWeight.Normal,
+                                        modifier = Modifier.padding(start = indent)
+                                    )
+                                },
+                                modifier = Modifier.clickable {
+                                    viewModel.changeChapter(index)
+                                    showContentsSheet = false
+                                },
+                                colors = ListItemDefaults.colors(
+                                    containerColor = if (viewModel.currentChapterIndex == index)
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    else Color.Transparent
+                                )
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(32.dp))
+                }
             }
         }
     }
@@ -417,10 +479,10 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     --text-color: ${theme.text};
                     --font-size: ${userSettings.readerFontSize}px;
                     --font-family: $fontFamily;
-                    --padding-left: 16px;
-                    --padding-right: 16px;
-                    --top-padding: 130px;
-                    --bottom-padding: ${if (isReadAloud) "140px" else "60px"};
+                    --padding-left: 24px;
+                    --padding-right: 24px;
+                    --top-padding: 60px;
+                    --bottom-padding: ${if (isReadAloud) "100px" else "60px"};
                     --accent-color: $accentColor;
                 }
                 
@@ -435,10 +497,13 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     -webkit-user-select: none;
                     
                     /* Maximize text density */
-                    line-height: 1.5 !important;
+                    line-height: 1.6 !important;
                     hyphens: auto;
                     -webkit-hyphens: auto;
                     text-align: justify;
+                }
+
+                p {
                     text-indent: 1.5em;
                 }
 
@@ -520,7 +585,7 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     text-indent: 0;
                 }
 
-                p, [id] {
+                p, div, blockquote, [id] {
                     orphans: 2;
                     widows: 2;
                 }
@@ -965,11 +1030,18 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     event.preventDefault();
                     event.stopPropagation();
                     let target = event.target;
-                    while (target && !target.id) {
+                    
+                    function getValidId(el) {
+                        return el.id || el.getAttribute('data-continuation-of');
+                    }
+
+                    while (target && (!getValidId(target) || target.classList.contains('page') || target.id === 'pagination-wrapper' || target.id === 'content-container')) {
                         target = target.parentElement;
                     }
-                    if (target && target.id && window.Android) {
-                        window.Android.onElementLongPress(target.id);
+                    
+                    const finalId = target ? getValidId(target) : null;
+                    if (finalId && window.Android) {
+                        window.Android.onElementLongPress(finalId);
                         return false;
                     }
                 };

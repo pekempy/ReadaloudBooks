@@ -129,7 +129,8 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
             for (i in 0 until timeline.windowCount) {
                 val window = androidx.media3.common.Timeline.Window()
                 timeline.getWindow(i, window)
-                val title = window.mediaItem.mediaMetadata.title?.toString() ?: "Chapter ${i + 1}"
+                val rawTitle = window.mediaItem.mediaMetadata.title?.toString() ?: "Chapter ${i + 1}"
+                val title = com.pekempy.ReadAloudbooks.util.StringUtils.decodeHtml(rawTitle)
                 
                 if (timeline.windowCount > 1) {
                     currentChapters.add(Chapter(title, 0L, window.durationMs)) 
@@ -229,7 +230,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                         }
                     }
                 } catch (e: Exception) {
-                    android.util.Log.w("AudiobookVM", "Failed to check server progress: ${e.message}")
+                    android.util.Log.w("AudiobookVM", "Failed to check server progress (offline?): ${e.message}")
                 }
             }
             return
@@ -248,30 +249,36 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                 }
                 
                 val apiManager = AppContainer.apiClientManager
-                val apiBook = apiManager.getApi().getBookDetails(bookId)
+                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
                 
-                val apiSeries = apiBook.series?.firstOrNull()
-                val apiCollection = apiBook.collections?.firstOrNull()
-                
-                val book = Book(
-                    id = apiBook.uuid,
-                    title = apiBook.title,
-                    author = apiBook.authors.joinToString(", ") { it.name },
-                    narrator = apiBook.narrators?.joinToString(", ") { it.name },
-                    coverUrl = apiManager.getCoverUrl(apiBook.uuid),
-                    audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
-                    ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid),
-                    description = apiBook.description,
-                    hasReadAloud = apiBook.readaloud != null,
-                    hasEbook = apiBook.ebook != null,
-                    hasAudiobook = apiBook.audiobook != null,
-                    syncedUrl = apiManager.getSyncDownloadUrl(apiBook.uuid),
-                    audiobookUrl = apiManager.getAudiobookDownloadUrl(apiBook.uuid),
-                    ebookUrl = apiManager.getEbookDownloadUrl(apiBook.uuid),
-                    series = apiSeries?.name ?: apiCollection?.name,
-                    seriesIndex = apiBook.series?.firstNotNullOfOrNull { it.seriesIndex }
-                        ?: apiBook.collections?.firstNotNullOfOrNull { it.seriesIndex }
-                )
+                val book = try {
+                    val apiBook = apiManager.getApi().getBookDetails(bookId)
+                    val apiSeries = apiBook.series?.firstOrNull()
+                    val apiCollection = apiBook.collections?.firstOrNull()
+                    
+                    Book(
+                        id = apiBook.uuid,
+                        title = apiBook.title,
+                        author = apiBook.authors.joinToString(", ") { it.name },
+                        narrator = apiBook.narrators?.joinToString(", ") { it.name },
+                        coverUrl = apiManager.getCoverUrl(apiBook.uuid),
+                        audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
+                        ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid),
+                        description = apiBook.description,
+                        hasReadAloud = apiBook.readaloud != null,
+                        hasEbook = apiBook.ebook != null,
+                        hasAudiobook = apiBook.audiobook != null,
+                        syncedUrl = apiManager.getSyncDownloadUrl(apiBook.uuid),
+                        audiobookUrl = apiManager.getAudiobookDownloadUrl(apiBook.uuid),
+                        ebookUrl = apiManager.getEbookDownloadUrl(apiBook.uuid),
+                        series = apiSeries?.name ?: apiCollection?.name,
+                        seriesIndex = apiBook.series?.firstNotNullOfOrNull { it.seriesIndex }
+                            ?: apiBook.collections?.firstNotNullOfOrNull { it.seriesIndex }
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("AudiobookVM", "Failed to get book details from API, trying local: ${e.message}")
+                    bookRepo.getBook(bookId) ?: throw Exception("Book details not found locally or on server.")
+                }
                 
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     currentBook = book
@@ -450,7 +457,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                         }
                     }
                 } catch (e: Exception) {
-                    android.util.Log.w("AudiobookVM", "Failed to fetch server progress early: ${e.message}")
+                    android.util.Log.w("AudiobookVM", "Failed to fetch server progress (offline?): ${e.message}")
                 }
 
                 finalProgressToUse?.let { progress ->
@@ -811,10 +818,13 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
             repository.saveBookProgress(bookId, progress.toString())
             
             try {
-                val position = progress.toPosition()
-                android.util.Log.d("AudiobookVM", "Uploading audiobook progress: $position")
-                AppContainer.apiClientManager.getApi().updatePosition(bookId, position)
-                android.util.Log.d("AudiobookVM", "Successfully synced audiobook progress to server")
+                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
+                if (!bookRepo.isOfflineMode) {
+                    val position = progress.toPosition()
+                    android.util.Log.d("AudiobookVM", "Uploading audiobook progress: $position")
+                    AppContainer.apiClientManager.getApi().updatePosition(bookId, position)
+                    android.util.Log.d("AudiobookVM", "Successfully synced audiobook progress to server")
+                }
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 409) {
                     android.util.Log.i("AudiobookVM", "Server has newer or same audiobook position (409). Skipping sync.")

@@ -265,9 +265,12 @@ fun LibraryScreen(
             onReadEbook = onReadEbook,
             onPlayReadAloud = onPlayReadAloud,
             onPlayAudiobook = onPlayAudiobook,
-            onMarkFinished = { viewModel.deleteProgress(it.id) },
-            onMarkUnread = { viewModel.deleteProgress(it.id) },
-            onEdit = onEditBook
+            onMarkFinished = { viewModel.markAsFinished(it) },
+            onMarkUnread = { viewModel.markAsUnread(it) },
+            onEdit = onEditBook,
+            onDownload = { viewModel.downloadBook(it) },
+            onCreateReadAloud = { viewModel.createReadAloud(it.id) },
+            isOfflineMode = viewModel.isOfflineMode
         )
 
 
@@ -345,7 +348,8 @@ fun LibraryScreen(
                                         onBookLongClick = { 
                                             selectedBookForMenu = it
                                             showMenu = true
-                                        }
+                                        },
+                                        isOfflineMode = viewModel.isOfflineMode
                                     )
                                     Spacer(Modifier.height(24.dp))
                                 }
@@ -358,7 +362,8 @@ fun LibraryScreen(
                                         onBookLongClick = { 
                                             selectedBookForMenu = it
                                             showMenu = true
-                                        }
+                                        },
+                                        isOfflineMode = viewModel.isOfflineMode
                                     )
                                     Spacer(Modifier.height(24.dp))
                                 }
@@ -371,7 +376,8 @@ fun LibraryScreen(
                                         onBookLongClick = {
                                             selectedBookForMenu = it
                                             showMenu = true
-                                        }
+                                        },
+                                        isOfflineMode = viewModel.isOfflineMode
                                     )
                                 }
                 
@@ -506,7 +512,8 @@ fun LibraryScreen(
                                             selectedBookForMenu = book
                                             showMenu = true
                                         },
-                                        onDownloadClick = { viewModel.downloadBook(book) }
+                                        onDownloadClick = { viewModel.downloadBook(book) },
+                                        isOfflineMode = viewModel.isOfflineMode
                                     )
                                 }
                             }
@@ -570,7 +577,8 @@ fun LibraryScreen(
                                             expanded = showSeriesMenu && selectedSeriesForMenu == s,
                                             onDismissRequest = { showSeriesMenu = false },
                                             seriesName = s,
-                                            onDownloadSeries = { viewModel.downloadSeries(it) }
+                                            onDownloadSeries = { viewModel.downloadSeries(it) },
+                                            isOfflineMode = viewModel.isOfflineMode
                                         )
                                     }
                                 }

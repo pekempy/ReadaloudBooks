@@ -89,9 +89,6 @@ An Android application for audiobook and eBook consumption with a focus on high-
 This repository uses GitHub Actions for automated releases. Push a tag starting with `v` (e.g., `v1.0.0`) to trigger the build and release process.
 
 ## Roadmap
-- [x] **Media Sync**: Fix syncing across ReadAloud / Audiobook / eBook, to try and keep them all together.
-- [x] **Cloud Sync**: Synchronize progress with your Storyteller instance.
-- [ ] **Metadata Editor**: Edit book metadata and cover art within the app.
 - [ ] **Grid Customization**: Adjustable grid sizes in library views.
 
 ## License

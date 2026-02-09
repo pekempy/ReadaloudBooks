@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
         })[LibraryViewModel::class.java]
 
         setContent {
-            val settings by repository.userSettings.collectAsState(initial = com.pekempy.ReadAloudbooks.data.UserSettings(0, true, 0, 0, 18f, 0, "serif", 1.0f, false, true, true, true, true))
+            val settings by repository.userSettings.collectAsState(initial = com.pekempy.ReadAloudbooks.data.UserSettings(0, true, 0, 0, 18f, 0, "serif", 1.0f, false, true, true, true, true, 0, 0L, false))
             
             val isDarkTheme = when (settings.themeMode) {
                 1 -> false
@@ -220,7 +220,7 @@ class MainActivity : ComponentActivity() {
                                     onViewModeChange = { libraryViewModel.setViewMode(it) },
                                     hasDownloads = libraryViewModel.downloadingBooks.isNotEmpty(),
                                     downloadCount = libraryViewModel.downloadingBooks.size,
-                                    hasProcessing = libraryViewModel.hasProcessing,
+                                    hasProcessing = libraryViewModel.hasProcessing && !libraryViewModel.isOfflineMode,
                                     processingCount = libraryViewModel.totalProcessingCount,
                                     showBooks = settings.showBooksTab,
                                     showAuthors = settings.showAuthorsTab,

@@ -11,4 +11,13 @@ object StringUtils {
             else -> title
         }
     }
+    fun decodeHtml(text: String?): String {
+        if (text.isNullOrBlank()) return ""
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            android.text.Html.fromHtml(text, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
+        } else {
+            @Suppress("DEPRECATION")
+            android.text.Html.fromHtml(text).toString()
+        }
+    }
 }

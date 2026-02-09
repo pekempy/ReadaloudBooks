@@ -125,7 +125,7 @@ object DownloadManager {
                             }
                             successCount++
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            android.util.Log.e("DownloadManager", "Download failed for ${book.title} (file $fileName): ${e.message}", e)
                             withContext(Dispatchers.Main) {
                                 val currentIndex = activeDownloads.indexOfFirst { it.book.id == book.id }
                                 if (currentIndex != -1) {

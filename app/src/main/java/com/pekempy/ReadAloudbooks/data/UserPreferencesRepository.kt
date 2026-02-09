@@ -48,6 +48,11 @@ class UserPreferencesRepository(private val context: Context) {
         val SHOW_AUTHORS_TAB = booleanPreferencesKey("show_authors_tab")
         val SHOW_SERIES_TAB = booleanPreferencesKey("show_series_tab")
         val SHOW_COLLECTIONS_TAB = booleanPreferencesKey("show_collections_tab")
+
+        val SYNC_FREQUENCY = intPreferencesKey("sync_frequency") // in minutes, 0 = manual
+        val LAST_SYNC_TIME = longPreferencesKey("last_sync_time")
+        
+        val READER_HIDE_PLAYER_WITH_CONTROLS = booleanPreferencesKey("reader_hide_player_with_controls")
     }
 
     val userCredentials: Flow<UserCredentials?> = context.dataStore.data.map { preferences ->
@@ -87,7 +92,10 @@ class UserPreferencesRepository(private val context: Context) {
             showBooksTab = preferences[SHOW_BOOKS_TAB] ?: true,
             showAuthorsTab = preferences[SHOW_AUTHORS_TAB] ?: true,
             showSeriesTab = preferences[SHOW_SERIES_TAB] ?: true,
-            showCollectionsTab = preferences[SHOW_COLLECTIONS_TAB] ?: true
+            showCollectionsTab = preferences[SHOW_COLLECTIONS_TAB] ?: true,
+            syncFrequency = preferences[SYNC_FREQUENCY] ?: 0,
+            lastSyncTime = preferences[LAST_SYNC_TIME] ?: 0L,
+            readerHidePlayerWithControls = preferences[READER_HIDE_PLAYER_WITH_CONTROLS] ?: false
         )
     }
 
@@ -263,6 +271,18 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateShowCollectionsTab(enabled: Boolean) {
         context.dataStore.edit { preferences -> preferences[SHOW_COLLECTIONS_TAB] = enabled }
     }
+
+    suspend fun updateSyncFrequency(minutes: Int) {
+        context.dataStore.edit { preferences -> preferences[SYNC_FREQUENCY] = minutes }
+    }
+
+    suspend fun updateLastSyncTime(time: Long) {
+        context.dataStore.edit { preferences -> preferences[LAST_SYNC_TIME] = time }
+    }
+
+    suspend fun updateReaderHidePlayerWithControls(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[READER_HIDE_PLAYER_WITH_CONTROLS] = enabled }
+    }
 }
 
 data class UserSettings(
@@ -278,5 +298,8 @@ data class UserSettings(
     val showBooksTab: Boolean,
     val showAuthorsTab: Boolean,
     val showSeriesTab: Boolean,
-    val showCollectionsTab: Boolean
+    val showCollectionsTab: Boolean,
+    val syncFrequency: Int,
+    val lastSyncTime: Long,
+    val readerHidePlayerWithControls: Boolean
 )

@@ -143,7 +143,7 @@ class AudioCodecConverter(private val context: Context) {
                 val title = titleMatch?.groupValues?.get(1) ?: "Chapter ${chapters.size + 1}"
                 
                 chapters.add(ProbedChapter(
-                    title = title.trim(),
+                    title = StringUtils.decodeHtml(title).trim(),
                     startMs = (startTime * 1000).toLong(),
                     durationMs = ((endTime - startTime) * 1000).toLong()
                 ))

@@ -336,11 +336,27 @@ fun AudiobookPlayerScreen(
                                 Text("No internal chapters found", color = MaterialTheme.colorScheme.secondary)
                             }
                         } else {
+                            val hasParts = viewModel.chapters.any { it.title.contains("Part", ignoreCase = true) }
                             LazyColumn {
                                 itemsIndexed(viewModel.chapters) { index, chapter ->
+                                    val isPart = chapter.title.contains("Part", ignoreCase = true)
+                                    val isChapter = chapter.title.contains("Chapter", ignoreCase = true)
+                                    val indent = if (hasParts && isChapter && !isPart) 32.dp else 0.dp
+
                                     ListItem(
-                                        headlineContent = { Text(chapter.title) },
-                                        supportingContent = { Text(FormatUtils.formatTime(chapter.startOffset)) },
+                                        headlineContent = { 
+                                            Text(
+                                                text = chapter.title,
+                                                fontWeight = if (isPart) FontWeight.Bold else FontWeight.Normal,
+                                                modifier = Modifier.padding(start = indent)
+                                            ) 
+                                        },
+                                        supportingContent = { 
+                                            Text(
+                                                text = FormatUtils.formatTime(chapter.startOffset),
+                                                modifier = Modifier.padding(start = indent)
+                                            ) 
+                                        },
                                         trailingContent = { Text(FormatUtils.formatTime(chapter.duration)) },
                                         modifier = Modifier.clickable {
                                             viewModel.skipToChapter(index)

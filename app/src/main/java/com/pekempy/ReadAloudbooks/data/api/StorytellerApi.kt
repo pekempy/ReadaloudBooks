@@ -4,6 +4,9 @@ import retrofit2.Response
 import retrofit2.http.*
 
 interface StorytellerApi {
+    @GET("api")
+    suspend fun healthCheck(): Map<String, String>
+
     @Multipart
     @POST("api/v2/token")
     suspend fun login(
@@ -13,7 +16,7 @@ interface StorytellerApi {
 
     @GET("api/v2/books")
     suspend fun listBooks(
-        @Query("synced") synced: Boolean = true
+        @Query("synced") synced: Boolean? = null
     ): List<BookResponse>
 
     @GET("api/v2/books/{uuid}")

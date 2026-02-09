@@ -25,11 +25,16 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
     var readerTheme by mutableStateOf(0)
     var readerFontFamily by mutableStateOf("serif")
     var playbackSpeed by mutableStateOf(1.0f)
+    var readerHidePlayerWithControls by mutableStateOf(true)
     
     var showBooksTab by mutableStateOf(true)
     var showAuthorsTab by mutableStateOf(true)
     var showSeriesTab by mutableStateOf(true)
     var showCollectionsTab by mutableStateOf(true)
+    
+    var syncFrequency by mutableStateOf(0)
+    var lastSyncTime by mutableStateOf(0L)
+    var isSyncing by mutableStateOf(false)
 
     init {
         viewModelScope.launch {
@@ -47,6 +52,9 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
                 showAuthorsTab = settings.showAuthorsTab
                 showSeriesTab = settings.showSeriesTab
                 showCollectionsTab = settings.showCollectionsTab
+                syncFrequency = settings.syncFrequency
+                lastSyncTime = settings.lastSyncTime
+                readerHidePlayerWithControls = settings.readerHidePlayerWithControls
             }
         }
         viewModelScope.launch {
@@ -128,5 +136,29 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
     fun updateShowCollectionsTab(enabled: Boolean) {
         showCollectionsTab = enabled
         viewModelScope.launch { repository.updateShowCollectionsTab(enabled) }
+    }
+
+    fun updateSyncFrequency(minutes: Int) {
+        syncFrequency = minutes
+        viewModelScope.launch { repository.updateSyncFrequency(minutes) }
+    }
+
+    fun updateReaderHidePlayerWithControls(enabled: Boolean) {
+        readerHidePlayerWithControls = enabled
+        viewModelScope.launch { repository.updateReaderHidePlayerWithControls(enabled) }
+    }
+
+    suspend fun forceSync(): Boolean {
+        isSyncing = true
+        return try {
+            val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(com.pekempy.ReadAloudbooks.data.api.AppContainer.context, repository)
+            val success = bookRepo.syncWithServer(force = true)
+            if (success) {
+                lastSyncTime = System.currentTimeMillis()
+            }
+            success
+        } finally {
+            isSyncing = false
+        }
     }
 }

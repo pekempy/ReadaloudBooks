@@ -16,7 +16,8 @@ fun HomeSection(
     title: String,
     books: List<Book>,
     onBookClick: (Book) -> Unit,
-    onBookLongClick: (Book) -> Unit
+    onBookLongClick: (Book) -> Unit,
+    isOfflineMode: Boolean = false
 ) {
     Column {
         Text(
@@ -34,7 +35,8 @@ fun HomeSection(
                     book = book,
                     onClick = { onBookClick(book) },
                     onLongClick = { onBookLongClick(book) },
-                    modifier = Modifier.width(150.dp)
+                    modifier = Modifier.width(150.dp),
+                    isOfflineMode = isOfflineMode
                 )
             }
         }

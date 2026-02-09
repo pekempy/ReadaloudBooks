@@ -17,6 +17,7 @@ import com.pekempy.ReadAloudbooks.data.api.Position
 import com.pekempy.ReadAloudbooks.data.api.Locator
 import com.pekempy.ReadAloudbooks.data.api.Locations
 import com.pekempy.ReadAloudbooks.util.DownloadUtils
+import com.pekempy.ReadAloudbooks.util.StringUtils
 
 class ReaderViewModel(
     private val repository: UserPreferencesRepository
@@ -85,39 +86,41 @@ class ReaderViewModel(
                     val progressStr = repository.getBookProgress(bookId).first()
                     val progress = UnifiedProgress.fromString(progressStr)
                     if (progress != null) {
-                        try {
-                            val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
-                            if (serverPos != null) {
-                                val serverProgress = UnifiedProgress.fromPosition(serverPos, totalChapters)
-                                val localLastUpdated = progress.lastUpdated
-                                val serverTimestampMs = serverPos.timestamp.let { if (it < 1000000000000L) it * 1000 else it }
-                                if (serverTimestampMs > localLastUpdated + 10000) {
-                                    val serverPercent = (serverProgress.getOverallProgress() * 100).coerceIn(0f, 100f)
-                                    val localUnified = UnifiedProgress(
-                                        chapterIndex = currentChapterIndex,
-                                        elementId = currentHighlightId,
-                                        audioTimestampMs = currentAudioPos,
-                                        scrollPercent = lastScrollPercent,
-                                        lastUpdated = progress.lastUpdated,
-                                        totalChapters = totalChapters.coerceAtLeast(1),
-                                        totalDurationMs = (chapterOffsets.values.maxOrNull() ?: 0.0).let { (it * 1000).toLong() }
-                                    )
-                                    val localPercent = (localUnified.getOverallProgress() * 100).coerceIn(0f, 100f)
-                                    
-                                    if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
-                                        syncConfirmation = SyncConfirmation(
-                                            newChapterIndex = serverProgress.chapterIndex,
-                                            newScrollPercent = serverProgress.scrollPercent,
-                                            newAudioMs = serverProgress.audioTimestampMs,
-                                            newElementId = serverProgress.elementId,
-                                            progressPercent = serverPercent,
-                                            localProgressPercent = localPercent,
-                                            source = "Storyteller Server"
+                            try {
+                                val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
+                                if (serverPos != null) {
+                                    val serverProgress = UnifiedProgress.fromPosition(serverPos, totalChapters)
+                                    val localLastUpdated = progress.lastUpdated
+                                    val serverTimestampMs = serverPos.timestamp.let { if (it < 1000000000000L) it * 1000 else it }
+                                    if (serverTimestampMs > localLastUpdated + 10000) {
+                                        val serverPercent = (serverProgress.getOverallProgress() * 100).coerceIn(0f, 100f)
+                                        val localUnified = UnifiedProgress(
+                                            chapterIndex = currentChapterIndex,
+                                            elementId = currentHighlightId,
+                                            audioTimestampMs = currentAudioPos,
+                                            scrollPercent = lastScrollPercent,
+                                            lastUpdated = progress.lastUpdated,
+                                            totalChapters = totalChapters.coerceAtLeast(1),
+                                            totalDurationMs = (chapterOffsets.values.maxOrNull() ?: 0.0).let { (it * 1000).toLong() }
                                         )
+                                        val localPercent = (localUnified.getOverallProgress() * 100).coerceIn(0f, 100f)
+                                        
+                                        if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
+                                            syncConfirmation = SyncConfirmation(
+                                                newChapterIndex = serverProgress.chapterIndex,
+                                                newScrollPercent = serverProgress.scrollPercent,
+                                                newAudioMs = serverProgress.audioTimestampMs,
+                                                newElementId = serverProgress.elementId,
+                                                progressPercent = serverPercent,
+                                                localProgressPercent = localPercent,
+                                                source = "Storyteller Server"
+                                            )
+                                        }
                                     }
                                 }
+                            } catch (e: Exception) {
+                                android.util.Log.w("ReaderViewModel", "Failed to fetch server progress (offline?): ${e.message}")
                             }
-                        } catch (e: Exception) {}
                     }
                 }
             }
@@ -146,23 +149,28 @@ class ReaderViewModel(
                 )
                 
                 val apiManager = AppContainer.apiClientManager
-                val apiBook = apiManager.getApi().getBookDetails(bookId)
-                
-                val apiSeries = apiBook.series?.firstOrNull()
-                val apiCollection = apiBook.collections?.firstOrNull()
-                val seriesName = apiSeries?.name ?: apiCollection?.name
-                val seriesIdx = apiSeries?.seriesIndex ?: apiCollection?.seriesIndex
+                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
+                val book = try {
+                    val apiBook = apiManager.getApi().getBookDetails(bookId)
+                    val apiSeries = apiBook.series?.firstOrNull()
+                    val apiCollection = apiBook.collections?.firstOrNull()
+                    val seriesName = apiSeries?.name ?: apiCollection?.name
+                    val seriesIdx = apiSeries?.seriesIndex ?: apiCollection?.seriesIndex
 
-                val book = Book(
-                    id = apiBook.uuid,
-                    title = apiBook.title,
-                    author = apiBook.authors.joinToString(", ") { it.name },
-                    series = seriesName,
-                    seriesIndex = seriesIdx,
-                    coverUrl = apiManager.getCoverUrl(apiBook.uuid),
-                    audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
-                    ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid)
-                )
+                    Book(
+                        id = apiBook.uuid,
+                        title = StringUtils.decodeHtml(apiBook.title),
+                        author = apiBook.authors.joinToString(", ") { StringUtils.decodeHtml(it.name) },
+                        series = StringUtils.decodeHtml(seriesName),
+                        seriesIndex = seriesIdx,
+                        coverUrl = apiManager.getCoverUrl(apiBook.uuid),
+                        audiobookCoverUrl = apiManager.getAudiobookCoverUrl(apiBook.uuid),
+                        ebookCoverUrl = apiManager.getEbookCoverUrl(apiBook.uuid)
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("ReaderViewModel", "Failed to get book details from API, trying local: ${e.message}")
+                    bookRepo.getBook(bookId) ?: throw Exception("Book details not found locally or on server.")
+                }
                 
                 val bookDir = DownloadUtils.getBookDir(AppContainer.context.filesDir, book)
                 val baseFileName = DownloadUtils.getBaseFileName(book)
@@ -188,7 +196,7 @@ class ReaderViewModel(
                 
                 val opfDir = if (opfPath.contains("/")) opfPath.substringBeforeLast("/") + "/" else ""
                 
-                epubTitle = opfContent.substringAfter("<dc:title>").substringBefore("</dc:title>")
+                epubTitle = StringUtils.decodeHtml(opfContent.substringAfter("<dc:title>").substringBefore("</dc:title>"))
                 
                 val manifestMap = mutableMapOf<String, String>()
                 val mediaTypeMap = mutableMapOf<String, String>()
@@ -254,7 +262,7 @@ class ReaderViewModel(
                                     val absPath = (ncxDir + src).replace("./", "").replace("//", "/")
                                     
                                     if (label.isNotBlank()) {
-                                        spineTitles[absPath] = label
+                                        spineTitles[absPath] = StringUtils.decodeHtml(label)
                                     }
                                 }
                             }
@@ -498,10 +506,13 @@ class ReaderViewModel(
             android.util.Log.d("ReaderSync", "Saved local progress for $bookId")
             
             try {
-                val pos = progress.toPosition()
-                android.util.Log.d("ReaderSync", "Uploading reader progress: $pos")
-                AppContainer.apiClientManager.getApi().updatePosition(bookId, pos)
-                android.util.Log.d("ReaderSync", "Successfully synced position to server: href=$href")
+                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
+                if (!bookRepo.isOfflineMode) {
+                    val pos = progress.toPosition()
+                    android.util.Log.d("ReaderSync", "Uploading reader progress: $pos")
+                    AppContainer.apiClientManager.getApi().updatePosition(bookId, pos)
+                    android.util.Log.d("ReaderSync", "Successfully synced position to server: href=$href")
+                }
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 409) {
                     android.util.Log.i("ReaderSync", "Server has newer or same position (409). skipping.")

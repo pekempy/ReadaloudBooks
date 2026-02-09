@@ -258,67 +258,73 @@ fun ReadAloudPlayerScreen(
                 activeSearch = readerViewModel.activeSearchHighlight,
                 activeSearchMatchIndex = readerViewModel.activeSearchMatchIndex,
                 pendingAnchor = readerViewModel.pendingAnchorId.value,
-                onTap = {  }
+                onTap = { readerViewModel.showControls = !readerViewModel.showControls }
             )
             
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(theme.bgInt).copy(alpha = 0.95f))
-                    .statusBarsPadding()
-                    .height(40.dp)
-                    .padding(horizontal = 4.dp)
-                    .align(Alignment.TopCenter),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            AnimatedVisibility(
+                visible = readerViewModel.showControls,
+                enter = slideInVertically { -it },
+                exit = slideOutVertically { -it },
+                modifier = Modifier.align(Alignment.TopCenter)
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        painterResource(R.drawable.ic_keyboard_arrow_down), 
-                        contentDescription = "Back",
-                        tint = Color(theme.textInt)
-                    )
-                }
-                
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (readAloudAudioViewModel.sleepTimerRemaining > 0 || readAloudAudioViewModel.isWaitingForChapterEnd) {
-                        Text(
-                            text = if (readAloudAudioViewModel.isWaitingForChapterEnd) "Stopping at end of chapter" else FormatUtils.formatSleepTime(readAloudAudioViewModel.sleepTimerRemaining),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(theme.textInt),
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(end = 4.dp)
-                        )
-                    }
-                    IconButton(onClick = { 
-                        if (readAloudAudioViewModel.isPlaying) readAloudAudioViewModel.togglePlayPause()
-                        readerViewModel.clearSearch()
-                        showSearchSheet = true 
-                    }) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(theme.bgInt).copy(alpha = 0.95f))
+                        .statusBarsPadding()
+                        .height(40.dp)
+                        .padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
                         Icon(
-                            painterResource(R.drawable.ic_search),
-                            contentDescription = "Search",
+                            painterResource(R.drawable.ic_keyboard_arrow_down), 
+                            contentDescription = "Back",
                             tint = Color(theme.textInt)
                         )
                     }
-                    IconButton(onClick = { 
-                        if (readAloudAudioViewModel.sleepTimerRemaining <= 0) {
-                            readAloudAudioViewModel.applyDefaultSleepTimer()
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (readAloudAudioViewModel.sleepTimerRemaining > 0 || readAloudAudioViewModel.isWaitingForChapterEnd) {
+                            Text(
+                                text = if (readAloudAudioViewModel.isWaitingForChapterEnd) "Stopping at end of chapter" else FormatUtils.formatSleepTime(readAloudAudioViewModel.sleepTimerRemaining),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(theme.textInt),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
                         }
-                        showSleepTimerSheet = true 
-                    }) {
-                        Icon(
-                            painterResource(if (readAloudAudioViewModel.sleepTimerRemaining > 0) R.drawable.ic_snooze else R.drawable.ic_bedtime),
-                            contentDescription = "Sleep Timer",
-                            tint = Color(theme.textInt)
-                        )
-                    }
-                    IconButton(onClick = { readerViewModel.showControls = !readerViewModel.showControls }) {
-                        Icon(
-                            painterResource(R.drawable.ic_settings), 
-                            contentDescription = "Preferences",
-                            tint = Color(theme.textInt)
-                        )
+                        IconButton(onClick = { 
+                            if (readAloudAudioViewModel.isPlaying) readAloudAudioViewModel.togglePlayPause()
+                            readerViewModel.clearSearch()
+                            showSearchSheet = true 
+                        }) {
+                            Icon(
+                                painterResource(R.drawable.ic_search),
+                                contentDescription = "Search",
+                                tint = Color(theme.textInt)
+                            )
+                        }
+                        IconButton(onClick = { 
+                            if (readAloudAudioViewModel.sleepTimerRemaining <= 0) {
+                                readAloudAudioViewModel.applyDefaultSleepTimer()
+                            }
+                            showSleepTimerSheet = true 
+                        }) {
+                            Icon(
+                                painterResource(if (readAloudAudioViewModel.sleepTimerRemaining > 0) R.drawable.ic_snooze else R.drawable.ic_bedtime),
+                                contentDescription = "Sleep Timer",
+                                tint = Color(theme.textInt)
+                            )
+                        }
+                        IconButton(onClick = { readerViewModel.showControls = !readerViewModel.showControls }) {
+                            Icon(
+                                painterResource(R.drawable.ic_settings), 
+                                contentDescription = "Preferences",
+                                tint = Color(theme.textInt)
+                            )
+                        }
                     }
                 }
             }
@@ -349,11 +355,17 @@ fun ReadAloudPlayerScreen(
                             contentColor = Color(theme.textInt)
                         )
                     }
-                    ReadAloudMinimalCard(
-                        audiobookViewModel = readAloudAudioViewModel,
-                        theme = theme,
-                        onClick = { isPlayerExpanded = true }
-                    )
+                    AnimatedVisibility(
+                        visible = readerViewModel.showControls || !userSettings.readerHidePlayerWithControls,
+                        enter = slideInVertically { it },
+                        exit = slideOutVertically { it }
+                    ) {
+                        ReadAloudMinimalCard(
+                            audiobookViewModel = readAloudAudioViewModel,
+                            theme = theme,
+                            onClick = { isPlayerExpanded = true }
+                        )
+                    }
                 }
             }
 
@@ -548,11 +560,28 @@ fun ChaptersContent(
                 Text("No internal chapters found", color = MaterialTheme.colorScheme.secondary)
             }
         } else {
+            val hasParts = viewModel.chapters.any { it.title.contains("Part", ignoreCase = true) }
+            
             LazyColumn {
                 itemsIndexed(viewModel.chapters) { index, chapter ->
+                    val isPart = chapter.title.contains("Part", ignoreCase = true)
+                    val isChapter = chapter.title.contains("Chapter", ignoreCase = true)
+                    val indent = if (hasParts && isChapter && !isPart) 32.dp else 0.dp
+                    
                     ListItem(
-                        headlineContent = { Text(chapter.title) },
-                        supportingContent = { Text(FormatUtils.formatTime(chapter.startOffset)) },
+                        headlineContent = { 
+                            Text(
+                                text = chapter.title,
+                                fontWeight = if (isPart) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.padding(start = indent)
+                            ) 
+                        },
+                        supportingContent = { 
+                            Text(
+                                text = FormatUtils.formatTime(chapter.startOffset),
+                                modifier = Modifier.padding(start = indent)
+                            ) 
+                        },
                         trailingContent = { Text(FormatUtils.formatTime(chapter.duration)) },
                         modifier = Modifier.clickable {
                             onChapterClick(index)

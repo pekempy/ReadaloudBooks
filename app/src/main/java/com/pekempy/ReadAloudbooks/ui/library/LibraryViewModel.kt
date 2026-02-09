@@ -13,6 +13,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.isActive
 
 class LibraryViewModel(private val repository: UserPreferencesRepository) : ViewModel() {
+    private val bookRepository = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
+    
     private val PREFS_NAME = "download_prefs"
     private val KEY_PENDING_DOWNLOADS = "pending_downloads"
 
@@ -50,6 +52,8 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     
     var books by mutableStateOf<List<Book>>(emptyList())
     var isLoading by mutableStateOf(false)
+    var isOfflineMode by mutableStateOf(false)
+        private set
 
     data class DownloadStatus(val progress: Float, val statusText: String)
 
@@ -119,38 +123,54 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     init {
         startObservingDownloads()
         startPollingProcessingBooks()
+        startPeriodicSync()
+        startPollingOfflineStatus()
         loadBooks()
+    }
+
+    private fun startPollingOfflineStatus() {
+        viewModelScope.launch {
+            while (isActive) {
+                kotlinx.coroutines.delay(30 * 1000)
+                if (isOfflineMode) {
+                    android.util.Log.d("LibraryVM", "Offline mode detected. Retrying connection...")
+                    // We use loadBooks(false) which calls syncWithServer(false)
+                    // If sync succeeds, isOfflineMode will become false
+                    loadBooks(forceSync = false)
+                }
+            }
+        }
+    }
+
+    private fun startPeriodicSync() {
+        viewModelScope.launch {
+            while (isActive) {
+                kotlinx.coroutines.delay(60 * 1000) // Check every minute
+                if (!isOfflineMode) {
+                    loadBooks(forceSync = false) // Smarter non-blocking load
+                }
+            }
+        }
     }
 
     private fun startPollingProcessingBooks() {
         viewModelScope.launch {
             while (isActive) {
-                val processingBooks = allBooks.filter { it.isReadAloudQueued }
-                if (processingBooks.isNotEmpty()) {
-                    processingBooks.forEach { book ->
-                        try {
-                            val details = AppContainer.apiClientManager.getApi().getBookDetails(book.id)
-                            val ra = details.readaloud
-                            if (ra != null) {
-                                withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                    allBooks = allBooks.map { 
-                                        if (it.id == book.id) {
-                                            it.copy(
-                                                hasReadAloud = !ra.filepath.isNullOrBlank(),
-                                                isReadAloudQueued = ra.filepath.isNullOrBlank() && ra.status != "STOPPED",
-                                                processingStatus = ra.status,
-                                                currentProcessingStage = ra.currentStage,
-                                                processingProgress = ra.stageProgress?.toFloat(),
-                                                queuePosition = ra.queuePosition
-                                            )
-                                        } else it
-                                    }
-                                    applyFiltersAndSort()
+                if (!isOfflineMode) {
+                    val processingBooks = allBooks.filter { it.isReadAloudQueued }
+                    if (processingBooks.isNotEmpty()) {
+                        processingBooks.forEach { book ->
+                            try {
+                                val details = AppContainer.apiClientManager.getApi().getBookDetails(book.id)
+                                val ra = details.readaloud
+                                if (ra != null) {
+                                    bookRepository.updateProcessingStatus(book.id, ra)
                                 }
+                            } catch (e: Exception) {
+                                android.util.Log.w("LibraryVM", "Failed to poll status for ${book.id}")
                             }
-                        } catch (e: Exception) {
-                            android.util.Log.e("LibraryViewModel", "Error polling book ${book.id}: ${e.message}")
                         }
+                        refreshFromLocal()
                     }
                 }
                 kotlinx.coroutines.delay(5000)
@@ -267,96 +287,71 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
         }
     }
 
-    fun loadBooks() {
+    fun loadBooks(forceSync: Boolean = false) {
         viewModelScope.launch {
-            isLoading = true
-            try {
-                val credentials = repository.userCredentials.first()
-                if (credentials != null) {
-                    val currentSsid = com.pekempy.ReadAloudbooks.util.NetworkUtils.getCurrentSsid(AppContainer.context)
-                    val shouldUseLocal = credentials.useLocalOnWifi && 
-                                        credentials.wifiSsid.isNotEmpty() &&
-                                        currentSsid == credentials.wifiSsid
-                    
-                    val targetUrl = when {
-                        shouldUseLocal && credentials.localUrl.isNotEmpty() -> credentials.localUrl
-                        credentials.url.isNotEmpty() -> credentials.url
-                        else -> credentials.localUrl 
-                    }
-                    
-                    if (targetUrl.isEmpty()) {
-                        android.util.Log.w("LibraryViewModel", "No target URL available for sync (url and localUrl both empty or not on home wifi)")
-                        isLoading = false
-                        return@launch
-                    }
+            // Only show spinner if memory is empty AND we are doing a fresh load
+            if (allBooks.isEmpty()) {
+                isLoading = true 
+            }
 
-                    val apiManager = AppContainer.apiClientManager
-                    apiManager.updateConfig(targetUrl, credentials.token)
-                    
-                    val response = apiManager.getApi().listBooks()
-                    
-                    val progressMap = repository.allBookProgress.first()
-                    val bookProgress = mutableMapOf<String, Float>()
-    
-                    progressMap.forEach { (bookId, value) ->
-                        val up = com.pekempy.ReadAloudbooks.data.UnifiedProgress.fromString(value)
-                        if (up != null) {
-                            bookProgress[bookId] = up.getOverallProgress()
-                        }
-                    }
-                    
-                    allBooks = response.map { apiBook ->
-                        val apiSeries = apiBook.series?.firstOrNull()
-                        val apiCollection = apiBook.collections?.firstOrNull()
-                        
-                        val book = Book(
-                            id = apiBook.uuid,
-                            title = apiBook.title,
-                            author = apiBook.authors.joinToString(", ") { it.name },
-                            narrator = apiBook.narrators?.joinToString(", ") { it.name },
-                            coverUrl = if (apiBook.ebook != null) apiManager.getEbookCoverUrl(apiBook.uuid, apiBook.updatedAt) 
-                                        else if (apiBook.audiobook != null) apiManager.getAudiobookCoverUrl(apiBook.uuid, apiBook.updatedAt)
-                                        else apiManager.getCoverUrl(apiBook.uuid, apiBook.updatedAt),
-                            description = apiBook.description,
-                            hasReadAloud = apiBook.readaloud != null && !apiBook.readaloud.filepath.isNullOrBlank(),
-                            hasEbook = apiBook.ebook != null,
-                            hasAudiobook = apiBook.audiobook != null,
-                            syncedUrl = apiManager.getSyncDownloadUrl(apiBook.uuid),
-                            audiobookUrl = apiManager.getAudiobookDownloadUrl(apiBook.uuid),
-                            ebookUrl = apiManager.getEbookDownloadUrl(apiBook.uuid),
-                            series = apiSeries?.name,
-                            collection = apiCollection?.name,
-                            seriesIndex = apiBook.series?.firstNotNullOfOrNull { it.seriesIndex }
-                                ?: apiBook.collections?.firstNotNullOfOrNull { it.seriesIndex },
-                            addedDate = System.currentTimeMillis(),
-                            ebookCoverUrl = if (apiBook.ebook != null) apiManager.getEbookCoverUrl(apiBook.uuid, apiBook.updatedAt) else null,
-                            audiobookCoverUrl = if (apiBook.audiobook != null) apiManager.getAudiobookCoverUrl(apiBook.uuid, apiBook.updatedAt) else null,
-                            progress = bookProgress[apiBook.uuid],
-                            updatedAt = apiBook.updatedAt
-                        )
-                        book.copy(
-                            isDownloaded = com.pekempy.ReadAloudbooks.util.DownloadUtils.isBookDownloaded(AppContainer.context.filesDir, book),
-                            isAudiobookDownloaded = com.pekempy.ReadAloudbooks.util.DownloadUtils.isAudiobookDownloaded(AppContainer.context.filesDir, book),
-                            isEbookDownloaded = com.pekempy.ReadAloudbooks.util.DownloadUtils.isEbookDownloaded(AppContainer.context.filesDir, book),
-                            isReadAloudDownloaded = com.pekempy.ReadAloudbooks.util.DownloadUtils.isReadAloudDownloaded(AppContainer.context.filesDir, book),
-                            isReadAloudQueued = apiBook.readaloud != null && apiBook.readaloud.filepath.isNullOrBlank() && apiBook.readaloud.status != "STOPPED",
-                            processingStatus = apiBook.readaloud?.status,
-                            currentProcessingStage = apiBook.readaloud?.currentStage,
-                            processingProgress = apiBook.readaloud?.stageProgress?.toFloat(),
-                            queuePosition = apiBook.readaloud?.queuePosition
-                        )
-                    }
-                    applyFiltersAndSort()
-                    checkPendingDownloads()
-                    
-                     updateHomeData()
-                }
+            // 1. Instant Local Refresh
+            val localBooks = bookRepository.getAllBooksFromLocal()
+            if (localBooks.isNotEmpty() || allBooks.isNotEmpty()) {
+                refreshUIWithLocalData(localBooks)
+                isLoading = false // Hide spinner as soon as we have ANY data
+            }
+
+            // 2. Connection Check & Sync
+            // Always call syncWithServer because it handles API initialization and connectivity checks internally.
+            try {
+                android.util.Log.d("LibraryVM", "Calling syncWithServer (force=$forceSync)")
+                bookRepository.syncWithServer(forceSync)
+                isOfflineMode = bookRepository.isOfflineMode
+                
+                // 3. Post-Sync Refresh
+                val updatedLocalBooks = bookRepository.getAllBooksFromLocal()
+                refreshUIWithLocalData(updatedLocalBooks)
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.w("LibraryViewModel", "Sync/Connect failed: ${e.message}")
+                isOfflineMode = true
             } finally {
                 isLoading = false
             }
         }
+    }
+
+    /**
+     * Light-weight refresh that only updates data from the local database
+     * without triggering a server sync or showing a loading spinner.
+     */
+    fun refreshFromLocal() {
+        viewModelScope.launch {
+            val localBooks = bookRepository.getAllBooksFromLocal()
+            refreshUIWithLocalData(localBooks)
+            isOfflineMode = bookRepository.isOfflineMode
+        }
+    }
+
+    private suspend fun refreshUIWithLocalData(localBooks: List<Book>) {
+        // Get progress from DataStore
+        val progressMap = repository.allBookProgress.first()
+        val bookProgress = mutableMapOf<String, Float>()
+
+        progressMap.forEach { (bookId, value) ->
+            val up = com.pekempy.ReadAloudbooks.data.UnifiedProgress.fromString(value)
+            if (up != null) {
+                bookProgress[bookId] = up.getOverallProgress()
+            }
+        }
+        
+        // Merge progress into books
+        allBooks = localBooks.map { book ->
+            book.copy(progress = bookProgress[book.id] ?: book.progress)
+        }
+        
+        applyFiltersAndSort()
+        checkPendingDownloads()
+        updateHomeData()
     }
 
     private suspend fun updateHomeData() {
@@ -478,7 +473,13 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
         var result = if (selectedFilter != null) {
             when (currentViewMode) {
                 ViewMode.Authors -> allBooks.filter { it.author == selectedFilter }
-                ViewMode.Series -> allBooks.filter { it.series == selectedFilter }
+                ViewMode.Series -> {
+                    if (selectedFilter == "No Series") {
+                        allBooks.filter { it.series.isNullOrBlank() }
+                    } else {
+                        allBooks.filter { it.series == selectedFilter }
+                    }
+                }
                 ViewMode.Collections -> allBooks.filter { it.collection == selectedFilter }
                 ViewMode.Processing -> allBooks.filter { it.isReadAloudQueued }
                 ViewMode.Downloads -> allBooks.filter { downloadingBooks.containsKey(it.id) }
@@ -545,8 +546,14 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     }
 
     fun getUniqueSeries(): List<String> {
-        val allSeries = getFilteredMasterList().mapNotNull { it.series }.distinct().sortedBy { com.pekempy.ReadAloudbooks.util.StringUtils.normalizeTitle(it) }
-        return allSeries.take((currentPage + 1) * LIMIT)
+        val masterList = getFilteredMasterList()
+        val series = masterList.mapNotNull { it.series }.filter { it.isNotBlank() }.distinct().sortedBy { com.pekempy.ReadAloudbooks.util.StringUtils.normalizeTitle(it) }.toMutableList()
+        
+        if (masterList.any { it.series.isNullOrBlank() }) {
+            series.add(0, "No Series")
+        }
+        
+        return series.take((currentPage + 1) * LIMIT)
     }
 
     fun getUniqueCollections(): List<String> {
@@ -559,11 +566,80 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     }
 
     fun getCoversForSeries(series: String): List<String> {
-        return allBooks.filter { it.series == series }.mapNotNull { it.coverUrl }.distinct().take(4)
+        val targetBooks = if (series == "No Series") {
+            allBooks.filter { it.series.isNullOrBlank() }
+        } else {
+            allBooks.filter { it.series == series }
+        }
+        return targetBooks.mapNotNull { it.coverUrl }.distinct().take(4)
     }
 
     fun getCoversForCollection(collection: String): List<String> {
         return allBooks.filter { it.collection == collection }.mapNotNull { it.coverUrl }.distinct().take(4)
+    }
+
+    fun markAsFinished(book: Book) {
+        viewModelScope.launch {
+            // Get current progress if any to preserve metadata, or create new
+            val currentProgressStr = repository.getBookProgress(book.id).first()
+            val baseProgress = com.pekempy.ReadAloudbooks.data.UnifiedProgress.fromString(currentProgressStr)
+                ?: com.pekempy.ReadAloudbooks.data.UnifiedProgress(
+                    chapterIndex = 0,
+                    elementId = null,
+                    audioTimestampMs = 0L,
+                    scrollPercent = 0f,
+                    lastUpdated = System.currentTimeMillis(),
+                    totalChapters = 1
+                )
+            
+            // Set to max progress
+            val finishedProgress = baseProgress.copy(
+                chapterIndex = baseProgress.totalChapters.coerceAtLeast(1) - 1,
+                scrollPercent = 1.0f,
+                audioTimestampMs = baseProgress.totalDurationMs,
+                lastUpdated = System.currentTimeMillis()
+            )
+            
+            repository.saveBookProgress(book.id, finishedProgress.toString())
+            
+            // Immediately attempt server sync if online
+            try {
+                if (!bookRepository.isOfflineMode) {
+                    AppContainer.apiClientManager.getApi().updatePosition(book.id, finishedProgress.toPosition())
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("LibraryVM", "Failed to sync markAsFinished to server: ${e.message}")
+            }
+            
+            loadBooks()
+        }
+    }
+
+    fun markAsUnread(book: Book) {
+        viewModelScope.launch {
+            // Setting to 0 with a NEW timestamp so it wins over server progress in next sync
+            val resetProgress = com.pekempy.ReadAloudbooks.data.UnifiedProgress(
+                chapterIndex = 0,
+                elementId = null,
+                audioTimestampMs = 0L,
+                scrollPercent = 0f,
+                lastUpdated = System.currentTimeMillis(),
+                totalChapters = 1
+            )
+            
+            repository.saveBookProgress(book.id, resetProgress.toString())
+            
+            // Immediately attempt server sync if online
+            try {
+                if (!bookRepository.isOfflineMode) {
+                    AppContainer.apiClientManager.getApi().updatePosition(book.id, resetProgress.toPosition())
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("LibraryVM", "Failed to sync markAsUnread to server: ${e.message}")
+            }
+            
+            loadBooks()
+        }
     }
 
     fun deleteProgress(bookId: String) {

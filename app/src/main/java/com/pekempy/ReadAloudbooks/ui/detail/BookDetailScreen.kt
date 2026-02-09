@@ -94,6 +94,7 @@ fun BookDetailScreen(
                 actions = {
                     IconButton(
                         onClick = { onEdit(bookId) },
+                        enabled = !viewModel.isOfflineMode,
                         modifier = Modifier
                             .padding(8.dp)
                             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f), CircleShape)
@@ -103,7 +104,7 @@ fun BookDetailScreen(
                             painterResource(R.drawable.ic_edit), 
                             contentDescription = "Edit",
                             modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onSurface
+                            tint = if (viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
@@ -256,12 +257,19 @@ fun BookDetailScreen(
                             Spacer(modifier = Modifier.height(16.dp))
                             OutlinedButton(
                                 onClick = { viewModel.createReadAloud() },
+                                enabled = !viewModel.isOfflineMode,
                                 modifier = Modifier.fillMaxWidth().height(48.dp),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
-                                Icon(painterResource(R.drawable.ic_add), contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Create ReadAloud")
+                                if (viewModel.isOfflineMode) {
+                                    Icon(painterResource(R.drawable.ic_warning), contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Offline - Cannot Create ReadAloud")
+                                } else {
+                                    Icon(painterResource(R.drawable.ic_add), contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Create ReadAloud")
+                                }
                             }
                         }
                         
@@ -337,7 +345,7 @@ fun BookDetailScreen(
                         if (!book.isDownloaded) {
                             Button(
                                 onClick = { viewModel.downloadAll(context.filesDir) },
-                                enabled = currentActiveJob == null,
+                                enabled = currentActiveJob == null && !viewModel.isOfflineMode,
                                 modifier = Modifier.fillMaxWidth().height(56.dp),
                                 shape = RoundedCornerShape(16.dp)
                             ) {
@@ -345,6 +353,10 @@ fun BookDetailScreen(
                                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                                     Spacer(Modifier.width(12.dp))
                                     Text("Downloading...")
+                                } else if (viewModel.isOfflineMode) {
+                                    Icon(painterResource(R.drawable.ic_warning), contentDescription = null)
+                                    Spacer(Modifier.width(12.dp))
+                                    Text("Offline - Cannot Download")
                                 } else {
                                     Icon(painterResource(R.drawable.ic_download), contentDescription = null)
                                     Spacer(Modifier.width(12.dp))
@@ -365,13 +377,16 @@ fun BookDetailScreen(
                                         sections.add {
                                             val isDownloaded = book.isReadAloudDownloaded
                                             val isCurrentReadAloud = readAloudViewModel.currentBook?.id == book.id
-                                            val label = if (isCurrentReadAloud) "Resume" else if (isDownloaded) "Read & Listen" else "Download\nReadAloud"
+                                            val label = if (isCurrentReadAloud) "Resume" 
+                                                        else if (isDownloaded) "Read & Listen" 
+                                                        else if (viewModel.isOfflineMode) "Not Available\n(Offline)"
+                                                        else "Download\nReadAloud"
                                             
                                             Box(
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .fillMaxHeight()
-                                                    .clickable { 
+                                                    .clickable(enabled = isDownloaded || !viewModel.isOfflineMode) { 
                                                         if (isDownloaded) {
                                                             if (isCurrentReadAloud && !readAloudViewModel.isPlaying) {
                                                                 readAloudViewModel.play()
@@ -385,15 +400,17 @@ fun BookDetailScreen(
                                                     Icon(
                                                         painterResource(if (isDownloaded) {
                                                             if (isCurrentReadAloud && readAloudViewModel.isPlaying) R.drawable.ic_pause else R.drawable.ic_menu_book
-                                                        } else R.drawable.ic_download), 
+                                                        } else if (viewModel.isOfflineMode) R.drawable.ic_warning else R.drawable.ic_download), 
                                                         contentDescription = null, 
-                                                        modifier = Modifier.size(24.dp)
+                                                        modifier = Modifier.size(24.dp),
+                                                        tint = if (!isDownloaded && viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else LocalContentColor.current
                                                     )
                                                     Text(
                                                         label, 
                                                         style = MaterialTheme.typography.labelMedium, 
                                                         fontWeight = FontWeight.Bold,
-                                                        textAlign = TextAlign.Center
+                                                        textAlign = TextAlign.Center,
+                                                        color = if (!isDownloaded && viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else LocalContentColor.current
                                                     )
                                                 }
                                             }
@@ -403,13 +420,16 @@ fun BookDetailScreen(
                                             sections.add {
                                                 val isDownloaded = book.isAudiobookDownloaded
                                                 val isCurrentAudio = audiobookViewModel.currentBook?.id == book.id
-                                                val label = if (isCurrentAudio) "Resume" else if (isDownloaded) "Audio" else "Download\nAudio"
+                                                val label = if (isCurrentAudio) "Resume" 
+                                                            else if (isDownloaded) "Audio" 
+                                                            else if (viewModel.isOfflineMode) "Offline"
+                                                            else "Download\nAudio"
                                                 
                                                 Box(
                                                     modifier = Modifier
                                                         .weight(1f)
                                                         .fillMaxHeight()
-                                                        .clickable { 
+                                                        .clickable(enabled = isDownloaded || !viewModel.isOfflineMode) { 
                                                             if (isDownloaded) {
                                                                 if (isCurrentAudio && !audiobookViewModel.isPlaying) {
                                                                     audiobookViewModel.play()
@@ -423,15 +443,17 @@ fun BookDetailScreen(
                                                         Icon(
                                                             painterResource(if (isDownloaded) {
                                                                 if (isCurrentAudio && audiobookViewModel.isPlaying) R.drawable.ic_pause else R.drawable.ic_headset
-                                                            } else R.drawable.ic_download), 
+                                                            } else if (viewModel.isOfflineMode) R.drawable.ic_warning else R.drawable.ic_download), 
                                                             contentDescription = null, 
-                                                            modifier = Modifier.size(20.dp)
+                                                            modifier = Modifier.size(20.dp),
+                                                            tint = if (!isDownloaded && viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else LocalContentColor.current
                                                         )
                                                         Text(
                                                             label, 
                                                             style = MaterialTheme.typography.labelSmall, 
                                                             fontWeight = FontWeight.Bold,
-                                                            textAlign = TextAlign.Center
+                                                            textAlign = TextAlign.Center,
+                                                            color = if (!isDownloaded && viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else LocalContentColor.current
                                                         )
                                                     }
                                                 }
@@ -441,11 +463,14 @@ fun BookDetailScreen(
                                         if (book.hasEbook) {
                                             sections.add {
                                                 val isDownloaded = book.isEbookDownloaded
+                                                val label = if (isDownloaded) "eBook" 
+                                                            else if (viewModel.isOfflineMode) "Offline"
+                                                            else "Download\neBook"
                                                 Box(
                                                     modifier = Modifier
                                                         .weight(1f)
                                                         .fillMaxHeight()
-                                                        .clickable { 
+                                                        .clickable(enabled = isDownloaded || !viewModel.isOfflineMode) { 
                                                             if (isDownloaded) onRead(book.id, false) 
                                                             else viewModel.downloadEbook(context.filesDir)
                                                         },
@@ -453,15 +478,19 @@ fun BookDetailScreen(
                                                 ) {
                                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                                         Icon(
-                                                            painterResource(if (isDownloaded) R.drawable.ic_book else R.drawable.ic_download), 
+                                                            painterResource(if (isDownloaded) R.drawable.ic_book 
+                                                                             else if (viewModel.isOfflineMode) R.drawable.ic_warning
+                                                                             else R.drawable.ic_download), 
                                                             contentDescription = null, 
-                                                            modifier = Modifier.size(20.dp)
+                                                            modifier = Modifier.size(20.dp),
+                                                            tint = if (!isDownloaded && viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else LocalContentColor.current
                                                         )
                                                         Text(
-                                                            if (isDownloaded) "eBook" else "Download\neBook", 
+                                                            label, 
                                                             style = MaterialTheme.typography.labelSmall, 
                                                             fontWeight = FontWeight.Bold,
-                                                            textAlign = TextAlign.Center
+                                                            textAlign = TextAlign.Center,
+                                                            color = if (!isDownloaded && viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else LocalContentColor.current
                                                         )
                                                     }
                                                 }

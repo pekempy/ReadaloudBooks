@@ -84,7 +84,11 @@ object DownloadUtils {
             
         downloadClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful && response.code != 206) {
-                if (response.code == 416) return
+                if (response.code == 416) {
+                    android.util.Log.w("DownloadUtils", "416 Range Not Satisfiable for ${file.name}. Local file might be larger than server file. Deleting and failing so it can be retried.")
+                    if (file.exists()) file.delete()
+                    throw Exception("Range not satisfiable (416). File potentially changed on server.")
+                }
                 throw Exception("Unexpected code $response")
             }
 
