@@ -243,6 +243,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                     currentBook = book
                 }
                 repository.saveLastActiveBook(bookId, "readaloud")
+                book.series?.let { repository.unignoreSeries(it) }
                 
                 val bookDir = DownloadUtils.getBookDir(filesDir!!, book)
                 val baseFileName = DownloadUtils.getBaseFileName(book)
@@ -277,14 +278,25 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                     .setArtist(book.author)
                     .setSubtitle(book.narrator)
                 
-                val coverUrl = book.audiobookCoverUrl ?: book.coverUrl
-                if (!coverUrl.isNullOrEmpty()) {
-                    try {
-                        mediaMetadataBuilder.setArtworkUri(Uri.parse(coverUrl))
-                    } catch (e: Exception) {
-                        android.util.Log.w("ReadAloudAudioVM", "Failed to parse cover URL: $coverUrl")
-                    }
+                val coverFile = filesDir?.let { DownloadUtils.getCoverFile(it, book) }
+                val artworkUri = if (coverFile?.exists() == true) {
+                    Uri.fromFile(coverFile)
+                } else {
+                    val coverUrl = book.audiobookCoverUrl ?: book.coverUrl
+                    if (!coverUrl.isNullOrEmpty()) {
+                        try {
+                            Uri.parse(coverUrl)
+                        } catch (e: Exception) {
+                            android.util.Log.w("ReadAloudAudioVM", "Failed to parse cover URL: $coverUrl")
+                            null
+                        }
+                    } else null
                 }
+                
+                if (artworkUri != null) {
+                    mediaMetadataBuilder.setArtworkUri(artworkUri)
+                }
+                
                 val mediaMetadata = mediaMetadataBuilder.build()
                 
                 android.util.Log.d("ReadAloudAudioVM", "Building media items from ${localClipSegments.size} clips")

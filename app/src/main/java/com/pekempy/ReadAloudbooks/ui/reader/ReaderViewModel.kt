@@ -172,6 +172,8 @@ class ReaderViewModel(
                     bookRepo.getBook(bookId) ?: throw Exception("Book details not found locally or on server.")
                 }
                 
+                book.series?.let { repository.unignoreSeries(it) }
+                
                 val bookDir = DownloadUtils.getBookDir(AppContainer.context.filesDir, book)
                 val baseFileName = DownloadUtils.getBaseFileName(book)
                 val fileName = if (isReadAloud) "$baseFileName (readaloud).epub" else "$baseFileName.epub"

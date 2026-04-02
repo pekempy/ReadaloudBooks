@@ -62,7 +62,7 @@ object DownloadManager {
             val bookDir = com.pekempy.ReadAloudbooks.util.DownloadUtils.getBookDir(filesDir, book)
             bookDir.mkdirs()
 
-            val downloads = mutableListOf<Pair<String, String>>()
+            val downloads = mutableListOf<Pair<String, File>>()
             val hasReadAloud = book.hasReadAloud && !book.syncedUrl.isNullOrBlank()
             
             var shouldDownloadAudio = false
@@ -77,15 +77,23 @@ object DownloadManager {
                 shouldDownloadReadAloud = (type == DownloadType.ReadAloud) 
             }
 
-            if (shouldDownloadAudio) book.audiobookUrl?.takeIf { it.isNotBlank() }?.let { downloads.add(it to "$baseFileName.m4b") }
-            if (shouldDownloadEbook) book.ebookUrl?.takeIf { it.isNotBlank() }?.let { downloads.add(it to "$baseFileName.epub") }
-            if (shouldDownloadReadAloud) book.syncedUrl?.takeIf { it.isNotBlank() }?.let { downloads.add(it to "$baseFileName (readaloud).epub") }
+            if (shouldDownloadAudio) book.audiobookUrl?.takeIf { it.isNotBlank() }?.let { downloads.add(it to File(bookDir, "$baseFileName.m4b")) }
+            if (shouldDownloadEbook) book.ebookUrl?.takeIf { it.isNotBlank() }?.let { downloads.add(it to File(bookDir, "$baseFileName.epub")) }
+            if (shouldDownloadReadAloud) book.syncedUrl?.takeIf { it.isNotBlank() }?.let { downloads.add(it to File(bookDir, "$baseFileName (readaloud).epub")) }
+            
+            val coverFile = com.pekempy.ReadAloudbooks.util.DownloadUtils.getCoverFile(filesDir, book)
+            if (!coverFile.exists()) {
+                book.coverUrl?.takeIf { it.isNotBlank() }?.let { 
+                    coverFile.parentFile?.mkdirs()
+                    downloads.add(it to coverFile)
+                }
+            }
 
             if (downloads.isEmpty()) return@launch
 
             val jobData = DownloadJob(
                 book = book,
-                fileName = downloads.first().second,
+                fileName = downloads.first().second.name,
                 totalFiles = downloads.size,
                 currentFileIndex = 0,
                 status = "Queued"
@@ -99,14 +107,14 @@ object DownloadManager {
 
                 downloadSemaphore.withPermit {
                     var successCount = 0
-                    downloads.forEachIndexed { index, (url, fileName) ->
+                    downloads.forEachIndexed { index, (url, destFile) ->
                         withContext(Dispatchers.Main) {
                             val jobIndex = activeDownloads.indexOfFirst { it.book.id == book.id }
                             if (jobIndex != -1) {
                                 activeDownloads[jobIndex] = activeDownloads[jobIndex].copy(
-                                    fileName = fileName,
+                                    fileName = destFile.name,
                                     currentFileIndex = index,
-                                    status = "Downloading ${index + 1}/${downloads.size}: $fileName",
+                                    status = "Downloading ${index + 1}/${downloads.size}: ${destFile.name}",
                                     progress = 0f
                                 )
                             }
@@ -115,7 +123,7 @@ object DownloadManager {
                         if (!isActive) return@forEachIndexed
 
                         try {
-                            com.pekempy.ReadAloudbooks.util.DownloadUtils.downloadFile(client, url, File(bookDir, fileName)) { progress ->
+                            com.pekempy.ReadAloudbooks.util.DownloadUtils.downloadFile(client, url, destFile) { progress ->
                                 launch(Dispatchers.Main) {
                                     val currentIndex = activeDownloads.indexOfFirst { it.book.id == book.id }
                                     if (currentIndex != -1) {
@@ -125,7 +133,7 @@ object DownloadManager {
                             }
                             successCount++
                         } catch (e: Exception) {
-                            android.util.Log.e("DownloadManager", "Download failed for ${book.title} (file $fileName): ${e.message}", e)
+                            android.util.Log.e("DownloadManager", "Download failed for ${book.title} (file ${destFile.name}): ${e.message}", e)
                             withContext(Dispatchers.Main) {
                                 val currentIndex = activeDownloads.indexOfFirst { it.book.id == book.id }
                                 if (currentIndex != -1) {

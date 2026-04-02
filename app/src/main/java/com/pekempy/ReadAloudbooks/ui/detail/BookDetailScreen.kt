@@ -16,6 +16,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.BorderStroke
@@ -127,11 +129,18 @@ fun BookDetailScreen(
                             .padding(horizontal = 24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        val coverColorFilter = if (viewModel.isOfflineMode && !book.isDownloaded) {
+                            ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+                        } else {
+                            null
+                        }
+                        
                         DualCoverView(
                             ebookCover = book.ebookCoverUrl,
                             audiobookCover = book.audiobookCoverUrl,
                             fallbackCover = book.coverUrl,
-                            seriesIndex = book.seriesIndex
+                            seriesIndex = book.seriesIndex,
+                            colorFilter = coverColorFilter
                         )
                         
                         Spacer(modifier = Modifier.height(24.dp))
@@ -661,7 +670,8 @@ fun DualCoverView(
     ebookCover: String?,
     audiobookCover: String?,
     fallbackCover: String?,
-    seriesIndex: String?
+    seriesIndex: String?,
+    colorFilter: ColorFilter? = null
 ) {
     val hasAudio = audiobookCover != null
     val hasEbook = ebookCover != null
@@ -670,6 +680,16 @@ fun DualCoverView(
         var showAudiobookFront by remember { mutableStateOf(false) }
         val transition = updateTransition(targetState = showAudiobookFront, label = "CoverSwitch")
         
+        val audioScale by transition.animateFloat(label = "audioScale") { if (it) 1f else 0.85f }
+        val audioOffset by transition.animateDp(label = "audioOffset") { if (it) 0.dp else 90.dp }
+        val audioAlpha by transition.animateFloat(label = "audioAlpha") { if (it) 1f else 0.8f }
+        val audioZIndex by transition.animateFloat(label = "audioZ") { if (it) 1f else 0f }
+        
+        val ebookScale by transition.animateFloat(label = "ebookScale") { if (it) 0.85f else 1f }
+        val ebookOffset by transition.animateDp(label = "ebookOffset") { if (it) (-90).dp else 0.dp }
+        val ebookAlpha by transition.animateFloat(label = "ebookAlpha") { if (it) 0.85f else 1f }
+        val ebookZIndex by transition.animateFloat(label = "ebookZ") { if (it) 0f else 1f }
+
         Box(
             modifier = Modifier
                 .height(320.dp)
@@ -680,11 +700,6 @@ fun DualCoverView(
                 ) { showAudiobookFront = !showAudiobookFront },
             contentAlignment = Alignment.TopCenter
         ) {
-            val audioScale by transition.animateFloat(label = "audioScale") { if (it) 1f else 0.85f }
-            val audioOffset by transition.animateDp(label = "audioOffset") { if (it) 0.dp else 90.dp }
-            val audioAlpha by transition.animateFloat(label = "audioAlpha") { if (it) 1f else 0.8f }
-            val audioZIndex by transition.animateFloat(label = "audioZ") { if (it) 1f else 0f }
-
             CoverCard(
                 coverUrl = audiobookCover,
                 fallbackUrl = audiobookCover,
@@ -698,13 +713,9 @@ fun DualCoverView(
                         alpha = audioAlpha
                     },
                 seriesIndex = if (showAudiobookFront) seriesIndex else null,
-                isSquare = true
+                isSquare = true,
+                colorFilter = colorFilter
             )
-
-            val ebookScale by transition.animateFloat(label = "ebookScale") { if (it) 0.85f else 1f }
-            val ebookOffset by transition.animateDp(label = "ebookOffset") { if (it) (-90).dp else 0.dp }
-            val ebookAlpha by transition.animateFloat(label = "ebookAlpha") { if (it) 0.85f else 1f }
-            val ebookZIndex by transition.animateFloat(label = "ebookZ") { if (it) 0f else 1f }
 
             CoverCard(
                 coverUrl = ebookCover,
@@ -719,15 +730,16 @@ fun DualCoverView(
                         alpha = ebookAlpha
                     },
                 seriesIndex = if (!showAudiobookFront) seriesIndex else null,
-                isSquare = false
+                isSquare = false,
+                colorFilter = colorFilter
             )
         }
     } else if (hasAudio) {
-        SingleCoverWithBlur(audiobookCover, true, seriesIndex)
+        SingleCoverWithBlur(audiobookCover, true, seriesIndex, colorFilter)
     } else if (hasEbook) {
-        SingleCoverWithBlur(ebookCover, false, seriesIndex)
+        SingleCoverWithBlur(ebookCover, false, seriesIndex, colorFilter)
     } else {
-        SingleCoverWithBlur(fallbackCover, true, seriesIndex)
+        SingleCoverWithBlur(fallbackCover, true, seriesIndex, colorFilter)
     }
 }
 
@@ -735,7 +747,8 @@ fun DualCoverView(
 fun SingleCoverWithBlur(
     coverUrl: String?,
     isSquare: Boolean,
-    seriesIndex: String?
+    seriesIndex: String?,
+    colorFilter: ColorFilter? = null
 ) {
     Box(
         modifier = Modifier
@@ -754,14 +767,16 @@ fun SingleCoverWithBlur(
                 }
                 .blur(40.dp)
                 .alpha(0.3f),
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Crop,
+            colorFilter = colorFilter
         )
         
         CoverCard(
             coverUrl = coverUrl,
             fallbackUrl = coverUrl,
             isSquare = isSquare,
-            seriesIndex = seriesIndex
+            seriesIndex = seriesIndex,
+            colorFilter = colorFilter
         )
     }
 }
@@ -772,7 +787,8 @@ fun CoverCard(
     fallbackUrl: String?,
     modifier: Modifier = Modifier,
     seriesIndex: String? = null,
-    isSquare: Boolean = true
+    isSquare: Boolean = true,
+    colorFilter: ColorFilter? = null
 ) {
     Card(
         modifier = modifier
@@ -791,7 +807,8 @@ fun CoverCard(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
                 placeholder = painterResource(id = android.R.drawable.ic_menu_gallery),
-                error = painterResource(id = android.R.drawable.ic_menu_gallery)
+                error = painterResource(id = android.R.drawable.ic_menu_gallery),
+                colorFilter = colorFilter
             )
             if (seriesIndex != null) {
                 SeriesTag(seriesIndex, Modifier.align(Alignment.BottomStart))

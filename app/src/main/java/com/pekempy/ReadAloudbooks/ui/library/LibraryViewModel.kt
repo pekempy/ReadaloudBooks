@@ -101,6 +101,8 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     var filterHasReadAloud by mutableStateOf(false)
     var filterDownloaded by mutableStateOf(false)
     var filterCanCreateReadAloud by mutableStateOf(false)
+    
+    private var ignoredSeries = setOf<String>()
 
     fun toggleAudiobookFilter() { 
         filterHasAudiobook = !filterHasAudiobook 
@@ -124,6 +126,14 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     }
 
     init {
+        viewModelScope.launch {
+            repository.userSettings.collect { settings ->
+                if (ignoredSeries != settings.ignoredSeries) {
+                    ignoredSeries = settings.ignoredSeries
+                    refreshFromLocal()
+                }
+            }
+        }
         startObservingDownloads()
         startPollingProcessingBooks()
         startPeriodicSync()
@@ -173,9 +183,28 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
                         }
                     } catch (e: Exception) {
                         android.util.Log.e("LibraryVM", "Failed to fetch server processing list: ${e.message}")
+                        if (e is java.net.UnknownHostException) {
+                            isOfflineMode = true
+                        }
                     }
                 }
                 kotlinx.coroutines.delay(5000)
+            }
+        }
+    }
+
+    fun refreshProcessingBooks() {
+        viewModelScope.launch {
+            try {
+                val list = bookRepository.getServerProcessingBooks()
+                serverProcessingList.clear()
+                serverProcessingList.addAll(list)
+                isOfflineMode = false // Successful call means we are online
+            } catch (e: Exception) {
+                android.util.Log.w("LibraryViewModel", "Polling failed: ${e.message}")
+                if (e is java.net.UnknownHostException) {
+                    isOfflineMode = true // Stop polling every 5s if host is invalid
+                }
             }
         }
     }
@@ -372,7 +401,8 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
         }
 
         val inProgressBooks = allBooks
-            .filter { progressMap.containsKey(it.id) && (it.progress ?: 0f) < 0.95f }
+            .filter { progressMap.containsKey(it.id) && (it.progress ?: 0f) > 0f && (it.progress ?: 0f) < 0.95f }
+            .filter { it.series == null || !ignoredSeries.contains(it.series) }
             .sortedByDescending { bookTimestamps[it.id] ?: 0L }
             .take(10)
 
@@ -383,23 +413,32 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
             .sortedByDescending { bookTimestamps[it.id] ?: 0L }
 
         val nextInSeries = mutableListOf<Book>()
-        val processedSeries = mutableSetOf<String>()
-
-        finishedBooks.forEach { finishedBook ->
-            val seriesName = finishedBook.series ?: return@forEach
-            if (processedSeries.contains(seriesName)) return@forEach
-            val currentIndex = finishedBook.seriesIndex?.toDoubleOrNull() ?: 0.0
-
-            val nextBook = allBooks
+        val seriesNames = allBooks.mapNotNull { it.series }.distinct()
+        
+        seriesNames.forEach { seriesName ->
+            if (ignoredSeries.contains(seriesName)) return@forEach
+            
+            val seriesBooks = allBooks
                 .filter { it.series == seriesName }
-                .filter { (it.seriesIndex?.toDoubleOrNull() ?: -1.0) > currentIndex }
                 .sortedBy { it.seriesIndex?.toDoubleOrNull() ?: 0.0 }
-                .firstOrNull()
-
-            if (nextBook != null) {
-                if (!inProgressBooks.any { it.id == nextBook.id }) {
-                    nextInSeries.add(nextBook)
-                    processedSeries.add(seriesName)
+            
+            val latestFinished = seriesBooks.findLast { 
+                val progress = progressMap[it.id]?.let { p -> com.pekempy.ReadAloudbooks.data.UnifiedProgress.fromString(p)?.getOverallProgress() } ?: 0f
+                progress >= 0.95f
+            }
+            
+            if (latestFinished != null) {
+                val currentIndex = latestFinished.seriesIndex?.toDoubleOrNull() ?: 0.0
+                val nextBook = seriesBooks.find {
+                    val index = it.seriesIndex?.toDoubleOrNull() ?: -1.0
+                    index > currentIndex
+                }
+                
+                if (nextBook != null) {
+                    val nextProgress = progressMap[nextBook.id]?.let { p -> com.pekempy.ReadAloudbooks.data.UnifiedProgress.fromString(p)?.getOverallProgress() } ?: 0f
+                    if (nextProgress < 0.05f) {
+                        nextInSeries.add(nextBook)
+                    }
                 }
             }
         }
@@ -441,6 +480,13 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
         downloadingBooks[book.id] = DownloadStatus(0f, "Queued")
         
         com.pekempy.ReadAloudbooks.data.DownloadManager.downloadAll(book, AppContainer.context.filesDir)
+    }
+
+    fun ignoreSeries(seriesName: String) {
+        viewModelScope.launch {
+            repository.ignoreSeries(seriesName)
+            loadBooks(forceSync = false) // Refresh list to apply filter
+        }
     }
 
     fun downloadSeries(seriesName: String) {
@@ -559,25 +605,54 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     }
 
     fun getUniqueCollections(): List<String> {
-        val allCollections = getFilteredMasterList().mapNotNull { it.collection }.distinct().sortedBy { com.pekempy.ReadAloudbooks.util.StringUtils.normalizeTitle(it) }
+        val allCollections = getFilteredMasterList().mapNotNull { it.collection }.filter { it.isNotBlank() }.distinct().sortedBy { com.pekempy.ReadAloudbooks.util.StringUtils.normalizeTitle(it) }
         return allCollections.take((currentPage + 1) * LIMIT)
     }
 
-    fun getCoversForAuthor(author: String): List<String> {
-        return allBooks.filter { it.author == author }.mapNotNull { it.coverUrl }.distinct().take(4)
+    fun getCoversForAuthor(author: String): List<com.pekempy.ReadAloudbooks.ui.components.CategoryCover> {
+        return allBooks.filter { it.author == author }
+            .sortedByDescending { it.isDownloaded }
+            .mapNotNull { book -> book.coverUrl?.let { com.pekempy.ReadAloudbooks.ui.components.CategoryCover(it, book.isDownloaded) } }
+            .distinctBy { it.url }
+            .take(4)
     }
 
-    fun getCoversForSeries(series: String): List<String> {
+    fun getCoversForSeries(series: String): List<com.pekempy.ReadAloudbooks.ui.components.CategoryCover> {
         val targetBooks = if (series == "No Series") {
             allBooks.filter { it.series.isNullOrBlank() }
         } else {
             allBooks.filter { it.series == series }
         }
-        return targetBooks.mapNotNull { it.coverUrl }.distinct().take(4)
+        return targetBooks
+            .sortedByDescending { it.isDownloaded }
+            .mapNotNull { book -> book.coverUrl?.let { com.pekempy.ReadAloudbooks.ui.components.CategoryCover(it, book.isDownloaded) } }
+            .distinctBy { it.url }
+            .take(4)
     }
 
-    fun getCoversForCollection(collection: String): List<String> {
-        return allBooks.filter { it.collection == collection }.mapNotNull { it.coverUrl }.distinct().take(4)
+    fun getCoversForCollection(collection: String): List<com.pekempy.ReadAloudbooks.ui.components.CategoryCover> {
+        return allBooks.filter { it.collection == collection }
+            .sortedByDescending { it.isDownloaded }
+            .mapNotNull { book -> book.coverUrl?.let { com.pekempy.ReadAloudbooks.ui.components.CategoryCover(it, book.isDownloaded) } }
+            .distinctBy { it.url }
+            .take(4)
+    }
+
+    fun isAuthorDownloaded(author: String): Boolean {
+        return allBooks.filter { it.author == author }.any { it.isDownloaded }
+    }
+
+    fun isSeriesDownloaded(series: String): Boolean {
+        val targetBooks = if (series == "No Series") {
+            allBooks.filter { it.series.isNullOrBlank() }
+        } else {
+            allBooks.filter { it.series == series }
+        }
+        return targetBooks.any { it.isDownloaded }
+    }
+
+    fun isCollectionDownloaded(collection: String): Boolean {
+        return allBooks.filter { it.collection == collection }.any { it.isDownloaded }
     }
 
     fun markAsFinished(book: Book) {

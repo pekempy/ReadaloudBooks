@@ -284,6 +284,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                     currentBook = book
                 }
                 repository.saveLastActiveBook(bookId, "audiobook")
+                book.series?.let { repository.unignoreSeries(it) }
 
                 val localFile = filesDir?.let { fDir ->
                     val bookDir = com.pekempy.ReadAloudbooks.util.DownloadUtils.getBookDir(fDir, book)
@@ -292,12 +293,19 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                     if (file.exists()) file else null
                 }
 
+                val coverFile = filesDir?.let { com.pekempy.ReadAloudbooks.util.DownloadUtils.getCoverFile(it, book) }
+                val artworkUri = if (coverFile?.exists() == true) {
+                    android.net.Uri.fromFile(coverFile)
+                } else {
+                    android.net.Uri.parse(book.audiobookCoverUrl ?: book.coverUrl)
+                }
+
                 val mediaMetadata = androidx.media3.common.MediaMetadata.Builder()
                     .setTitle(book.title)
                     .setArtist(book.author)
                     .setSubtitle(book.narrator)
                     .setDescription(book.description?.take(200))
-                    .setArtworkUri(android.net.Uri.parse(book.audiobookCoverUrl ?: book.coverUrl))
+                    .setArtworkUri(artworkUri)
                     .build()
 
                 val progressStr = repository.getBookProgress(bookId).first()

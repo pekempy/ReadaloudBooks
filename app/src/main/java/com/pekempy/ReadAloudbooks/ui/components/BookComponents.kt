@@ -24,6 +24,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.pekempy.ReadAloudbooks.data.Book
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -57,6 +59,12 @@ fun BookItem(
                     .clip(RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
+                val colorFilter = if (isOfflineMode && !book.isDownloaded) {
+                    ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+                } else {
+                    null
+                }
+
                 AsyncImage(
                     model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
                         .data(book.coverUrl)
@@ -69,7 +77,8 @@ fun BookItem(
                         .fillMaxSize()
                         .blur(20.dp)
                         .alpha(0.6f),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    colorFilter = colorFilter
                 )
 
                 AsyncImage(
@@ -83,7 +92,8 @@ fun BookItem(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
                     error = painterResource(id = android.R.drawable.ic_menu_gallery),
-                    placeholder = painterResource(id = android.R.drawable.ic_menu_gallery)
+                    placeholder = painterResource(id = android.R.drawable.ic_menu_gallery),
+                    colorFilter = colorFilter
                 )
                 
                 if (book.coverUrl == null) {
@@ -202,14 +212,20 @@ fun BookItem(
 }
 
 
+data class CategoryCover(
+    val url: String,
+    val isDownloaded: Boolean
+)
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun CategoryListItem(
     name: String,
-    covers: List<String>,
+    covers: List<CategoryCover>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onLongClick: (() -> Unit)? = null
+    onLongClick: (() -> Unit)? = null,
+    isOfflineMode: Boolean = false
 ) {
     Card(
         modifier = modifier
@@ -237,33 +253,36 @@ fun CategoryListItem(
                 if (covers.isEmpty()) {
                     Icon(painterResource(R.drawable.ic_book), contentDescription = null, modifier = Modifier.size(32.dp))
                 } else {
+                    val grayscaleMatrix = ColorMatrix().apply { setToSaturation(0f) }
+                    
+                    @Composable
+                    fun CoverImage(cover: CategoryCover, modifier: Modifier) {
+                        val colorFilter = if (isOfflineMode && !cover.isDownloaded) {
+                            ColorFilter.colorMatrix(grayscaleMatrix)
+                        } else {
+                            null
+                        }
+                        AsyncImage(
+                            model = cover.url,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = modifier.fillMaxSize(),
+                            colorFilter = colorFilter
+                        )
+                    }
+
                     when {
                         covers.size == 1 -> {
-                            AsyncImage(
-                                model = covers[0],
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
+                            CoverImage(covers[0], Modifier)
                         }
                         covers.size < 4 -> {
                             Row(Modifier.fillMaxSize()) {
                                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                                    AsyncImage(
-                                        model = covers[0],
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
+                                    CoverImage(covers[0], Modifier)
                                 }
                                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                                     if (covers.size > 1) {
-                                        AsyncImage(
-                                            model = covers[1],
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
+                                        CoverImage(covers[1], Modifier)
                                     }
                                 }
                             }
@@ -272,18 +291,18 @@ fun CategoryListItem(
                             Column(Modifier.fillMaxSize()) {
                                 Row(modifier = Modifier.weight(1f)) {
                                     Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                                        AsyncImage(model = covers[0], contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                        CoverImage(covers[0], Modifier)
                                     }
                                     Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                                        AsyncImage(model = covers[1], contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                        CoverImage(covers[1], Modifier)
                                     }
                                 }
                                 Row(modifier = Modifier.weight(1f)) {
                                     Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                                        AsyncImage(model = covers[2], contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                        CoverImage(covers[2], Modifier)
                                     }
                                     Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                                        AsyncImage(model = covers[3], contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                        CoverImage(covers[3], Modifier)
                                     }
                                 }
                             }
@@ -320,6 +339,7 @@ fun BookActionMenu(
     onMarkUnread: (Book) -> Unit,
     onEdit: (Book) -> Unit,
     onRemoveFromHome: ((Book) -> Unit)? = null,
+    onIgnoreSeries: ((String) -> Unit)? = null,
     onDownload: ((Book) -> Unit)? = null,
     onCreateReadAloud: ((Book) -> Unit)? = null,
     isOfflineMode: Boolean = false
@@ -425,6 +445,17 @@ fun BookActionMenu(
                 leadingIcon = { Icon(painterResource(R.drawable.ic_delete), contentDescription = null) },
                 onClick = {
                     onRemoveFromHome(book)
+                    onDismissRequest()
+                }
+            )
+        }
+
+        if (onIgnoreSeries != null && book.series != null) {
+            DropdownMenuItem(
+                text = { Text("Stop suggesting series") },
+                leadingIcon = { Icon(painterResource(R.drawable.ic_warning), contentDescription = null) },
+                onClick = {
+                    onIgnoreSeries(book.series!!)
                     onDismissRequest()
                 }
             )

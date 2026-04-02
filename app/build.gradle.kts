@@ -109,6 +109,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.3.1")
     implementation("androidx.media3:media3-session:1.3.1")
     implementation("androidx.media3:media3-transformer:1.3.1")
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1")
     implementation("nl.siegmann.epublib:epublib-core:3.1") {
         exclude(group = "org.slf4j")

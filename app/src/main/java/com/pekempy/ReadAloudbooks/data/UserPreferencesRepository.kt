@@ -50,9 +50,11 @@ class UserPreferencesRepository(private val context: Context) {
         val SHOW_COLLECTIONS_TAB = booleanPreferencesKey("show_collections_tab")
 
         val SYNC_FREQUENCY = intPreferencesKey("sync_frequency") // in minutes, 0 = manual
+        val SYNC_FREQUENCY_BACKGROUND = intPreferencesKey("sync_frequency_background") // in minutes, 0 = manual
         val LAST_SYNC_TIME = longPreferencesKey("last_sync_time")
         
         val READER_HIDE_PLAYER_WITH_CONTROLS = booleanPreferencesKey("reader_hide_player_with_controls")
+        val IGNORED_SERIES = stringSetPreferencesKey("ignored_series")
     }
 
     val userCredentials: Flow<UserCredentials?> = context.dataStore.data.map { preferences ->
@@ -94,8 +96,10 @@ class UserPreferencesRepository(private val context: Context) {
             showSeriesTab = preferences[SHOW_SERIES_TAB] ?: true,
             showCollectionsTab = preferences[SHOW_COLLECTIONS_TAB] ?: true,
             syncFrequency = preferences[SYNC_FREQUENCY] ?: 0,
+            syncFrequencyBackground = preferences[SYNC_FREQUENCY_BACKGROUND] ?: 0,
             lastSyncTime = preferences[LAST_SYNC_TIME] ?: 0L,
-            readerHidePlayerWithControls = preferences[READER_HIDE_PLAYER_WITH_CONTROLS] ?: false
+            readerHidePlayerWithControls = preferences[READER_HIDE_PLAYER_WITH_CONTROLS] ?: false,
+            ignoredSeries = preferences[IGNORED_SERIES] ?: emptySet()
         )
     }
 
@@ -276,12 +280,32 @@ class UserPreferencesRepository(private val context: Context) {
         context.dataStore.edit { preferences -> preferences[SYNC_FREQUENCY] = minutes }
     }
 
+    suspend fun updateSyncFrequencyBackground(minutes: Int) {
+        context.dataStore.edit { preferences -> preferences[SYNC_FREQUENCY_BACKGROUND] = minutes }
+    }
+
     suspend fun updateLastSyncTime(time: Long) {
         context.dataStore.edit { preferences -> preferences[LAST_SYNC_TIME] = time }
     }
 
     suspend fun updateReaderHidePlayerWithControls(enabled: Boolean) {
-        context.dataStore.edit { preferences -> preferences[READER_HIDE_PLAYER_WITH_CONTROLS] = enabled }
+        context.dataStore.edit { preferences ->
+            preferences[READER_HIDE_PLAYER_WITH_CONTROLS] = enabled
+        }
+    }
+
+    suspend fun ignoreSeries(seriesName: String) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[IGNORED_SERIES] ?: emptySet()
+            preferences[IGNORED_SERIES] = current + seriesName
+        }
+    }
+
+    suspend fun unignoreSeries(seriesName: String) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[IGNORED_SERIES] ?: emptySet()
+            preferences[IGNORED_SERIES] = current - seriesName
+        }
     }
 }
 
@@ -300,6 +324,8 @@ data class UserSettings(
     val showSeriesTab: Boolean,
     val showCollectionsTab: Boolean,
     val syncFrequency: Int,
+    val syncFrequencyBackground: Int,
     val lastSyncTime: Long,
-    val readerHidePlayerWithControls: Boolean
+    val readerHidePlayerWithControls: Boolean,
+    val ignoredSeries: Set<String> = emptySet()
 )

@@ -44,6 +44,20 @@ object DownloadUtils {
         return File(bookDir, "$baseFileName.epub").exists()
     }
 
+    fun getCoverFile(filesDir: File, book: Book): File {
+        val bookDir = getCoverDir(filesDir, book)
+        return File(bookDir, "cover.webp")
+    }
+
+    fun isCoverDownloaded(filesDir: File, book: Book): Boolean {
+        return getCoverFile(filesDir, book).exists()
+    }
+
+    private fun getCoverDir(filesDir: File, book: Book): File {
+        val authorPart = sanitize(book.author)
+        return File(filesDir, authorPart)
+    }
+
     fun isReadAloudDownloaded(filesDir: File, book: Book): Boolean {
         val bookDir = getBookDir(filesDir, book)
         val baseFileName = getBaseFileName(book)

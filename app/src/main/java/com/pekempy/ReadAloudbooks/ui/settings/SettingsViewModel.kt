@@ -33,6 +33,7 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
     var showCollectionsTab by mutableStateOf(true)
     
     var syncFrequency by mutableStateOf(0)
+    var syncFrequencyBackground by mutableStateOf(0)
     var lastSyncTime by mutableStateOf(0L)
     var isSyncing by mutableStateOf(false)
 
@@ -53,6 +54,7 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
                 showSeriesTab = settings.showSeriesTab
                 showCollectionsTab = settings.showCollectionsTab
                 syncFrequency = settings.syncFrequency
+                syncFrequencyBackground = settings.syncFrequencyBackground
                 lastSyncTime = settings.lastSyncTime
                 readerHidePlayerWithControls = settings.readerHidePlayerWithControls
             }
@@ -141,6 +143,14 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
     fun updateSyncFrequency(minutes: Int) {
         syncFrequency = minutes
         viewModelScope.launch { repository.updateSyncFrequency(minutes) }
+    }
+
+    fun updateSyncFrequencyBackground(minutes: Int) {
+        syncFrequencyBackground = minutes
+        viewModelScope.launch { 
+            repository.updateSyncFrequencyBackground(minutes)
+            com.pekempy.ReadAloudbooks.data.SyncWorker.schedule(com.pekempy.ReadAloudbooks.data.api.AppContainer.context, minutes)
+        }
     }
 
     fun updateReaderHidePlayerWithControls(enabled: Boolean) {

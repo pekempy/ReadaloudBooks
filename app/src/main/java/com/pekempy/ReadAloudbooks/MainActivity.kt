@@ -44,6 +44,8 @@ import com.pekempy.ReadAloudbooks.ui.components.AppNavigationBar
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.navigation.compose.currentBackStackEntryAsState
 
 class MainActivity : ComponentActivity() {
@@ -77,6 +79,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         repository = UserPreferencesRepository(applicationContext)
+        lifecycleScope.launch {
+            val initialSettings = repository.userSettings.first()
+            com.pekempy.ReadAloudbooks.data.SyncWorker.schedule(applicationContext, initialSettings.syncFrequencyBackground)
+        }
+        
         handleIntent(intent)
         val initialIsLoggedIn = runBlocking { repository.isLoggedIn.first() }
 
@@ -105,7 +112,7 @@ class MainActivity : ComponentActivity() {
         })[LibraryViewModel::class.java]
 
         setContent {
-            val settings by repository.userSettings.collectAsState(initial = com.pekempy.ReadAloudbooks.data.UserSettings(0, true, 0, 0, 18f, 0, "serif", 1.0f, false, true, true, true, true, 0, 0L, false))
+            val settings by repository.userSettings.collectAsState(initial = com.pekempy.ReadAloudbooks.data.UserSettings(0, true, 0, 0, 18f, 0, "serif", 1.0f, false, true, true, true, true, 0, 0, 0L, false, emptySet()))
             
             val isDarkTheme = when (settings.themeMode) {
                 1 -> false

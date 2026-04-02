@@ -146,8 +146,9 @@ fun SettingsConnections(
     ) { padding ->
         Column(
             modifier = Modifier
-                .padding(padding)
                 .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
@@ -209,26 +210,65 @@ fun SettingsConnections(
             }
             
             SettingsSection("Sync Settings") {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Sync Frequency", style = MaterialTheme.typography.bodyMedium)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    val syncIntervals = remember {
                         listOf(
-                            0 to "None",
+                            0 to "Off",
+                            15 to "15m",
+                            30 to "30m",
+                            45 to "45m",
                             60 to "1h",
+                            120 to "2h",
                             180 to "3h",
+                            360 to "6h",
                             720 to "12h",
-                            1440 to "24h"
-                        ).forEach { (mins, label) ->
-                            FilterChip(
-                                selected = viewModel.syncFrequency == mins,
-                                onClick = { viewModel.updateSyncFrequency(mins) },
-                                label = { Text(label, maxLines = 1) },
-                                modifier = Modifier.weight(1f)
-                            )
+                            1440 to "24h",
+                            2880 to "48h"
+                        )
+                    }
+
+                    // App Sync
+                    Column {
+                        val currentAppIdx = syncIntervals.indexOfFirst { it.first == viewModel.syncFrequency }.coerceAtLeast(0)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Foreground Sync", style = MaterialTheme.typography.bodyMedium)
+                            Text(syncIntervals[currentAppIdx].second, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         }
+                        Slider(
+                            value = currentAppIdx.toFloat(),
+                            onValueChange = { 
+                                val idx = it.roundToInt()
+                                viewModel.updateSyncFrequency(syncIntervals[idx].first)
+                            },
+                            valueRange = 0f..(syncIntervals.size - 1).toFloat(),
+                            steps = syncIntervals.size - 2
+                        )
+                    }
+
+                    // Background Sync
+                    Column {
+                        val currentBgIdx = syncIntervals.indexOfFirst { it.first == viewModel.syncFrequencyBackground }.coerceAtLeast(0)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Background Sync", style = MaterialTheme.typography.bodyMedium)
+                            Text(syncIntervals[currentBgIdx].second, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Slider(
+                            value = currentBgIdx.toFloat(),
+                            onValueChange = { 
+                                val idx = it.roundToInt()
+                                viewModel.updateSyncFrequencyBackground(syncIntervals[idx].first)
+                            },
+                            valueRange = 0f..(syncIntervals.size - 1).toFloat(),
+                            steps = syncIntervals.size - 2
+                        )
                     }
                     
                     if (viewModel.lastSyncTime > 0) {
@@ -427,8 +467,9 @@ fun SettingsAudio(
     ) { padding ->
         Column(
              modifier = Modifier
-                .padding(padding)
                 .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {

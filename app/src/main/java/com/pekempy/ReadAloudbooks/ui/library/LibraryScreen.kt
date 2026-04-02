@@ -268,6 +268,7 @@ fun LibraryScreen(
             onMarkFinished = { viewModel.markAsFinished(it) },
             onMarkUnread = { viewModel.markAsUnread(it) },
             onEdit = onEditBook,
+            onIgnoreSeries = { viewModel.ignoreSeries(it) },
             onDownload = { viewModel.downloadBook(it) },
             onCreateReadAloud = { viewModel.createReadAloud(it.id) },
             isOfflineMode = viewModel.isOfflineMode
@@ -539,7 +540,8 @@ fun LibraryScreen(
                                     CategoryListItem(
                                         name = author,
                                         covers = viewModel.getCoversForAuthor(author),
-                                        onClick = { viewModel.selectFilter(author) }
+                                        onClick = { viewModel.selectFilter(author) },
+                                        isOfflineMode = viewModel.isOfflineMode
                                     )
                                 }
                             }
@@ -570,7 +572,8 @@ fun LibraryScreen(
                                             onLongClick = { 
                                                 selectedSeriesForMenu = s
                                                 showSeriesMenu = true
-                                            }
+                                            },
+                                            isOfflineMode = viewModel.isOfflineMode
                                         )
 
                                         com.pekempy.ReadAloudbooks.ui.components.SeriesActionMenu(
@@ -605,7 +608,8 @@ fun LibraryScreen(
                                     CategoryListItem(
                                         name = c,
                                         covers = viewModel.getCoversForCollection(c),
-                                        onClick = { viewModel.selectFilter(c) }
+                                        onClick = { viewModel.selectFilter(c) },
+                                        isOfflineMode = viewModel.isOfflineMode
                                     )
                                 }
                             }
