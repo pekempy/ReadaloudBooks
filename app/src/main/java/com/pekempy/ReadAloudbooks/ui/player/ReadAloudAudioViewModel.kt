@@ -406,6 +406,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 val bookRepo = AppContainer.bookRepository
                 val book = try {
                     if (bookRepo.isOfflineMode) throw Exception("Offline")
+                    val apiManager = AppContainer.apiClientManager
                     val apiBook = apiManager.getApi().getBookDetails(bookId)
                     
                     val apiSeries = apiBook.series?.firstOrNull()

@@ -33,7 +33,7 @@ data class BookResponse(
     val collections: List<SeriesResponse>? = null,
     val tags: List<TagResponse>? = null,
     val status: Any? = null,
-    val position: Any? = null,
+    val position: Position? = null,
     val audiobook: AudiobookResponse? = null,
     val ebook: EbookResponse? = null,
     @SerializedName("readaloud") val readaloud: ReadAloudResponse? = null
