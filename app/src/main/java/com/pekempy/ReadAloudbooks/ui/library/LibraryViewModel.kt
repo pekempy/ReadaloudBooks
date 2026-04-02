@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.isActive
 
 class LibraryViewModel(private val repository: UserPreferencesRepository) : ViewModel() {
-    private val bookRepository = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
+    private val bookRepository = AppContainer.bookRepository
     
     private val PREFS_NAME = "download_prefs"
     private val KEY_PENDING_DOWNLOADS = "pending_downloads"
@@ -128,7 +128,34 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
         startPollingProcessingBooks()
         startPeriodicSync()
         startPollingOfflineStatus()
-        loadBooks(forceSync = true)
+        observeBooks()
+        refreshBooks(force = true)
+    }
+
+    private fun observeBooks() {
+        viewModelScope.launch {
+            bookRepository.allBooks.collect { list ->
+                allBooks = list
+                applyFiltersAndSort()
+                updateHomeData()
+                checkPendingDownloads()
+            }
+        }
+    }
+
+    private fun refreshBooks(force: Boolean = false) {
+        viewModelScope.launch {
+            if (allBooks.isEmpty()) isLoading = true
+            try {
+                bookRepository.syncWithServer(force)
+                isOfflineMode = bookRepository.isOfflineMode
+            } catch (e: Exception) {
+                android.util.Log.w("LibraryViewModel", "Sync failed: ${e.message}")
+                isOfflineMode = true
+            } finally {
+                isLoading = false
+            }
+        }
     }
 
     private fun startPollingOfflineStatus() {
@@ -290,36 +317,7 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     }
 
     fun loadBooks(forceSync: Boolean = false) {
-        viewModelScope.launch {
-            // Only show spinner if memory is empty AND we are doing a fresh load
-            if (allBooks.isEmpty()) {
-                isLoading = true 
-            }
-
-            // 1. Instant Local Refresh
-            val localBooks = bookRepository.getAllBooksFromLocal()
-            if (localBooks.isNotEmpty() || allBooks.isNotEmpty()) {
-                refreshUIWithLocalData(localBooks)
-                isLoading = false // Hide spinner as soon as we have ANY data
-            }
-
-            // 2. Connection Check & Sync
-            // Always call syncWithServer because it handles API initialization and connectivity checks internally.
-            try {
-                android.util.Log.d("LibraryVM", "Calling syncWithServer (force=$forceSync)")
-                bookRepository.syncWithServer(forceSync)
-                isOfflineMode = bookRepository.isOfflineMode
-                
-                // 3. Post-Sync Refresh
-                val updatedLocalBooks = bookRepository.getAllBooksFromLocal()
-                refreshUIWithLocalData(updatedLocalBooks)
-            } catch (e: Exception) {
-                android.util.Log.w("LibraryViewModel", "Sync/Connect failed: ${e.message}")
-                isOfflineMode = true
-            } finally {
-                isLoading = false
-            }
-        }
+        refreshBooks(forceSync)
     }
 
     /**

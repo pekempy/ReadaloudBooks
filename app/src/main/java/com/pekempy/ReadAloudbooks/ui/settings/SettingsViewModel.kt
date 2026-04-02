@@ -151,7 +151,7 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
     suspend fun forceSync(): Boolean {
         isSyncing = true
         return try {
-            val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(com.pekempy.ReadAloudbooks.data.api.AppContainer.context, repository)
+            val bookRepo = com.pekempy.ReadAloudbooks.data.api.AppContainer.bookRepository
             val success = bookRepo.syncWithServer(force = true)
             if (success) {
                 lastSyncTime = System.currentTimeMillis()

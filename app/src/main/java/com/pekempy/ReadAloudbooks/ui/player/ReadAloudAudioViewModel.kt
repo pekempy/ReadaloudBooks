@@ -213,9 +213,10 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             
             try {
                 val apiManager = AppContainer.apiClientManager
-                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
+                val bookRepo = AppContainer.bookRepository
                 
                 val book = try {
+                    if (bookRepo.isOfflineMode) throw Exception("Offline")
                     val apiBook = apiManager.getApi().getBookDetails(bookId)
                     
                     val apiSeries = apiBook.series?.firstOrNull()
@@ -402,9 +403,9 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
     fun restoreBook(bookId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val apiManager = AppContainer.apiClientManager
-                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
+                val bookRepo = AppContainer.bookRepository
                 val book = try {
+                    if (bookRepo.isOfflineMode) throw Exception("Offline")
                     val apiBook = apiManager.getApi().getBookDetails(bookId)
                     
                     val apiSeries = apiBook.series?.firstOrNull()
@@ -1008,24 +1009,11 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 href = href,
                 mediaType = "application/xhtml+xml"
             )
-            repository.saveBookProgress(bookId, progress.toString())
             
             try {
-                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
-                if (!bookRepo.isOfflineMode) {
-                    val position = progress.toPosition()
-                    android.util.Log.d("ReadAloudAudioVM", "Uploading ReadAloud progress: $position")
-                    AppContainer.apiClientManager.getApi().updatePosition(bookId, position)
-                    android.util.Log.d("ReadAloudAudioVM", "Successfully synced ReadAloud progress to server")
-                }
-            } catch (e: retrofit2.HttpException) {
-                if (e.code() == 409) {
-                    android.util.Log.i("ReadAloudAudioVM", "Server has newer or same ReadAloud position (409). Skipping sync.")
-                } else {
-                    android.util.Log.w("ReadAloudAudioVM", "Failed to sync ReadAloud progress (HTTP ${e.code()}): ${e.message}")
-                }
+                AppContainer.bookRepository.saveProgress(bookId, progress)
             } catch (e: Exception) {
-                android.util.Log.w("ReadAloudAudioVM", "Failed to sync ReadAloud progress: ${e.message}")
+                android.util.Log.w("ReadAloudAudioVM", "Failed to sync read-aloud progress: ${e.message}")
             }
         }
     }

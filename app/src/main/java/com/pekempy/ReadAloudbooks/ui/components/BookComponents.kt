@@ -83,7 +83,12 @@ fun BookItem(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
                     error = painterResource(id = android.R.drawable.ic_menu_gallery),
-                    placeholder = painterResource(id = android.R.drawable.ic_menu_gallery)
+                    placeholder = painterResource(id = android.R.drawable.ic_menu_gallery),
+                    colorFilter = if (!book.isDownloaded) {
+                        androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+                            androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) }
+                        )
+                    } else null
                 )
                 
                 if (book.coverUrl == null) {

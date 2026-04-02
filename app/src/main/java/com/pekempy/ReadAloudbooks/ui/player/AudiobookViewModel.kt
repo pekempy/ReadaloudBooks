@@ -249,9 +249,10 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                 }
                 
                 val apiManager = AppContainer.apiClientManager
-                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
+                val bookRepo = AppContainer.bookRepository
                 
                 val book = try {
+                    if (bookRepo.isOfflineMode) throw Exception("Offline")
                     val apiBook = apiManager.getApi().getBookDetails(bookId)
                     val apiSeries = apiBook.series?.firstOrNull()
                     val apiCollection = apiBook.collections?.firstOrNull()
@@ -818,19 +819,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
             repository.saveBookProgress(bookId, progress.toString())
             
             try {
-                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
-                if (!bookRepo.isOfflineMode) {
-                    val position = progress.toPosition()
-                    android.util.Log.d("AudiobookVM", "Uploading audiobook progress: $position")
-                    AppContainer.apiClientManager.getApi().updatePosition(bookId, position)
-                    android.util.Log.d("AudiobookVM", "Successfully synced audiobook progress to server")
-                }
-            } catch (e: retrofit2.HttpException) {
-                if (e.code() == 409) {
-                    android.util.Log.i("AudiobookVM", "Server has newer or same audiobook position (409). Skipping sync.")
-                } else {
-                    android.util.Log.w("AudiobookVM", "Failed to sync audiobook progress (HTTP ${e.code()}): ${e.message}")
-                }
+                AppContainer.bookRepository.saveProgress(bookId, progress)
             } catch (e: Exception) {
                 android.util.Log.w("AudiobookVM", "Failed to sync audiobook progress: ${e.message}")
             }

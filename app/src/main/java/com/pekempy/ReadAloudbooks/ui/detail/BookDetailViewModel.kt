@@ -28,11 +28,12 @@ class BookDetailViewModel(private val repository: UserPreferencesRepository) : V
             error = null
             try {
                 // Try to load from local database first
-                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
+                val bookRepo = AppContainer.bookRepository
                 var tempBook = bookRepo.getBook(uuid)
                 
                 // If not in local DB, try to fetch from server
                 if (tempBook == null) {
+                    if (bookRepo.isOfflineMode) throw Exception("Offline")
                     val apiManager = AppContainer.apiClientManager
                     val response = apiManager.getApi().getBookDetails(uuid)
                     

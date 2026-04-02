@@ -1,7 +1,10 @@
 package com.pekempy.ReadAloudbooks.data
 
+import androidx.room.*
+
+@Entity(tableName = "books")
 data class Book(
-    val id: String,
+    @PrimaryKey val id: String,
     val title: String,
     val author: String,
     val narrator: String? = null,

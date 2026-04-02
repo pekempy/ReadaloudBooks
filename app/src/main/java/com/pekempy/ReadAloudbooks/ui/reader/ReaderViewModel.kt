@@ -87,34 +87,37 @@ class ReaderViewModel(
                     val progress = UnifiedProgress.fromString(progressStr)
                     if (progress != null) {
                             try {
-                                val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
-                                if (serverPos != null) {
-                                    val serverProgress = UnifiedProgress.fromPosition(serverPos, totalChapters)
-                                    val localLastUpdated = progress.lastUpdated
-                                    val serverTimestampMs = serverPos.timestamp.let { if (it < 1000000000000L) it * 1000 else it }
-                                    if (serverTimestampMs > localLastUpdated + 10000) {
-                                        val serverPercent = (serverProgress.getOverallProgress() * 100).coerceIn(0f, 100f)
-                                        val localUnified = UnifiedProgress(
-                                            chapterIndex = currentChapterIndex,
-                                            elementId = currentHighlightId,
-                                            audioTimestampMs = currentAudioPos,
-                                            scrollPercent = lastScrollPercent,
-                                            lastUpdated = progress.lastUpdated,
-                                            totalChapters = totalChapters.coerceAtLeast(1),
-                                            totalDurationMs = (chapterOffsets.values.maxOrNull() ?: 0.0).let { (it * 1000).toLong() }
-                                        )
-                                        val localPercent = (localUnified.getOverallProgress() * 100).coerceIn(0f, 100f)
-                                        
-                                        if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
-                                            syncConfirmation = SyncConfirmation(
-                                                newChapterIndex = serverProgress.chapterIndex,
-                                                newScrollPercent = serverProgress.scrollPercent,
-                                                newAudioMs = serverProgress.audioTimestampMs,
-                                                newElementId = serverProgress.elementId,
-                                                progressPercent = serverPercent,
-                                                localProgressPercent = localPercent,
-                                                source = "Storyteller Server"
+                                val bookRepo = AppContainer.bookRepository
+                                if (!bookRepo.isOfflineMode) {
+                                    val serverPos = AppContainer.apiClientManager.getApi().getPosition(bookId)
+                                    if (serverPos != null) {
+                                        val serverProgress = UnifiedProgress.fromPosition(serverPos, totalChapters)
+                                        val localLastUpdated = progress.lastUpdated
+                                        val serverTimestampMs = serverPos.timestamp.let { if (it < 1000000000000L) it * 1000 else it }
+                                        if (serverTimestampMs > localLastUpdated + 10000) {
+                                            val serverPercent = (serverProgress.getOverallProgress() * 100).coerceIn(0f, 100f)
+                                            val localUnified = UnifiedProgress(
+                                                chapterIndex = currentChapterIndex,
+                                                elementId = currentHighlightId,
+                                                audioTimestampMs = currentAudioPos,
+                                                scrollPercent = lastScrollPercent,
+                                                lastUpdated = progress.lastUpdated,
+                                                totalChapters = totalChapters.coerceAtLeast(1),
+                                                totalDurationMs = (chapterOffsets.values.maxOrNull() ?: 0.0).let { (it * 1000).toLong() }
                                             )
+                                            val localPercent = (localUnified.getOverallProgress() * 100).coerceIn(0f, 100f)
+                                            
+                                            if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
+                                                syncConfirmation = SyncConfirmation(
+                                                    newChapterIndex = serverProgress.chapterIndex,
+                                                    newScrollPercent = serverProgress.scrollPercent,
+                                                    newAudioMs = serverProgress.audioTimestampMs,
+                                                    newElementId = serverProgress.elementId,
+                                                    progressPercent = serverPercent,
+                                                    localProgressPercent = localPercent,
+                                                    source = "Storyteller Server"
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -149,8 +152,9 @@ class ReaderViewModel(
                 )
                 
                 val apiManager = AppContainer.apiClientManager
-                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
+                val bookRepo = AppContainer.bookRepository
                 val book = try {
+                    if (bookRepo.isOfflineMode) throw Exception("Offline")
                     val apiBook = apiManager.getApi().getBookDetails(bookId)
                     val apiSeries = apiBook.series?.firstOrNull()
                     val apiCollection = apiBook.collections?.firstOrNull()
@@ -506,19 +510,7 @@ class ReaderViewModel(
             android.util.Log.d("ReaderSync", "Saved local progress for $bookId")
             
             try {
-                val bookRepo = com.pekempy.ReadAloudbooks.data.db.BookRepository(AppContainer.context, repository)
-                if (!bookRepo.isOfflineMode) {
-                    val pos = progress.toPosition()
-                    android.util.Log.d("ReaderSync", "Uploading reader progress: $pos")
-                    AppContainer.apiClientManager.getApi().updatePosition(bookId, pos)
-                    android.util.Log.d("ReaderSync", "Successfully synced position to server: href=$href")
-                }
-            } catch (e: retrofit2.HttpException) {
-                if (e.code() == 409) {
-                    android.util.Log.i("ReaderSync", "Server has newer or same position (409). skipping.")
-                } else {
-                    android.util.Log.w("ReaderSync", "Failed to sync to server (HTTP ${e.code()}): ${e.message}")
-                }
+                AppContainer.bookRepository.saveProgress(bookId, progress)
             } catch (e: Exception) {
                 android.util.Log.w("ReaderSync", "Failed to sync to server: ${e.message}")
             }
