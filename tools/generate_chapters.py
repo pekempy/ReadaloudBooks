@@ -8,6 +8,10 @@ from xml.dom import minidom
 import shutil
 import re
 from tqdm import tqdm
+import tempfile
+
+# Lazy-loaded Whisper
+whisper_model = None
 
 # Namespaces for EPUB parsing
 NS = {
@@ -20,7 +24,7 @@ NS = {
 
 def get_audio_duration_ms(zip_ref, audio_path):
     """Get duration of an audio file inside the zip."""
-    temp_audio = "temp_audio_dur" + os.path.splitext(audio_path)[1]
+    temp_audio = os.path.join(tempfile.gettempdir(), "temp_audio_dur" + os.path.splitext(audio_path)[1])
     try:
         with zip_ref.open(audio_path) as source, open(temp_audio, 'wb') as target:
             shutil.copyfileobj(source, target)
@@ -35,50 +39,103 @@ def get_audio_duration_ms(zip_ref, audio_path):
         if os.path.exists(temp_audio):
             os.remove(temp_audio)
 
+def detect_speech_onset(zip_ref, audio_path, target_ms, window_ms=4000):
+    """Use ffmpeg to find the exact moment speech starts after silence around a target."""
+    # Extract a small window of audio
+    ext = os.path.splitext(audio_path)[1]
+    temp_snippet = os.path.join(tempfile.gettempdir(), f"snippet_{target_ms}{ext}")
+    start_sec = max(0, (target_ms - window_ms // 2) / 1000.0)
+    
+    try:
+        with zip_ref.open(audio_path) as source, open(temp_snippet, 'wb') as target:
+            shutil.copyfileobj(source, target)
+            
+        # Detect silence
+        cmd = [
+            'ffmpeg', '-ss', str(start_sec), '-t', str(window_ms/1000.0),
+            '-i', temp_snippet,
+            '-af', 'silencedetect=n=-40dB:d=0.3',
+            '-f', 'null', '-'
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        # Look for the last silence_end before the middle of our window
+        # silence_end: 1.234
+        matches = re.findall(r'silence_end: ([\d\.]+)', result.stderr)
+        if matches:
+            # Return the silence end closest to the relative middle of the snippet
+            rel_onset = float(matches[-1])
+            return int((start_sec + rel_onset) * 1000)
+            
+    except Exception as e:
+        pass
+    finally:
+        if os.path.exists(temp_snippet): os.remove(temp_snippet)
+    return target_ms
+
+def verify_with_whisper(zip_ref, audio_path, target_ms, expected_text):
+    """Use Whisper to verify if the text at target_ms matches expected_text."""
+    global whisper_model
+    try:
+        import whisper
+        if whisper_model is None:
+            tqdm.write("  [WHISPER] Loading tiny model...")
+            whisper_model = whisper.load_model("tiny.en")
+    except ImportError:
+        return target_ms # Fallback if not installed
+
+    ext = os.path.splitext(audio_path)[1]
+    temp_snippet = os.path.join(tempfile.gettempdir(), f"whisper_{target_ms}{ext}")
+    # Extract 5 seconds from the target
+    start_sec = max(0, (target_ms - 500) / 1000.0)
+    
+    try:
+        # Extract snippet using ffmpeg (faster than writing whole file)
+        # But for ZIP entries we have to write it out or pipe it
+        with zip_ref.open(audio_path) as source, open(temp_snippet + ".full", 'wb') as target:
+            shutil.copyfileobj(source, target)
+        
+        subprocess.run([
+            'ffmpeg', '-y', '-ss', str(start_sec), '-t', '8',
+            '-i', temp_snippet + ".full", '-acodec', 'copy', temp_snippet
+        ], capture_output=True)
+        
+        result = whisper_model.transcribe(temp_snippet, fp16=False)
+        found_text = result['text'].lower()
+        
+        # Clean expected text
+        exp = expected_text.lower().strip()
+        parts = [p.strip() for p in re.split(r'[-—]', exp) if p.strip()]
+        
+        # If whisper hears any part of the title, we are golden
+        for p in parts:
+            if p in found_text:
+                # Find the exact timestamp of the matching segment in whisper
+                for seg in result['segments']:
+                    if p in seg['text'].lower():
+                        return int((start_sec + seg['start']) * 1000)
+    except Exception as e:
+        tqdm.write(f"  [WHISPER ERROR] {e}")
+    finally:
+        for f in [temp_snippet, temp_snippet + ".full"]:
+            if os.path.exists(f): os.remove(f)
+            
+    return target_ms
+
 def parse_time_to_ms(time_str):
-    """Convert SMIL time strings to milliseconds."""
     if not time_str: return 0
-    if time_str.endswith('s'):
-        return int(float(time_str[:-1]) * 1000)
+    if time_str.endswith('s'): return int(float(time_str[:-1]) * 1000)
     parts = time_str.split(':')
     if len(parts) == 3:
         h, m, s = parts
         return int((int(h) * 3600 + int(m) * 60 + float(s)) * 1000)
-    try:
-        return int(float(time_str) * 1000)
-    except:
-        return 0
+    try: return int(float(time_str) * 1000)
+    except: return 0
 
 def strip_tags(text):
     return re.sub(r'<[^>]*>', '', text).strip()
 
-def is_chapter_title(text, is_first_segment=False):
-    """Detect if text looks like a chapter title with extremely high confidence."""
-    t = text.strip().lower()
-    if not t or len(t) > 60: return False
-    
-    # 1. Explicit keywords
-    if any(k in t.split() for k in ["chapter", "part", "prologue", "epilogue"]):
-        return True
-    
-    # 2. Strict patterns at the start of a file
-    if is_first_segment:
-        # Just a number: "1", "01", "Chapter 1"
-        if re.search(r'^(chapter\s+)?\d+[:\.\s\-]*$', t):
-            return True
-        # Written numbers as full words
-        nums = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
-        words = t.split()
-        if words and (words[0] in nums or (len(words) > 1 and words[0] == "chapter" and words[1] in nums)):
-            return True
-        # Short uppercase titles (e.g. "SPINNER'S END")
-        if text.isupper() and 3 < len(text) < 40:
-            return True
-            
-    return False
-
 def get_m4b_chapters(root_dir):
-    """Find and extract rough chapter markers from any .m4b in the folder."""
     for f in os.listdir(root_dir):
         if f.lower().endswith('.m4b'):
             m4b_path = os.path.join(root_dir, f)
@@ -90,14 +147,9 @@ def get_m4b_chapters(root_dir):
     return []
 
 def process_epub_sync(epub_path, root_dir):
-    """Hybrid Sync: Use M4B markers for names, align to nearest SMIL segment for timing."""
     chapters = []
     epub_filename = os.path.basename(epub_path)
     m4b_markers = get_m4b_chapters(root_dir)
-    
-    if not m4b_markers:
-        tqdm.write(f"  [WARN] No M4B markers found. Falling back to text scanning...")
-        # (Will implement text scan fallback below)
     
     try:
         with zipfile.ZipFile(epub_path, 'r') as zin:
@@ -112,9 +164,7 @@ def process_epub_sync(epub_path, root_dir):
             audio_file_offsets = {}
             current_global_offset = 0
             
-            # Step 1: Build a map of all SMIL segments to global timestamps
-            all_segments = [] # List of (timestamp, title_text)
-            
+            all_segments = []
             tqdm.write(f"  Indexing EPUB sync points...")
             for itemref in tqdm(spine, desc="Indexing", unit="item", leave=False):
                 item_id = itemref.get('idref')
@@ -128,7 +178,6 @@ def process_epub_sync(epub_path, root_dir):
                 html_path = os.path.join(opf_dir, item_data['href']).replace('\\', '/')
                 html_content = zin.read(html_path).decode('utf-8', errors='ignore')
                 
-                seg_idx = 0
                 for par in smil_root.findall('.//smil:par', NS):
                     audio_el = par.find('smil:audio', NS)
                     text_el = par.find('smil:text', NS)
@@ -143,73 +192,51 @@ def process_epub_sync(epub_path, root_dir):
                     
                     global_ts = audio_file_offsets[abs_audio_path] + parse_time_to_ms(audio_el.get('clipBegin'))
                     
-                    # Extract text snippet for this segment
                     txt = ""
                     target_id = text_el.get('src').split('#')[1] if '#' in text_el.get('src') else None
                     if target_id:
                         match = re.search(f'id=["\']{target_id}["\'][^>]*>(.*?)<', html_content, re.DOTALL)
                         if match: txt = strip_tags(match.group(1))
                     
-                    all_segments.append({'ts': global_ts, 'text': txt, 'is_first': seg_idx == 0})
-                    seg_idx += 1
+                    all_segments.append({'ts': global_ts, 'text': txt, 'audio_path': abs_audio_path})
 
-            if not all_segments: return None
+            if not m4b_markers: return None
 
-            # Step 2: Match M4B markers to the best segment using keyword snapping
-            if m4b_markers:
-                tqdm.write(f"  Precision snapping {len(m4b_markers)} chapters...")
-                for m in m4b_markers:
-                    full_title = m.get('tags', {}).get('title', 'Chapter')
-                    raw_start = int(float(m['start_time']) * 1000)
-                    
-                    # Split title into parts (e.g. "Chapter One - The Other Minister")
-                    parts = [p.strip().lower() for p in re.split(r'[-—]', full_title) if p.strip()]
-                    
-                    best_seg = None
-                    min_dist = 60000 # 60s fuzzy window
-                    
-                    # Search for the best segment match
-                    for i, seg in enumerate(all_segments):
-                        dist = abs(seg['ts'] - raw_start)
-                        if dist > min_dist: continue
-                        
-                        seg_text = seg['text'].lower()
-                        
-                        # Perfect match: segment contains one of our title parts
-                        match_score = 0
-                        for p in parts:
-                            # Use word-boundary match to avoid "The" matching "The Other Minister"
-                            if re.search(r'\b' + re.escape(p) + r'\b', seg_text):
-                                match_score += 10
-                            elif p in seg_text:
-                                match_score += 5
-                        
-                        # Also check the NEXT segment (for split titles like HP)
-                        if i + 1 < len(all_segments):
-                            next_seg_text = all_segments[i+1]['text'].lower()
-                            for p in parts:
-                                if re.search(r'\b' + re.escape(p) + r'\b', next_seg_text):
-                                    match_score += 5
-                        
-                        if match_score > 0:
-                            # Prioritize matches that are closer to the m4b time
-                            final_score = match_score - (dist / 1000.0)
-                            if best_seg is None or final_score > best_seg['score']:
-                                best_seg = {'ts': seg['ts'], 'score': final_score}
-                    
-                    if best_seg:
-                        chapters.append({'title': full_title, 'start_ms': best_seg['ts']})
-                    else:
-                        # Fallback to raw time if no text match found
-                        chapters.append({'title': full_title, 'start_ms': raw_start})
-            else:
-                # Fallback to pure text scan if no M4B
+            tqdm.write(f"  Accuracy-FUCK Pipeline: Snapping {len(m4b_markers)} chapters...")
+            for m in tqdm(m4b_markers, desc="Aligning Chapters"):
+                full_title = m.get('tags', {}).get('title', 'Chapter')
+                raw_start = int(float(m['start_time']) * 1000)
+                parts = [p.strip().lower() for p in re.split(r'[-—]', full_title) if p.strip()]
+                
+                # 1. SMIL Matching (Initial Guess)
+                best_seg = None
+                min_dist = 60000 
                 for seg in all_segments:
-                    if is_chapter_title(seg['text'], seg['is_first']):
-                        if not chapters or (seg['ts'] - chapters[-1]['start_ms']) > 10000:
-                            chapters.append({'title': seg['text'], 'start_ms': seg['ts']})
+                    dist = abs(seg['ts'] - raw_start)
+                    if dist > min_dist: continue
+                    
+                    score = 0
+                    for p in parts:
+                        if p in seg['text'].lower(): score += 10
+                    
+                    if score > 0:
+                        final_score = score - (dist / 1000.0)
+                        if best_seg is None or final_score > best_seg['score']:
+                            best_seg = {'ts': seg['ts'], 'score': final_score, 'audio_path': seg['audio_path']}
+                
+                current_ts = best_seg['ts'] if best_seg else raw_start
+                audio_path = best_seg['audio_path'] if best_seg else all_segments[0]['audio_path']
+                
+                # 2. Silence Detection (Fine Tuning)
+                refined_ts = detect_speech_onset(zin, audio_path, current_ts)
+                
+                # 3. Whisper Verification (Ultra Precision)
+                # Only use Whisper if the title is complex or we're not sure
+                final_ts = verify_with_whisper(zin, audio_path, refined_ts, full_title)
+                
+                tqdm.write(f"    [OK] {full_title} -> {final_ts/1000.0}s")
+                chapters.append({'title': full_title, 'start_ms': final_ts})
 
-            if not chapters: return None
             chapters.sort(key=lambda x: x['start_ms'])
             for i in range(len(chapters)):
                 chapters[i]['end_ms'] = chapters[i+1]['start_ms'] if i+1 < len(chapters) else current_global_offset
@@ -219,81 +246,44 @@ def process_epub_sync(epub_path, root_dir):
         return None
 
 def create_chapters_xml(chapters_data):
-    """Create the chapters.xml content."""
     root = ET.Element("chapters")
     for ch in chapters_data:
         chapter_el = ET.SubElement(root, "chapter")
         chapter_el.set("title", ch['title'])
         chapter_el.set("start_ms", str(ch['start_ms']))
         chapter_el.set("end_ms", str(ch['end_ms']))
-    
-    xml_str = ET.tostring(root, encoding='utf-8')
-    parsed = minidom.parseString(xml_str)
-    return parsed.toprettyxml(indent="  ")
+    return minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")
 
 def inject_into_epub(epub_path, xml_content):
-    """Inject chapters.xml into the EPUB zip file."""
     temp_epub = epub_path + ".tmp"
-    epub_filename = os.path.basename(epub_path)
     try:
         with zipfile.ZipFile(epub_path, 'r') as zin:
             infolist = zin.infolist()
             has_oebps = any(name.startswith('OEBPS/') for name in zin.namelist())
             target_path = "OEBPS/misc/chapters.xml" if has_oebps else "misc/chapters.xml"
-            
             with zipfile.ZipFile(temp_epub, 'w') as zout:
-                with tqdm(total=len(infolist) + 1, desc=f"Writing to {epub_filename[:30]}...", unit="file", leave=False) as pbar:
-                    for item in infolist:
-                        if item.filename != target_path:
-                            zout.writestr(item, zin.read(item.filename))
-                        pbar.update(1)
-                    zout.writestr(target_path, xml_content)
-                    pbar.update(1)
-        
+                for item in infolist:
+                    if item.filename != target_path:
+                        zout.writestr(item, zin.read(item.filename))
+                zout.writestr(target_path, xml_content)
         shutil.move(temp_epub, epub_path)
-        tqdm.write(f"  [SUCCESS] Updated {epub_filename} -> {target_path}")
+        tqdm.write(f"  [SUCCESS] Updated chapters.xml")
     except Exception as e:
-        if os.path.exists(temp_epub):
-            os.remove(temp_epub)
-        tqdm.write(f"  [ERROR] Injecting XML into {epub_filename}: {e}")
+        if os.path.exists(temp_epub): os.remove(temp_epub)
+        tqdm.write(f"  [ERROR] {e}")
 
 def process_directory(base_dir):
-    """Walk directory and process Readaloud EPUBs."""
-    print(f"Scanning directory: {base_dir}")
-    
-    epub_files_found = []
-    for root, dirs, files in os.walk(base_dir):
-        for f in files:
-            if f.lower().endswith('(readaloud).epub'):
-                epub_files_found.append(os.path.join(root, f))
-            
-    if not epub_files_found:
-        print("No (readaloud).epub files found.")
-        return
-
-    print(f"Found {len(epub_files_found)} EPUB(s) to process.")
-    
-    for epub_path in tqdm(epub_files_found, desc="Overall Progress", unit="book"):
-        tqdm.write(f"\nProcessing: {os.path.relpath(epub_path, base_dir)}")
-        
+    epub_files = [os.path.join(r, f) for r, d, fs in os.walk(base_dir) for f in fs if f.lower().endswith('(readaloud).epub')]
+    for epub_path in epub_files:
+        tqdm.write(f"\nProcessing: {os.path.basename(epub_path)}")
         chapters = process_epub_sync(epub_path, os.path.dirname(epub_path))
-        
         if chapters:
-            tqdm.write(f"  Generated {len(chapters)} chapters using granular sync data.")
-            xml_content = create_chapters_xml(chapters)
-            inject_into_epub(epub_path, xml_content)
-        else:
-            tqdm.write(f"  [SKIP] Could not generate sync data for this book.")
+            inject_into_epub(epub_path, create_chapters_xml(chapters))
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate perfect chapters.xml using EPUB internal SMIL sync data.")
-    parser.add_argument("directory", help="The directory to search")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("directory")
     args = parser.parse_args()
-    
-    if not os.path.isdir(args.directory):
-        print(f"Error: {args.directory} is not a directory")
-        return
-        
     process_directory(args.directory)
 
 if __name__ == "__main__":
