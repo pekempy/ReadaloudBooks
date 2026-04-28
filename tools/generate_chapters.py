@@ -43,8 +43,9 @@ def process_epub(epub_path, root_dir):
         print(f"  [SKIP] No m4b found in {root_dir}")
         return None
 
-    # We still need the total duration to cap chapters
-    total_dur_ms = 0
+    # 1. Build a mapping of (audio_file) -> list of (raw_start, raw_end, smil_cumulative_start)
+    smil_segments = []
+    cumulative_smil_ms = 0
     try:
         with zipfile.ZipFile(epub_path, 'r') as zin:
             container = ET.fromstring(zin.read('META-INF/container.xml'))
@@ -55,7 +56,6 @@ def process_epub(epub_path, root_dir):
             manifest = {item.get('id'): item.attrib for item in opf_content.findall('.//opf:item', ns)}
             spine = opf_content.findall('.//opf:itemref', ns)
             
-            seen_audio = set()
             for itemref in spine:
                 item_id = itemref.get('idref')
                 item_data = manifest.get(item_id)
@@ -68,25 +68,51 @@ def process_epub(epub_path, root_dir):
                 for par in smil_root.findall('.//{http://www.w3.org/ns/SMIL}par'):
                     audio_el = par.find('{http://www.w3.org/ns/SMIL}audio')
                     if audio_el is None: continue
-                    src = audio_el.get('src')
-                    abs_audio = os.path.normpath(os.path.join(os.path.dirname(smil_path), src)).replace('\\', '/')
-                    if abs_audio not in seen_audio:
-                        total_dur_ms += get_audio_duration_ms(zin, abs_audio)
-                        seen_audio.add(abs_audio)
-    except: pass
+                    
+                    # Extract clipBegin and clipEnd (e.g. "npt=10.5s")
+                    clip_begin_str = audio_el.get('clipBegin', 'npt=0s')
+                    clip_end_str = audio_el.get('clipEnd', 'npt=0s')
+                    
+                    def parse_npt(s):
+                        m = re.search(r'([0-9.]+)', s)
+                        return float(m.group(1)) * 1000 if m else 0.0
+
+                    cb = parse_npt(clip_begin_str)
+                    ce = parse_npt(clip_end_str)
+                    dur = ce - cb
+                    
+                    if dur <= 0: continue
+                    
+                    smil_segments.append({
+                        'raw_start': cb,
+                        'raw_end': ce,
+                        'smil_start': cumulative_smil_ms
+                    })
+                    cumulative_smil_ms += dur
+    except Exception as e:
+        print(f"  [ERROR] Failed to parse SMIL: {e}")
+
+    def map_raw_to_smil(raw_ms):
+        # This is a simplification: assuming one contiguous audio file for the book
+        # Search for which segment contains this raw_ms
+        for seg in smil_segments:
+            if raw_ms >= seg['raw_start'] and raw_ms < seg['raw_end']:
+                return seg['smil_start'] + (raw_ms - seg['raw_start'])
+        # Fallback: if it's past the last segment, cap to total
+        if smil_segments and raw_ms >= smil_segments[-1]['raw_end']:
+             return cumulative_smil_ms
+        return raw_ms
 
     chapters = []
-    print(f"  Mapping {len(m4b_markers)} chapters directly from M4B...")
+    print(f"  Mapping {len(m4b_markers)} chapters to SMIL timeline...")
     for m in m4b_markers:
         title = m.get('tags', {}).get('title', 'Chapter')
-        start_ms = int(float(m['start_time']) * 1000)
-        end_ms = int(float(m['end_time']) * 1000)
+        raw_start = float(m['start_time']) * 1000
+        raw_end = float(m['end_time']) * 1000
         
-        # Cap to total duration if necessary
-        if total_dur_ms > 0:
-            if start_ms >= total_dur_ms: start_ms = total_dur_ms - 1
-            if end_ms > total_dur_ms: end_ms = total_dur_ms
-
+        start_ms = int(map_raw_to_smil(raw_start))
+        end_ms = int(map_raw_to_smil(raw_end))
+        
         print(f"    [OK] {title} -> {ms_to_timestamp(start_ms)}")
         chapters.append({'title': title, 'start_ms': start_ms, 'end_ms': end_ms})
     

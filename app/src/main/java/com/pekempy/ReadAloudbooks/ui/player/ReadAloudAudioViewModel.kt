@@ -265,7 +265,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 val calculatedDuration = localClipSegments.sumOf { it.clipEndMs - it.clipBeginMs }
                 android.util.Log.i("ReadAloudAudioVM", "TOTAL BOOK DURATION: ${FormatUtils.formatTime(calculatedDuration)} ($calculatedDuration ms)")
                 
-                val chaptersFromXml = parseChaptersXml(currentZipFile!!)
+                val chaptersFromXml = parseChaptersXml(currentZipFile!!, calculatedDuration)
                 val localChaptersList = if (chaptersFromXml != null && chaptersFromXml.isNotEmpty()) {
                     android.util.Log.i("ReadAloudAudioVM", "Using ${chaptersFromXml.size} chapters from misc/chapters.xml")
                     chaptersFromXml
@@ -557,6 +557,13 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             outputOffsets[href!!] = cumulativeOffset
             
             val segments = smilData[href] ?: return@forEach
+            
+            // SORCERY: Skip credits segments from audio timeline to match shifted chapters
+            if (href.contains("credits", ignoreCase = true)) {
+                android.util.Log.i("ReadAloudAudioVM", "Skipping credits segment from audio timeline: $href")
+                return@forEach
+            }
+            
             var currentClip: ClipSegment? = null
             
             segments.forEach { segment ->
@@ -620,8 +627,10 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             
             chapterList.add(Chapter(chapterTitle, startMs, durationMs))
         }
+        return chapterList
+    }
         
-    private fun parseChaptersXml(zipFile: ZipFile): List<Chapter>? {
+    private fun parseChaptersXml(zipFile: ZipFile, totalDurationMs: Long): List<Chapter>? {
         return try {
             var entry = zipFile.getEntry("misc/chapters.xml") 
                 ?: zipFile.getEntry("OEBPS/misc/chapters.xml")
@@ -630,42 +639,92 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 val entries = zipFile.entries()
                 while (entries.hasMoreElements()) {
                     val next = entries.nextElement()
-                    if (next.name.endsWith("chapters.xml", ignoreCase = true)) {
+                    if (!next.isDirectory && next.name.endsWith("chapters.xml", ignoreCase = true)) {
                         entry = next
                         break
                     }
                 }
             }
             
-            if (entry == null) return null
+            if (entry == null) {
+                android.util.Log.w("ReadAloudAudioVM", "parseChaptersXml: entry is null! chapters.xml not found in EPUB.")
+                return null
+            }
                 
-            val inputStream = zipFile.getInputStream(entry)
+            val inputStream = java.io.BufferedInputStream(zipFile.getInputStream(entry))
             val parser = Xml.newPullParser()
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
             parser.setInput(inputStream, null)
 
             val chaptersList = mutableListOf<Chapter>()
             var eventType = parser.eventType
+            android.util.Log.d("ReadAloudAudioVM", "parseChaptersXml: Starting parse. Initial eventType=$eventType")
+            
             while (eventType != XmlPullParser.END_DOCUMENT) {
-                if (eventType == XmlPullParser.START_TAG && parser.name.equals("chapter", ignoreCase = true)) {
-                    val title = parser.getAttributeValue(null, "title") ?: "Chapter"
-                    val startMs = parser.getAttributeValue(null, "start_ms")?.toLongOrNull() ?: 0L
-                    val endMs = parser.getAttributeValue(null, "end_ms")?.toLongOrNull() ?: 0L
-                    val duration = endMs - startMs
-                    if (duration > 0 || startMs == 0L) {
-                        chaptersList.add(Chapter(title, startMs, Math.max(0, duration)))
+                val tagName = try { parser.name } catch (e: Exception) { null }
+                
+                if (eventType == XmlPullParser.START_TAG) {
+                    android.util.Log.d("ReadAloudAudioVM", "parseChaptersXml: Found tag <$tagName>")
+                    if (tagName.equals("chapter", ignoreCase = true)) {
+                        var title: String? = null
+                        var startMs: Long? = null
+                        var endMs: Long? = null
+                        
+                        // Try direct access first
+                        title = parser.getAttributeValue(null, "title")
+                        startMs = parser.getAttributeValue(null, "start_ms")?.toLongOrNull()
+                        endMs = parser.getAttributeValue(null, "end_ms")?.toLongOrNull()
+                        
+                        // If direct access failed, iterate attributes (fallback for weird namespace issues)
+                        if (title == null || startMs == null || endMs == null) {
+                            for (i in 0 until parser.attributeCount) {
+                                when (parser.getAttributeName(i).lowercase()) {
+                                    "title" -> title = title ?: parser.getAttributeValue(i)
+                                    "start_ms" -> startMs = startMs ?: parser.getAttributeValue(i).toLongOrNull()
+                                    "end_ms" -> endMs = endMs ?: parser.getAttributeValue(i).toLongOrNull()
+                                }
+                            }
+                        }
+                        
+                        val finalTitle = title ?: "Chapter"
+                        val finalStartMs = startMs ?: 0L
+                        val finalEndMs = endMs ?: 0L
+                        val duration = finalEndMs - finalStartMs
+                        
+                        if (duration > 0 || finalStartMs == 0L) {
+                            chaptersList.add(Chapter(finalTitle, finalStartMs, Math.max(0, duration)))
+                        }
                     }
                 }
                 eventType = parser.next()
             }
+            android.util.Log.d("ReadAloudAudioVM", "parseChaptersXml: Finished. Found ${chaptersList.size} chapters.")
             inputStream.close()
-            if (chaptersList.isEmpty()) return null
+            if (chaptersList.isEmpty()) {
+                android.util.Log.w("ReadAloudAudioVM", "parseChaptersXml: chaptersList is empty!")
+                return null
+            }
             
             chaptersList.sortBy { it.startOffset }
             
+            // SORCERY: If the first chapter is "Opening Credits", shift all timestamps 
+            // so that "Chapter One" starts at 0:00, aligning with the app's behavior.
+            val firstChapter = chaptersList.firstOrNull()
+            if (firstChapter != null && firstChapter.title.contains("Credits", ignoreCase = true)) {
+                val offset = firstChapter.duration + firstChapter.startOffset
+                android.util.Log.i("ReadAloudAudioVM", "Applying sorcery: Skipping '${firstChapter.title}' and shifting by ${offset}ms")
+                chaptersList.removeAt(0)
+                for (i in 0 until chaptersList.size) {
+                    val shiftedChapter = chaptersList[i].copy(
+                        startOffset = Math.max(0, chaptersList[i].startOffset - offset)
+                    )
+                    chaptersList[i] = shiftedChapter
+                }
+            }
+            
             for (i in 0 until chaptersList.size) {
                 if (chaptersList[i].duration <= 0) {
-                    val nextStart = if (i + 1 < chaptersList.size) chaptersList[i+1].startOffset else duration
+                    val nextStart = if (i + 1 < chaptersList.size) chaptersList[i+1].startOffset else totalDurationMs
                     val fixedChapter = chaptersList[i].copy(duration = Math.max(0, nextStart - chaptersList[i].startOffset))
                     chaptersList[i] = fixedChapter
                 }
@@ -673,7 +732,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             
             chaptersList
         } catch (e: Exception) {
-            android.util.Log.w("ReadAloudAudioVM", "Failed to parse chapters.xml", e)
+            android.util.Log.e("ReadAloudAudioVM", "Failed to parse chapters.xml", e)
             null
         }
     }
