@@ -20,4 +20,15 @@ object StringUtils {
             android.text.Html.fromHtml(text).toString()
         }
     }
+    fun formatChapterTitle(title: String?, index: Int): String {
+        if (title.isNullOrBlank()) return "Chapter ${index + 1}"
+        val t = title.trim()
+        if (t.matches(Regex(".*split_[0-9]+", RegexOption.IGNORE_CASE))) {
+            val numStr = Regex("split_0*([0-9]+)", RegexOption.IGNORE_CASE).find(t)?.groupValues?.get(1)
+            val num = numStr?.toIntOrNull() ?: index
+            return "Part ${num + 1}"
+        }
+        val clean = t.replace("_", " ").replace("-", " ")
+        return clean.replace(Regex("\\s+"), " ").trim()
+    }
 }

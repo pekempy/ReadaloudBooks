@@ -560,10 +560,11 @@ fun ChaptersContent(
                 Text("No internal chapters found", color = MaterialTheme.colorScheme.secondary)
             }
         } else {
-            val hasParts = viewModel.chapters.any { it.title.contains("Part", ignoreCase = true) }
+            val validChapters = viewModel.chapters.filter { it.duration >= 1000 }
+            val hasParts = validChapters.any { it.title.contains("Part", ignoreCase = true) }
             
             LazyColumn {
-                itemsIndexed(viewModel.chapters) { index, chapter ->
+                itemsIndexed(validChapters) { index, chapter ->
                     val isPart = chapter.title.contains("Part", ignoreCase = true)
                     val isChapter = chapter.title.contains("Chapter", ignoreCase = true)
                     val indent = if (hasParts && isChapter && !isPart) 32.dp else 0.dp
@@ -584,10 +585,13 @@ fun ChaptersContent(
                         },
                         trailingContent = { Text(FormatUtils.formatTime(chapter.duration)) },
                         modifier = Modifier.clickable {
-                            onChapterClick(index)
+                            val originalIndex = viewModel.chapters.indexOf(chapter)
+                            if (originalIndex >= 0) onChapterClick(originalIndex)
                         },
                         colors = ListItemDefaults.colors(
-                            containerColor = if (viewModel.currentPosition in chapter.startOffset..(chapter.startOffset + chapter.duration)) 
+                            containerColor = if (viewModel.currentPosition >= chapter.startOffset && 
+                                                 (viewModel.currentPosition < chapter.startOffset + chapter.duration || 
+                                                  (chapter.duration == 0L && viewModel.currentPosition == chapter.startOffset)))
                                 MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
                         )
                     )
@@ -642,7 +646,7 @@ fun ReadAloudFullPlayerOverlay(
                     val pos = viewModel.currentPosition
                     viewModel.chapters.find { 
                         pos >= it.startOffset && 
-                        pos < it.startOffset + it.duration 
+                        (pos < it.startOffset + it.duration || (it.duration == 0L && pos == it.startOffset))
                     }?.title
                 }
             }

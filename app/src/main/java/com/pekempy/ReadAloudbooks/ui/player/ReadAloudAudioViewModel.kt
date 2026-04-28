@@ -270,6 +270,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                     android.util.Log.i("ReadAloudAudioVM", "Using ${chaptersFromXml.size} chapters from misc/chapters.xml")
                     chaptersFromXml
                 } else {
+                    android.util.Log.i("ReadAloudAudioVM", "Fallback: Using EPUB spine for chapters")
                     createChaptersList(localChapterOffsets, spineHrefs, spineTitles, calculatedDuration)
                 }
                 
@@ -567,13 +568,15 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 val durationMs = clipEndMs - clipBeginMs
                 if (durationMs <= 0) return@forEach
                 
-                if (currentClip != null && currentClip!!.audioSrc == segment.audioSrc && 
-                    Math.abs(currentClip!!.clipEndMs - clipBeginMs) < 100) {
-                    
-                    val relativeStart = currentClip!!.clipEndMs - currentClip!!.clipBeginMs
+                if (currentClip != null && currentClip!!.audioSrc == segment.audioSrc) {
+                    val relativeStart = clipBeginMs - currentClip!!.clipBeginMs
                     currentClip!!.subSegments.add(SubSegment(segment.id, relativeStart, durationMs))
-                    currentClip!!.clipEndMs = clipEndMs
-                    cumulativeOffset += durationMs
+                    
+                    if (clipEndMs > currentClip!!.clipEndMs) {
+                        val addedDuration = clipEndMs - currentClip!!.clipEndMs
+                        currentClip!!.clipEndMs = clipEndMs
+                        cumulativeOffset += addedDuration
+                    }
                 } else {
                     currentClip = ClipSegment(
                         elementId = segment.id,
@@ -618,9 +621,6 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             chapterList.add(Chapter(chapterTitle, startMs, durationMs))
         }
         
-        return chapterList
-    }
-
     private fun parseChaptersXml(zipFile: ZipFile): List<Chapter>? {
         return try {
             var entry = zipFile.getEntry("misc/chapters.xml") 
@@ -851,7 +851,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             currentPosition = validPosition
             currentChapterIndex = clip.chapterIndex
             val subMatch = clip.subSegments
-                .filter { offsetInClip >= it.relativeStartMs && offsetInClip < it.relativeStartMs + it.durationMs }
+                .filter { offsetInClip >= it.relativeStartMs }
                 .maxByOrNull { it.relativeStartMs }
             currentElementId = subMatch?.elementId ?: clip.elementId
         } else if (validPosition <= 0) {
@@ -893,7 +893,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                             currentChapterIndex = clip.chapterIndex
                             
                             val subMatch = clip.subSegments
-                                .filter { posInClip >= it.relativeStartMs && posInClip < it.relativeStartMs + it.durationMs }
+                                .filter { posInClip >= it.relativeStartMs }
                                 .maxByOrNull { it.relativeStartMs }  
                             
                             if (currentElementId != (subMatch?.elementId ?: clip.elementId)) {

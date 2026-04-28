@@ -59,6 +59,32 @@ class ReaderViewModel(
         val clipBegin: Double,
         val clipEnd: Double
     )
+    
+    private fun calculateChapterDuration(segments: List<SyncSegment>?): Double {
+        if (segments == null || segments.isEmpty()) return 0.0
+        var totalDur = 0.0
+        var currentAudioSrc = ""
+        var currentBegin = 0.0
+        var currentEnd = 0.0
+        for (seg in segments) {
+            if (seg.audioSrc != currentAudioSrc) {
+                if (currentAudioSrc.isNotEmpty()) {
+                    totalDur += (currentEnd - currentBegin)
+                }
+                currentAudioSrc = seg.audioSrc
+                currentBegin = seg.clipBegin
+                currentEnd = seg.clipEnd
+            } else {
+                if (seg.clipEnd > currentEnd) {
+                    currentEnd = seg.clipEnd
+                }
+            }
+        }
+        if (currentAudioSrc.isNotEmpty()) {
+            totalDur += (currentEnd - currentBegin)
+        }
+        return totalDur
+    }
     var syncData by mutableStateOf<Map<String, List<SyncSegment>>>(emptyMap())
     var chapterOffsets by mutableStateOf<Map<String, Double>>(emptyMap())
     var currentHighlightId by mutableStateOf<String?>(null)
@@ -316,7 +342,7 @@ class ReaderViewModel(
                     spineHrefs.forEach { chapterHref ->
                         sortedOffsets[chapterHref] = currentOffset
                         val segments = segmentsMap[chapterHref]
-                        val dur = segments?.sumOf { it.clipEnd - it.clipBegin } ?: 0.0
+                        val dur = calculateChapterDuration(segments)
                         currentOffset += dur
                     }
                     
@@ -364,7 +390,7 @@ class ReaderViewModel(
                                     scrollPercent = lastScrollPercent,
                                     lastUpdated = progress?.lastUpdated ?: 0L,
                                     totalChapters = totalChapters.coerceAtLeast(1),
-                                    totalDurationMs = ((sortedOffsets.values.maxOrNull() ?: 0.0) + (segmentsMap[spineHrefs.lastOrNull()]?.sumOf { it.clipEnd - it.clipBegin } ?: 0.0)).let { (it * 1000).toLong() }
+                                    totalDurationMs = ((sortedOffsets.values.maxOrNull() ?: 0.0) + calculateChapterDuration(segmentsMap[spineHrefs.lastOrNull()])).let { (it * 1000).toLong() }
                                 )
                                 val localPercent = (localUnified.getOverallProgress() * 100).coerceIn(0f, 100f)
                                 
@@ -453,7 +479,7 @@ class ReaderViewModel(
                     elementMs
                 } else {
                     val offset = chapterOffsets[href] ?: 0.0
-                    val chapterDur = syncData[href]?.sumOf { it.clipEnd - it.clipBegin } ?: 0.0
+                    val chapterDur = calculateChapterDuration(syncData[href])
                     ((offset + (chapterDur * scrollPercent)) * 1000).toLong()
                 }
             }
@@ -469,7 +495,7 @@ class ReaderViewModel(
             val mediaType = lazyBook?.mediaTypes?.get(href) ?: "application/xhtml+xml"
 
             val lastChapterHref = chapterOffsets.entries.maxByOrNull { it.value }?.key
-            val lastChapterDur = syncData[lastChapterHref]?.sumOf { it.clipEnd - it.clipBegin } ?: 0.0
+            val lastChapterDur = calculateChapterDuration(syncData[lastChapterHref])
             val totalAudioDurMs = ((chapterOffsets.values.maxOrNull() ?: 0.0) + lastChapterDur).let { (it * 1000).toLong() }
 
             val progress = UnifiedProgress(
@@ -679,12 +705,36 @@ class ReaderViewModel(
         val segments = syncData[href] ?: return chapterIndex to ""
         
         var cumulativeChapterSec = 0.0
+        var currentAudioSrc = ""
+        var currentBegin = 0.0
+        var currentEnd = 0.0
+        
         for (seg in segments) {
-            val dur = Math.max(0.0, seg.clipEnd - seg.clipBegin)
-            if (relativeSec >= cumulativeChapterSec && relativeSec < cumulativeChapterSec + dur) {
+            if (currentAudioSrc != seg.audioSrc) {
+                if (currentAudioSrc.isNotEmpty()) {
+                    val blockDur = currentEnd - currentBegin
+                    if (relativeSec < cumulativeChapterSec + blockDur) {
+                        return chapterIndex to seg.id
+                    }
+                    cumulativeChapterSec += blockDur
+                }
+                currentAudioSrc = seg.audioSrc
+                currentBegin = seg.clipBegin
+                currentEnd = seg.clipEnd
+            } else {
+                if (seg.clipEnd > currentEnd) {
+                    currentEnd = seg.clipEnd
+                }
+            }
+            if (relativeSec >= cumulativeChapterSec && relativeSec < cumulativeChapterSec + (seg.clipEnd - currentBegin)) {
                 return chapterIndex to seg.id
             }
-            cumulativeChapterSec += dur
+        }
+        
+        if (currentAudioSrc.isNotEmpty()) {
+            if (relativeSec >= cumulativeChapterSec && relativeSec <= cumulativeChapterSec + (currentEnd - currentBegin)) {
+                return chapterIndex to segments.last().id
+            }
         }
         
         return if (segments.isNotEmpty()) chapterIndex to segments.last().id else null
@@ -696,9 +746,27 @@ class ReaderViewModel(
         val offset = chapterOffsets[href] ?: 0.0
         
         var cumulative = 0.0
+        var currentAudioSrc = ""
+        var currentBegin = 0.0
+        var currentEnd = 0.0
+        
         for (seg in segments) {
-            if (seg.id == elementId) return offset + cumulative
-            cumulative += Math.max(0.0, seg.clipEnd - seg.clipBegin)
+            if (currentAudioSrc != seg.audioSrc) {
+                if (currentAudioSrc.isNotEmpty()) {
+                    cumulative += (currentEnd - currentBegin)
+                }
+                currentAudioSrc = seg.audioSrc
+                currentBegin = seg.clipBegin
+                currentEnd = seg.clipEnd
+            }
+            
+            if (seg.id == elementId) {
+                return offset + cumulative + (seg.clipBegin - currentBegin)
+            }
+            
+            if (seg.clipEnd > currentEnd) {
+                currentEnd = seg.clipEnd
+            }
         }
         return null
     }

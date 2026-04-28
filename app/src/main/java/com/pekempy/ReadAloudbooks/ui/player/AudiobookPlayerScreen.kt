@@ -123,11 +123,19 @@ fun AudiobookPlayerScreen(
                     IconButton(onClick = onBack) {
                         Icon(painterResource(R.drawable.ic_keyboard_arrow_down), contentDescription = "Close")
                     }
+                    val currentChapter = viewModel.chapters.getOrNull(viewModel.currentChapterIndex)
+                    val rawTitle = currentChapter?.title
+                    val headerText = if (rawTitle != null) com.pekempy.ReadAloudbooks.util.StringUtils.formatChapterTitle(rawTitle, viewModel.currentChapterIndex).uppercase() else "NOW PLAYING"
+
                     Text(
-                        text = "NOW PLAYING",
+                        text = headerText,
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.secondary
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Box(contentAlignment = Alignment.TopEnd) {
                         IconButton(onClick = { 
@@ -237,6 +245,7 @@ fun AudiobookPlayerScreen(
                     }
                     IconButton(onClick = { 
                         if (viewModel.chapters.isNotEmpty()) {
+                            viewModel.skipToChapter(viewModel.currentChapterIndex - 1)
                         }
                     }) {
                         Icon(painterResource(R.drawable.ic_skip_previous), contentDescription = "Previous", Modifier.size(40.dp))
@@ -254,6 +263,7 @@ fun AudiobookPlayerScreen(
                     }
                     IconButton(onClick = { 
                         if (viewModel.chapters.isNotEmpty()) {
+                            viewModel.skipToChapter(viewModel.currentChapterIndex + 1)
                         }
                     }) {
                         Icon(painterResource(R.drawable.ic_skip_next), contentDescription = "Next", Modifier.size(40.dp))
@@ -336,17 +346,19 @@ fun AudiobookPlayerScreen(
                                 Text("No internal chapters found", color = MaterialTheme.colorScheme.secondary)
                             }
                         } else {
-                            val hasParts = viewModel.chapters.any { it.title.contains("Part", ignoreCase = true) }
+                            val validChapters = viewModel.chapters.filter { it.duration >= 1000 }
+                            val hasParts = validChapters.any { it.title.contains("Part", ignoreCase = true) }
                             LazyColumn {
-                                itemsIndexed(viewModel.chapters) { index, chapter ->
-                                    val isPart = chapter.title.contains("Part", ignoreCase = true)
-                                    val isChapter = chapter.title.contains("Chapter", ignoreCase = true)
+                                itemsIndexed(validChapters) { index, chapter ->
+                                    val cleanTitle = com.pekempy.ReadAloudbooks.util.StringUtils.formatChapterTitle(chapter.title, index)
+                                    val isPart = cleanTitle.contains("Part", ignoreCase = true)
+                                    val isChapter = cleanTitle.contains("Chapter", ignoreCase = true)
                                     val indent = if (hasParts && isChapter && !isPart) 32.dp else 0.dp
 
                                     ListItem(
                                         headlineContent = { 
                                             Text(
-                                                text = chapter.title,
+                                                text = cleanTitle,
                                                 fontWeight = if (isPart) FontWeight.Bold else FontWeight.Normal,
                                                 modifier = Modifier.padding(start = indent)
                                             ) 
@@ -359,7 +371,8 @@ fun AudiobookPlayerScreen(
                                         },
                                         trailingContent = { Text(FormatUtils.formatTime(chapter.duration)) },
                                         modifier = Modifier.clickable {
-                                            viewModel.skipToChapter(index)
+                                            val originalIndex = viewModel.chapters.indexOf(chapter)
+                                            if (originalIndex >= 0) viewModel.skipToChapter(originalIndex)
                                             showChaptersSheet = false
                                         },
                                         colors = ListItemDefaults.colors(

@@ -139,9 +139,10 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
             
             if (currentChapters.isNotEmpty()) {
                 var acc = 0L
-                val fixedChapters = currentChapters.map { 
-                    val chapterDur = if (it.duration > 0) it.duration else 0L
-                    val c = it.copy(startOffset = acc, duration = chapterDur)
+                val fixedChapters = currentChapters.filter { it.duration > 0 }.mapIndexed { index, it ->
+                    val cleanTitle = com.pekempy.ReadAloudbooks.util.StringUtils.formatChapterTitle(it.title, index)
+                    val chapterDur = it.duration
+                    val c = it.copy(title = cleanTitle, startOffset = acc, duration = chapterDur)
                     acc += chapterDur
                     c
                 }
@@ -151,7 +152,10 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
         }
         
         if (currentChapters.isEmpty() && probedChapters.isNotEmpty()) {
-            currentChapters.addAll(probedChapters)
+            val validProbed = probedChapters.filter { it.duration > 0 }.mapIndexed { index, it ->
+                it.copy(title = com.pekempy.ReadAloudbooks.util.StringUtils.formatChapterTitle(it.title, index))
+            }
+            currentChapters.addAll(validProbed)
         }
         
         this.chapters = currentChapters

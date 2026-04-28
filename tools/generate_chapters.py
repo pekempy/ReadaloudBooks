@@ -116,6 +116,10 @@ def process_epub_sync(epub_path, root_dir):
             all_segments = [] # List of (timestamp, title_text)
             
             tqdm.write(f"  Indexing EPUB sync points...")
+            
+            # Use same logic as Android app: cumulative SMIL clip durations
+            current_smil_offset = 0
+            
             for itemref in tqdm(spine, desc="Indexing", unit="item", leave=False):
                 item_id = itemref.get('idref')
                 item_data = manifest.get(item_id)
@@ -134,14 +138,12 @@ def process_epub_sync(epub_path, root_dir):
                     text_el = par.find('smil:text', NS)
                     if audio_el is None or text_el is None: continue
                     
-                    audio_href = audio_el.get('src')
-                    abs_audio_path = os.path.normpath(os.path.join(os.path.dirname(smil_path), audio_href)).replace('\\', '/')
+                    clip_begin = parse_time_to_ms(audio_el.get('clipBegin'))
+                    clip_end = parse_time_to_ms(audio_el.get('clipEnd'))
+                    clip_dur = clip_end - clip_begin
+                    if clip_dur <= 0: continue
                     
-                    if abs_audio_path not in audio_file_offsets:
-                        audio_file_offsets[abs_audio_path] = current_global_offset
-                        current_global_offset += get_audio_duration_ms(zin, abs_audio_path)
-                    
-                    global_ts = audio_file_offsets[abs_audio_path] + parse_time_to_ms(audio_el.get('clipBegin'))
+                    global_ts = current_smil_offset
                     
                     # Extract text snippet for this segment
                     txt = ""
@@ -152,6 +154,8 @@ def process_epub_sync(epub_path, root_dir):
                     
                     all_segments.append({'ts': global_ts, 'text': txt, 'is_first': seg_idx == 0})
                     seg_idx += 1
+                    
+                    current_smil_offset += clip_dur
 
             if not all_segments: return None
 
@@ -212,7 +216,7 @@ def process_epub_sync(epub_path, root_dir):
             if not chapters: return None
             chapters.sort(key=lambda x: x['start_ms'])
             for i in range(len(chapters)):
-                chapters[i]['end_ms'] = chapters[i+1]['start_ms'] if i+1 < len(chapters) else current_global_offset
+                chapters[i]['end_ms'] = chapters[i+1]['start_ms'] if i+1 < len(chapters) else current_smil_offset
             return chapters
     except Exception as e:
         tqdm.write(f"  [ERROR] {e}")
