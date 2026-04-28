@@ -268,7 +268,20 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 val chaptersFromXml = parseChaptersXml(currentZipFile!!, calculatedDuration)
                 val localChaptersList = if (chaptersFromXml != null && chaptersFromXml.isNotEmpty()) {
                     android.util.Log.i("ReadAloudAudioVM", "Using ${chaptersFromXml.size} chapters from misc/chapters.xml")
-                    chaptersFromXml
+                    
+                    // SORCERY: Align XML chapters with the skipped-audio timeline
+                    val rawChapters = chaptersFromXml.toMutableList()
+                    val firstChapter = rawChapters.firstOrNull()
+                    if (firstChapter != null && firstChapter.title.contains("Credits", ignoreCase = true)) {
+                        val m4bOffset = firstChapter.startOffset + firstChapter.duration
+                        android.util.Log.i("ReadAloudAudioVM", "Aligning: Removing '${firstChapter.title}' and shifting M4B by ${m4bOffset}ms")
+                        rawChapters.removeAt(0)
+                        rawChapters.map { ch ->
+                            ch.copy(startOffset = Math.max(0, ch.startOffset - m4bOffset))
+                        }
+                    } else {
+                        rawChapters
+                    }
                 } else {
                     android.util.Log.i("ReadAloudAudioVM", "Fallback: Using EPUB spine for chapters")
                     createChaptersList(localChapterOffsets, spineHrefs, spineTitles, calculatedDuration)
@@ -558,9 +571,10 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             
             val segments = smilData[href] ?: return@forEach
             
-            // SORCERY: Skip credits segments from audio timeline to match shifted chapters
-            if (href.contains("credits", ignoreCase = true)) {
-                android.util.Log.i("ReadAloudAudioVM", "Skipping credits segment from audio timeline: $href")
+            // SORCERY: Skip credits segments from audio timeline
+            val isCredits = href.contains("credits", ignoreCase = true)
+            if (isCredits) {
+                android.util.Log.i("ReadAloudAudioVM", "Skipping credits segment: $href")
                 return@forEach
             }
             
@@ -707,20 +721,8 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             
             chaptersList.sortBy { it.startOffset }
             
-            // SORCERY: If the first chapter is "Opening Credits", shift all timestamps 
-            // so that "Chapter One" starts at 0:00, aligning with the app's behavior.
-            val firstChapter = chaptersList.firstOrNull()
-            if (firstChapter != null && firstChapter.title.contains("Credits", ignoreCase = true)) {
-                val offset = firstChapter.duration + firstChapter.startOffset
-                android.util.Log.i("ReadAloudAudioVM", "Applying sorcery: Skipping '${firstChapter.title}' and shifting by ${offset}ms")
-                chaptersList.removeAt(0)
-                for (i in 0 until chaptersList.size) {
-                    val shiftedChapter = chaptersList[i].copy(
-                        startOffset = Math.max(0, chaptersList[i].startOffset - offset)
-                    )
-                    chaptersList[i] = shiftedChapter
-                }
-            }
+            // SORCERY: If the first chapter is "Opening Credits", we'll want to shift later.
+            // For now, just return the list as is.
             
             for (i in 0 until chaptersList.size) {
                 if (chaptersList[i].duration <= 0) {
