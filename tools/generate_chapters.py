@@ -182,6 +182,7 @@ def process_epub_sync(epub_path, root_dir):
                 html_path = os.path.join(opf_dir, item_data['href']).replace('\\', '/')
                 html_content = zin.read(html_path).decode('utf-8', errors='ignore')
                 
+                seg_idx = 0
                 for par in smil_root.findall('.//smil:par', NS):
                     audio_el = par.find('smil:audio', NS)
                     text_el = par.find('smil:text', NS)
@@ -200,8 +201,19 @@ def process_epub_sync(epub_path, root_dir):
                         match = re.search(f'id=["\']{target_id}["\'][^>]*>(.*?)<', html_content, re.DOTALL)
                         if match: txt = strip_tags(match.group(1))
                     
-                    all_segments.append({'ts': global_ts, 'text': txt, 'is_first': seg_idx == 0})
+                    audio_href = audio_el.get('src')
+                    abs_audio_path = os.path.normpath(os.path.join(os.path.dirname(smil_path), audio_href)).replace('\\', '/')
+                    
+                    all_segments.append({
+                        'ts': global_ts, 
+                        'text': txt, 
+                        'is_first': seg_idx == 0,
+                        'audio_path': abs_audio_path,
+                        'raw_audio_ms': clip_begin
+                    })
                     seg_idx += 1
+                    
+                    current_smil_offset += clip_dur
 
             if not m4b_markers: return None
 
@@ -225,20 +237,31 @@ def process_epub_sync(epub_path, root_dir):
                     if score > 0:
                         final_score = score - (dist / 1000.0)
                         if best_seg is None or final_score > best_seg['score']:
-                            best_seg = {'ts': seg['ts'], 'score': final_score, 'audio_path': seg['audio_path']}
+                            best_seg = {'ts': seg['ts'], 'score': final_score, 'audio_path': seg['audio_path'], 'raw_audio_ms': seg['raw_audio_ms']}
                 
-                current_ts = best_seg['ts'] if best_seg else raw_start
-                audio_path = best_seg['audio_path'] if best_seg else all_segments[0]['audio_path']
+                # Default to the first segment if no match (fallback)
+                if not best_seg and all_segments:
+                    best_seg = {'ts': all_segments[0]['ts'], 'audio_path': all_segments[0]['audio_path'], 'raw_audio_ms': all_segments[0]['raw_audio_ms']}
                 
-                # 2. Silence Detection (Fine Tuning)
-                refined_ts = detect_speech_onset(zin, audio_path, current_ts)
+                if best_seg:
+                    audio_path = best_seg['audio_path']
+                    base_raw_ts = best_seg['raw_audio_ms']
+                    
+                    # 2. Silence Detection (Fine Tuning)
+                    refined_raw_ts = detect_speech_onset(zin, audio_path, base_raw_ts)
+                    
+                    # 3. Whisper Verification (Ultra Precision)
+                    final_raw_ts = verify_with_whisper(zin, audio_path, refined_raw_ts, full_title)
+                    
+                    # 4. Map the refined raw timestamp back to the SMIL timeline
+                    diff = final_raw_ts - base_raw_ts
+                    final_smil_ts = best_seg['ts'] + diff
+                else:
+                    # Absolute fallback if somehow all_segments is empty
+                    final_smil_ts = raw_start
                 
-                # 3. Whisper Verification (Ultra Precision)
-                # Only use Whisper if the title is complex or we're not sure
-                final_ts = verify_with_whisper(zin, audio_path, refined_ts, full_title)
-                
-                tqdm.write(f"    [OK] {full_title} -> {final_ts/1000.0}s")
-                chapters.append({'title': full_title, 'start_ms': final_ts})
+                tqdm.write(f"    [OK] {full_title} -> {final_smil_ts/1000.0}s")
+                chapters.append({'title': full_title, 'start_ms': final_smil_ts})
 
             chapters.sort(key=lambda x: x['start_ms'])
             for i in range(len(chapters)):
