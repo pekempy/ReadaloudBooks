@@ -557,6 +557,20 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         android.util.Log.d("ReadAloudAudioVM", "Extracted ${outputMap.size} audio files")
     }
     
+    private fun getAudioFileDuration(file: File): Long {
+        val retriever = android.media.MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(file.absolutePath)
+            val time = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+            time?.toLongOrNull() ?: 0L
+        } catch (e: Exception) {
+            android.util.Log.e("ReadAloudAudioVM", "Error getting audio file duration", e)
+            0L
+        } finally {
+            retriever.release()
+        }
+    }
+
     private fun createClippedSegments(
         smilData: Map<String, List<com.pekempy.ReadAloudbooks.ui.reader.ReaderViewModel.SyncSegment>>,
         spineHrefs: List<String>,
@@ -590,28 +604,26 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 if (durationMs <= 0) return@forEach
                 
                 if (currentClip != null && currentClip!!.audioSrc == segment.audioSrc) {
-                    val relativeStart = clipBeginMs - currentClip!!.clipBeginMs
-                    currentClip!!.subSegments.add(SubSegment(segment.id, relativeStart, durationMs))
-                    
-                    if (clipEndMs > currentClip!!.clipEndMs) {
-                        val addedDuration = clipEndMs - currentClip!!.clipEndMs
-                        currentClip!!.clipEndMs = clipEndMs
-                        cumulativeOffset += addedDuration
-                    }
+                    currentClip!!.subSegments.add(SubSegment(segment.id, clipBeginMs, durationMs))
                 } else {
+                    val segmentsForSrc = segments.filter { it.audioSrc == segment.audioSrc }
+                    val maxClipEnd = segmentsForSrc.maxOfOrNull { (it.clipEnd * 1000).toLong() } ?: 0L
+                    val fileDuration = getAudioFileDuration(audioFile).let { if (it > 0) it else maxClipEnd }
+                    if (fileDuration <= 0) return@forEach
+                    
                     currentClip = ClipSegment(
                         elementId = segment.id,
                         audioSrc = segment.audioSrc,
                         audioFile = audioFile,
-                        clipBeginMs = clipBeginMs,
-                        clipEndMs = clipEndMs,
+                        clipBeginMs = 0L,
+                        clipEndMs = fileDuration,
                         cumulativeStartMs = cumulativeOffset,
                         chapterIndex = spineHrefs.indexOf(href)
                     ).apply {
-                        subSegments.add(SubSegment(segment.id, 0, durationMs))
+                        subSegments.add(SubSegment(segment.id, clipBeginMs, durationMs))
                     }
                     outputSegments.add(currentClip!!)
-                    cumulativeOffset += durationMs
+                    cumulativeOffset += fileDuration
                 }
             }
         }
@@ -853,18 +865,18 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         var foundRelativeMs: Long? = null
         
         for ((index, clip) in clipSegments.withIndex()) {
-            if (clip.elementId == elementId) {
-                foundPosition = clip.cumulativeStartMs
-                foundClipIndex = index
-                foundRelativeMs = 0L
-                break
-            }
-            
             val sub = clip.subSegments.find { it.elementId == elementId }
             if (sub != null) {
                 foundPosition = clip.cumulativeStartMs + sub.relativeStartMs
                 foundClipIndex = index
                 foundRelativeMs = sub.relativeStartMs
+                break
+            }
+            
+            if (clip.elementId == elementId) {
+                foundPosition = clip.cumulativeStartMs
+                foundClipIndex = index
+                foundRelativeMs = 0L
                 break
             }
         }

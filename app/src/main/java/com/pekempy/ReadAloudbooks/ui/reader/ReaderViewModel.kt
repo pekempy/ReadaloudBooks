@@ -64,15 +64,13 @@ class ReaderViewModel(
         if (segments == null || segments.isEmpty()) return 0.0
         var totalDur = 0.0
         var currentAudioSrc = ""
-        var currentBegin = 0.0
         var currentEnd = 0.0
         for (seg in segments) {
             if (seg.audioSrc != currentAudioSrc) {
                 if (currentAudioSrc.isNotEmpty()) {
-                    totalDur += (currentEnd - currentBegin)
+                    totalDur += currentEnd
                 }
                 currentAudioSrc = seg.audioSrc
-                currentBegin = seg.clipBegin
                 currentEnd = seg.clipEnd
             } else {
                 if (seg.clipEnd > currentEnd) {
@@ -81,7 +79,7 @@ class ReaderViewModel(
             }
         }
         if (currentAudioSrc.isNotEmpty()) {
-            totalDur += (currentEnd - currentBegin)
+            totalDur += currentEnd
         }
         return totalDur
     }
@@ -90,6 +88,7 @@ class ReaderViewModel(
     var currentHighlightId by mutableStateOf<String?>(null)
     var syncTrigger by mutableIntStateOf(0)
     var currentAudioPos by mutableLongStateOf(0L)
+    var totalDurationMs by mutableLongStateOf(0L)
     var jumpToElementRequest = mutableStateOf<String?>(null)
     
     data class SyncConfirmation(
@@ -494,9 +493,11 @@ class ReaderViewModel(
             
             val mediaType = lazyBook?.mediaTypes?.get(href) ?: "application/xhtml+xml"
 
-            val lastChapterHref = chapterOffsets.entries.maxByOrNull { it.value }?.key
-            val lastChapterDur = calculateChapterDuration(syncData[lastChapterHref])
-            val totalAudioDurMs = ((chapterOffsets.values.maxOrNull() ?: 0.0) + lastChapterDur).let { (it * 1000).toLong() }
+            val totalAudioDurMs = if (totalDurationMs > 0) totalDurationMs else {
+                val lastChapterHref = chapterOffsets.entries.maxByOrNull { it.value }?.key
+                val lastChapterDur = calculateChapterDuration(syncData[lastChapterHref])
+                ((chapterOffsets.values.maxOrNull() ?: 0.0) + lastChapterDur).let { (it * 1000).toLong() }
+            }
 
             val progress = UnifiedProgress(
                 chapterIndex = chapterIndex,
@@ -703,41 +704,14 @@ class ReaderViewModel(
         if (chapterIndex == -1) return null
         
         val segments = syncData[href] ?: return chapterIndex to ""
+        if (segments.isEmpty()) return chapterIndex to ""
         
-        var cumulativeChapterSec = 0.0
-        var currentAudioSrc = ""
-        var currentBegin = 0.0
-        var currentEnd = 0.0
-        
-        for (seg in segments) {
-            if (currentAudioSrc != seg.audioSrc) {
-                if (currentAudioSrc.isNotEmpty()) {
-                    val blockDur = currentEnd - currentBegin
-                    if (relativeSec < cumulativeChapterSec + blockDur) {
-                        return chapterIndex to seg.id
-                    }
-                    cumulativeChapterSec += blockDur
-                }
-                currentAudioSrc = seg.audioSrc
-                currentBegin = seg.clipBegin
-                currentEnd = seg.clipEnd
-            } else {
-                if (seg.clipEnd > currentEnd) {
-                    currentEnd = seg.clipEnd
-                }
-            }
-            if (relativeSec >= cumulativeChapterSec && relativeSec < cumulativeChapterSec + (seg.clipEnd - currentBegin)) {
-                return chapterIndex to seg.id
-            }
+        if (relativeSec <= segments.first().clipBegin) {
+            return chapterIndex to segments.first().id
         }
         
-        if (currentAudioSrc.isNotEmpty()) {
-            if (relativeSec >= cumulativeChapterSec && relativeSec <= cumulativeChapterSec + (currentEnd - currentBegin)) {
-                return chapterIndex to segments.last().id
-            }
-        }
-        
-        return if (segments.isNotEmpty()) chapterIndex to segments.last().id else null
+        val match = segments.findLast { relativeSec >= it.clipBegin }
+        return chapterIndex to (match?.id ?: segments.first().id)
     }
 
     fun getTimeAtElement(chapterIndex: Int, elementId: String): Double? {
@@ -747,21 +721,19 @@ class ReaderViewModel(
         
         var cumulative = 0.0
         var currentAudioSrc = ""
-        var currentBegin = 0.0
         var currentEnd = 0.0
         
         for (seg in segments) {
             if (currentAudioSrc != seg.audioSrc) {
                 if (currentAudioSrc.isNotEmpty()) {
-                    cumulative += (currentEnd - currentBegin)
+                    cumulative += currentEnd
                 }
                 currentAudioSrc = seg.audioSrc
-                currentBegin = seg.clipBegin
                 currentEnd = seg.clipEnd
             }
             
             if (seg.id == elementId) {
-                return offset + cumulative + (seg.clipBegin - currentBegin)
+                return offset + cumulative + seg.clipBegin
             }
             
             if (seg.clipEnd > currentEnd) {

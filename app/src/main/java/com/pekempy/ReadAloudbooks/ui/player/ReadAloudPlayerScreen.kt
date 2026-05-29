@@ -101,6 +101,20 @@ fun ReadAloudPlayerScreen(
         }
     }
 
+    LaunchedEffect(readAloudAudioViewModel.audioChapterOffsets) {
+        if (readAloudAudioViewModel.audioChapterOffsets.isNotEmpty() &&
+            readerViewModel.chapterOffsets != readAloudAudioViewModel.audioChapterOffsets) {
+            readerViewModel.chapterOffsets = readAloudAudioViewModel.audioChapterOffsets
+        }
+    }
+
+    LaunchedEffect(readAloudAudioViewModel.duration) {
+        if (readAloudAudioViewModel.duration > 0 &&
+            readerViewModel.totalDurationMs != readAloudAudioViewModel.duration) {
+            readerViewModel.totalDurationMs = readAloudAudioViewModel.duration
+        }
+    }
+
     LaunchedEffect(readerViewModel.syncData, readerViewModel.chapterOffsets) {
         if (readerViewModel.syncData.isNotEmpty()) {
             val spineHrefs = readerViewModel.lazyBook?.spineHrefs ?: emptyList()
