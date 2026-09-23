@@ -265,26 +265,59 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 val calculatedDuration = localClipSegments.sumOf { it.clipEndMs - it.clipBeginMs }
                 android.util.Log.i("ReadAloudAudioVM", "TOTAL BOOK DURATION: ${FormatUtils.formatTime(calculatedDuration)} ($calculatedDuration ms)")
                 
-                val chaptersFromXml = parseChaptersXml(currentZipFile!!, calculatedDuration)
-                val localChaptersList = if (chaptersFromXml != null && chaptersFromXml.isNotEmpty()) {
-                    android.util.Log.i("ReadAloudAudioVM", "Using ${chaptersFromXml.size} chapters from misc/chapters.xml")
-                    
-                    // SORCERY: Align XML chapters with the skipped-audio timeline
-                    val rawChapters = chaptersFromXml.toMutableList()
-                    val firstChapter = rawChapters.firstOrNull()
-                    if (firstChapter != null && firstChapter.title.contains("Credits", ignoreCase = true)) {
-                        val m4bOffset = firstChapter.startOffset + firstChapter.duration
-                        android.util.Log.i("ReadAloudAudioVM", "Aligning: Removing '${firstChapter.title}' and shifting M4B by ${m4bOffset}ms")
-                        rawChapters.removeAt(0)
-                        rawChapters.map { ch ->
-                            ch.copy(startOffset = Math.max(0, ch.startOffset - m4bOffset))
+                // Try to get chapters from M4B file first (better chapter names)
+                val m4bFile = DownloadUtils.getDownloadedAudiobookFile(context.filesDir, book)
+                val chaptersFromM4B = if (m4bFile != null && m4bFile.exists()) {
+                    try {
+                        android.util.Log.i("ReadAloudAudioVM", "Extracting chapters from M4B file: ${m4bFile.absolutePath}")
+                        val m4bMetadata = com.pekempy.ReadAloudbooks.util.AudioCodecConverter.getAudioMetadata(m4bFile.absolutePath)
+                        if (m4bMetadata.chapters.isNotEmpty()) {
+                            android.util.Log.i("ReadAloudAudioVM", "Found ${m4bMetadata.chapters.size} chapters in M4B metadata")
+                            m4bMetadata.chapters.map { probedChapter ->
+                                Chapter(
+                                    title = probedChapter.title,
+                                    startOffset = probedChapter.startMs,
+                                    duration = probedChapter.durationMs
+                                )
+                            }
+                        } else {
+                            null
                         }
-                    } else {
-                        rawChapters
+                    } catch (e: Exception) {
+                        android.util.Log.w("ReadAloudAudioVM", "Failed to extract M4B chapters: ${e.message}")
+                        null
                     }
                 } else {
-                    android.util.Log.i("ReadAloudAudioVM", "Fallback: Using EPUB spine for chapters")
-                    createChaptersList(localChapterOffsets, spineHrefs, spineTitles, calculatedDuration)
+                    null
+                }
+                
+                val chaptersFromXml = if (chaptersFromM4B == null) parseChaptersXml(currentZipFile!!, calculatedDuration) else null
+                val localChaptersList = when {
+                    !chaptersFromM4B.isNullOrEmpty() -> {
+                        android.util.Log.i("ReadAloudAudioVM", "Using ${chaptersFromM4B.size} chapters from M4B metadata")
+                        chaptersFromM4B
+                    }
+                    !chaptersFromXml.isNullOrEmpty() -> {
+                        android.util.Log.i("ReadAloudAudioVM", "Using ${chaptersFromXml.size} chapters from misc/chapters.xml")
+                        
+                        // SORCERY: Align XML chapters with the skipped-audio timeline
+                        val rawChapters = chaptersFromXml.toMutableList()
+                        val firstChapter = rawChapters.firstOrNull()
+                        if (firstChapter != null && firstChapter.title.contains("Credits", ignoreCase = true)) {
+                            val m4bOffset = firstChapter.startOffset + firstChapter.duration
+                            android.util.Log.i("ReadAloudAudioVM", "Aligning: Removing '${firstChapter.title}' and shifting M4B by ${m4bOffset}ms")
+                            rawChapters.removeAt(0)
+                            rawChapters.map { ch ->
+                                ch.copy(startOffset = Math.max(0, ch.startOffset - m4bOffset))
+                            }
+                        } else {
+                            rawChapters
+                        }
+                    }
+                    else -> {
+                        android.util.Log.i("ReadAloudAudioVM", "Fallback: Using EPUB spine for chapters")
+                        createChaptersList(localChapterOffsets, spineHrefs, spineTitles, calculatedDuration)
+                    }
                 }
                 
                 val mediaMetadataBuilder = MediaMetadata.Builder()
