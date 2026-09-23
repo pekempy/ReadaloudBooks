@@ -1048,7 +1048,7 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                          setTimeout(() => findAndHighlight(text, retryCount + 1, matchIndex), 100);
                 }
                 
-                window.onerror = function(msg, url, lineNo, columnNo, error) {
+                // ERROR HANDLER
                     console.error("JavaScript Error: " + msg + " at line " + lineNo + ":" + columnNo);
                     return false;
                 };
