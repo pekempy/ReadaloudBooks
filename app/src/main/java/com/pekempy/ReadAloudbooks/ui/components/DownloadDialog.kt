@@ -82,7 +82,7 @@ fun DownloadDialog(
                 add(DownloadOption(
                     type = DownloadType.READALOUD,
                     title = "Read Aloud",
-                    subtitle = "AI-generated narration",
+                    subtitle = "Synchronized audiobook + ebook highlighting",
                     icon = R.drawable.ic_play_arrow,
                     available = true,
                     sizeEstimate = estimateSize(book, DownloadType.READALOUD)
