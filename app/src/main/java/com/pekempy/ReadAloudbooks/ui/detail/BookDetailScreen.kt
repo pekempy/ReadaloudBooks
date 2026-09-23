@@ -62,6 +62,8 @@ fun BookDetailScreen(
     onEdit: (String) -> Unit
 ) {
     val context = LocalContext.current
+    var showDownloadDialog by remember { mutableStateOf(false) }
+    
     LaunchedEffect(bookId) {
         viewModel.loadBook(bookId)
     }
@@ -353,7 +355,7 @@ fun BookDetailScreen(
                         val currentActiveJob = viewModel.activeDownload
                         if (!book.isDownloaded) {
                             Button(
-                                onClick = { viewModel.downloadAll(context.filesDir) },
+                                onClick = { showDownloadDialog = true },
                                 enabled = currentActiveJob == null && !viewModel.isOfflineMode,
                                 modifier = Modifier.fillMaxWidth().height(56.dp),
                                 shape = RoundedCornerShape(16.dp)
@@ -632,6 +634,28 @@ fun BookDetailScreen(
                 }
             }
 
+    
+    
+    // Download format selection dialog
+    if (showDownloadDialog && viewModel.book != null) {
+        com.pekempy.ReadAloudbooks.ui.components.DownloadDialog(
+            book = viewModel.book!!,
+            onDismiss = { showDownloadDialog = false },
+            onDownloadSelected = { downloadType ->
+                showDownloadDialog = false
+                when (downloadType) {
+                    com.pekempy.ReadAloudbooks.ui.components.DownloadType.AUDIOBOOK ->
+                        viewModel.downloadAudiobook(context.filesDir)
+                    com.pekempy.ReadAloudbooks.ui.components.DownloadType.EBOOK ->
+                        viewModel.downloadEbook(context.filesDir)
+                    com.pekempy.ReadAloudbooks.ui.components.DownloadType.READALOUD ->
+                        viewModel.downloadReadAloud(context.filesDir)
+                    com.pekempy.ReadAloudbooks.ui.components.DownloadType.ALL ->
+                        viewModel.downloadAll(context.filesDir)
+                }
+            }
+        )
+    }
         }
     }
 }
