@@ -855,33 +855,42 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                              const percent = pageCount > 1 ? index / (pageCount - 1) : 0;
                              let bestId = null;
                              const page = wrapper.children[index];
-                             if (page) {
-                                 const firstId = page.querySelector('[id]');
-                                 if (firstId) bestId = firstId.id;
-                             }
-                             window.Android.onScrollWithId(percent, bestId);
-                        }
+                function gotoPage(n) {
+                    console.log("gotoPage(" + n + ") called. pageCount=" + pageCount);
+                    if (n < 0 || n >= pageCount) {
+                        console.log("Invalid page number, returning");
+                        return;
+                    }
+                    currentPage = n;
+                    const offset = -n * window.innerWidth;
+                    console.log("Setting wrapper transform to translateX(" + offset + "px)");
+                    const wrapper = document.getElementById('pagination-wrapper');
+                    if (wrapper) {
+                        wrapper.style.transform = 'translateX(' + offset + 'px)';
+                        console.log("Page changed to " + n);
+                    } else {
+                        console.log("ERROR: pagination-wrapper not found!");
                     }
                 }
-                
-                function scrollToPercent(percent) {
-                    const target = Math.round(percent * (pageCount - 1));
-                    gotoPage(target, false);
-                }
-                
                 function pageLeft() {
+                    console.log("pageLeft() called. currentPage=" + currentPage + " pageCount=" + pageCount);
                     if (currentPage <= 0) {
+                        console.log("At first page, calling onPrevChapter");
                         if (window.Android) window.Android.onPrevChapter();
                         return;
                     }
+                    console.log("Going to page " + (currentPage - 1));
                     gotoPage(currentPage - 1);
                 }
                 
                 function pageRight() {
+                    console.log("pageRight() called. currentPage=" + currentPage + " pageCount=" + pageCount);
                     if (currentPage >= pageCount - 1) {
+                        console.log("At last page, calling onNextChapter");
                          if (window.Android) window.Android.onNextChapter();
                          return;
                     }
+                    console.log("Going to page " + (currentPage + 1));
                     gotoPage(currentPage + 1);
                 }
                 
@@ -1051,12 +1060,16 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 document.addEventListener('touchend', function(e) {
                     const deltaX = e.changedTouches[0].screenX - touchStartX;
                     const deltaTime = Date.now() - touchStartTime;
+                    console.log("touchend: deltaX=" + deltaX + " deltaTime=" + deltaTime);
                     if (Math.abs(deltaX) > 40 && deltaTime < 300) {
+                        console.log("SWIPE detected, deltaX=" + deltaX);
                         if (deltaX > 0) pageLeft();
                         else pageRight();
                     } else if (Math.abs(deltaX) < 10 && deltaTime < 300) {
                         const tapX = e.changedTouches[0].clientX;
                         const width = window.innerWidth;
+                        const ratio = tapX / width;
+                        console.log("TAP detected at x=" + tapX + " width=" + width + " ratio=" + ratio);
                         if (window.Android) window.Android.onBodyClick(tapX, width);
                     }
                 }, false);
