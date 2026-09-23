@@ -261,18 +261,8 @@ fun ReadAloudPlayerScreen(
                 .fillMaxSize()
                 .background(Color(theme.bgInt))
         ) {
-            EpubWebView(
-                html = readerViewModel.getCurrentChapterHtml() ?: "",
-                userSettings = userSettings,
-                viewModel = readerViewModel,
-                accentHex = accentHex,
-                highlightId = if (readerViewModel.activeSearchHighlight == null) readerViewModel.currentHighlightId else null,
-                syncTrigger = readerViewModel.syncTrigger,
-                activeSearch = readerViewModel.activeSearchHighlight,
-                activeSearchMatchIndex = readerViewModel.activeSearchMatchIndex,
-                pendingAnchor = readerViewModel.pendingAnchorId.value,
-                onTap = { readerViewModel.showControls = !readerViewModel.showControls }
-            )
+            // Controls overlays (these are tested for touches before WebView)
+            // When AnimatedVisibility visible=false, they should not intercept
             
             AnimatedVisibility(
                 visible = readerViewModel.showControls,
@@ -395,6 +385,21 @@ fun ReadAloudPlayerScreen(
                     onShowSleep = { showSleepTimerSheet = true }
                 )
             }
+            
+            // WebView placed LAST in Box children = hit-tested FIRST for touches
+            // This ensures epub receives touch events before overlays
+            EpubWebView(
+                html = readerViewModel.getCurrentChapterHtml() ?: "",
+                userSettings = userSettings,
+                viewModel = readerViewModel,
+                accentHex = accentHex,
+                highlightId = if (readerViewModel.activeSearchHighlight == null) readerViewModel.currentHighlightId else null,
+                syncTrigger = readerViewModel.syncTrigger,
+                activeSearch = readerViewModel.activeSearchHighlight,
+                activeSearchMatchIndex = readerViewModel.activeSearchMatchIndex,
+                pendingAnchor = readerViewModel.pendingAnchorId.value,
+                onTap = { readerViewModel.showControls = !readerViewModel.showControls }
+            )
         }
 
         if (showSpeedSheet) {
