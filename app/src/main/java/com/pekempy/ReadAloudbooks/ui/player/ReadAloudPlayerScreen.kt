@@ -33,6 +33,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import com.pekempy.ReadAloudbooks.util.HapticFeedback
+import com.pekempy.ReadAloudbooks.util.rememberHaptic
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
