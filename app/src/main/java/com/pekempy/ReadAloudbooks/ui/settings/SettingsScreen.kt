@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
@@ -58,68 +59,78 @@ fun SettingsHome(
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // ACCOUNT & SERVER
-            SettingsNavItem(
-                title = "Account & Server",
-                subtitle = "Connection and account settings",
-                iconRes = R.drawable.ic_link
-            ) { onNavigateTo("settings/connections") }
-            
-            HorizontalDivider(thickness = 8.dp, color = Color.Transparent)
-            
-            // APPEARANCE & LIBRARY
-            SettingsNavItem(
-                title = "Appearance & Library",
-                subtitle = "Theme, colors, tabs, and organization",
-                iconRes = R.drawable.ic_palette
-            ) { onNavigateTo("settings/theming") }
-            
-            HorizontalDivider(thickness = 8.dp, color = Color.Transparent)
-            
-            // READING & LISTENING
-            SettingsNavItem(
-                title = "Reading & Listening",
-                subtitle = "eBook display, sleep timer, and playback speed",
-                iconRes = R.drawable.ic_headphones
-            ) { onNavigateTo("settings/audio") }
-            
-            HorizontalDivider(thickness = 8.dp, color = Color.Transparent)
-            
-            // DATA & STORAGE
-            SettingsNavItem(
-                title = "Storage",
-                subtitle = "Manage downloaded files",
-                iconRes = R.drawable.ic_storage
-            ) { onNavigateTo("storage") }
-            
-            SettingsNavItem(
-                title = "Backup & Restore",
-                subtitle = "Export and import your data",
-                iconRes = R.drawable.ic_download
-            ) { onNavigateTo("settings/backup") }
+            SettingsGroup {
+                SettingsNavItem(
+                    title = "Account & Server",
+                    subtitle = "Connection and account settings",
+                    iconRes = R.drawable.ic_link
+                ) { onNavigateTo("settings/connections") }
+            }
 
-            SettingsNavItem(
-                title = "Analytics",
-                subtitle = "View reading statistics",
-                iconRes = R.drawable.ic_history
-            ) { onNavigateTo("analytics") }
-            
-            HorizontalDivider(thickness = 8.dp, color = Color.Transparent)
-            
-            // OTHER
-            SettingsNavItem(
-                title = "Advanced",
-                subtitle = "Developer options and advanced settings",
-                iconRes = R.drawable.ic_settings
-            ) { onNavigateTo("settings/advanced") }
+            SettingsGroup {
+                SettingsNavItem(
+                    title = "Appearance & Library",
+                    subtitle = "Theme, colors, tabs, and organization",
+                    iconRes = R.drawable.ic_palette
+                ) { onNavigateTo("settings/theming") }
+            }
 
-            SettingsNavItem(
-                title = "Support",
-                subtitle = "Help the project and developer",
-                iconRes = R.drawable.ic_card_giftcard
-            ) { onNavigateTo("settings/support") }
+            SettingsGroup {
+                SettingsNavItem(
+                    title = "Reading & Listening",
+                    subtitle = "eBook display, sleep timer, and playback speed",
+                    iconRes = R.drawable.ic_headphones
+                ) { onNavigateTo("settings/audio") }
+            }
+
+            SettingsGroup {
+                SettingsNavItem(
+                    title = "Storage",
+                    subtitle = "Manage downloaded files",
+                    iconRes = R.drawable.ic_storage
+                ) { onNavigateTo("storage") }
+                SettingsNavItem(
+                    title = "Backup & Restore",
+                    subtitle = "Export and import your data",
+                    iconRes = R.drawable.ic_download
+                ) { onNavigateTo("settings/backup") }
+                SettingsNavItem(
+                    title = "Analytics",
+                    subtitle = "View reading statistics",
+                    iconRes = R.drawable.ic_history,
+                    showDivider = false
+                ) { onNavigateTo("analytics") }
+            }
+
+            SettingsGroup {
+                SettingsNavItem(
+                    title = "Advanced",
+                    subtitle = "Developer options and advanced settings",
+                    iconRes = R.drawable.ic_settings
+                ) { onNavigateTo("settings/advanced") }
+                SettingsNavItem(
+                    title = "Support",
+                    subtitle = "Help the project and developer",
+                    iconRes = R.drawable.ic_card_giftcard,
+                    showDivider = false
+                ) { onNavigateTo("settings/support") }
+            }
+
+            Spacer(Modifier.height(8.dp))
         }
+    }
+}
+
+@Composable
+private fun SettingsGroup(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
+    ) {
+        Column(content = content)
     }
 }
 
@@ -128,16 +139,53 @@ fun SettingsNavItem(
     title: String,
     subtitle: String,
     iconRes: Int,
+    showDivider: Boolean = true,
     onClick: () -> Unit
 ) {
-    ListItem(
-        headlineContent = { Text(title) },
-        supportingContent = { Text(subtitle) },
-        leadingContent = { Icon(painterResource(iconRes), contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-        trailingContent = { Icon(painterResource(R.drawable.ic_keyboard_arrow_right), contentDescription = null) },
-        modifier = Modifier.clickable(onClick = onClick)
-    )
-    HorizontalDivider()
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painterResource(iconRes),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                painterResource(R.drawable.ic_keyboard_arrow_right),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (showDivider) {
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 72.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -879,26 +927,34 @@ fun SupportItem(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(16.dp))
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
             Column {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

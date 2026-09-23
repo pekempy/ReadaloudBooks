@@ -1,11 +1,14 @@
 package com.pekempy.ReadAloudbooks.ui.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -59,25 +62,35 @@ private fun QuickActionButton(
 ) {
     Card(
         onClick = onClickWithHaptic,
-        modifier = modifier.height(72.dp),
+        modifier = modifier.height(84.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp, pressedElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(12.dp),
+                .padding(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
+            verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)
         ) {
-            Icon(
-                painter = painterResource(action.icon),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-            
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(action.icon),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
             Text(
                 text = action.label,
                 style = MaterialTheme.typography.labelSmall,
@@ -96,7 +109,7 @@ object QuickActions {
         onSearchClick: () -> Unit,
         onDownloadsClick: () -> Unit,
         onCollectionsClick: () -> Unit,
-        onStatsClick: () -> Unit
+        onSeriesClick: () -> Unit
     ): List<QuickAction> = listOf(
         QuickAction(
             id = "search",
@@ -117,10 +130,10 @@ object QuickActions {
             onClick = onCollectionsClick
         ),
         QuickAction(
-            id = "stats",
-            label = "Stats",
-            icon = R.drawable.ic_calendar_today,
-            onClick = onStatsClick
+            id = "series",
+            label = "Series",
+            icon = R.drawable.ic_shelves,
+            onClick = onSeriesClick
         )
     )
 }

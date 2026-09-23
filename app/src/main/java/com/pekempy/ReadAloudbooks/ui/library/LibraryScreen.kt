@@ -392,7 +392,7 @@ fun LibraryScreen(
                                         onSearchClick = { isSearchMode = true },
                                         onDownloadsClick = { viewModel.setViewMode(LibraryViewModel.ViewMode.Downloads) },
                                         onCollectionsClick = { viewModel.setViewMode(LibraryViewModel.ViewMode.Collections) },
-                                        onStatsClick = onNavigateToAnalytics
+                                        onSeriesClick = { viewModel.setViewMode(LibraryViewModel.ViewMode.Series) }
                                     ),
                                     modifier = Modifier.padding(horizontal = 16.dp)
                                 )

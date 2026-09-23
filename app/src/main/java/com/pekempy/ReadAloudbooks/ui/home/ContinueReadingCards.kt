@@ -98,7 +98,7 @@ private fun ContinueReadingCard(
         modifier = Modifier
             .width(160.dp)
             .height(240.dp),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(16.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Cover image
