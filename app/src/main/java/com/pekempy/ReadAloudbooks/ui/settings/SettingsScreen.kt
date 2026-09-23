@@ -94,6 +94,24 @@ fun SettingsHome(
                 subtitle = "Support the projects and developer",
                 iconRes = R.drawable.ic_card_giftcard
             ) { onNavigateTo("settings/support") }
+            
+            SettingsNavItem(
+                title = "Backup & Restore",
+                subtitle = "Export and import settings",
+                iconRes = R.drawable.ic_download
+            ) { onNavigateTo("settings/backup") }
+            
+            SettingsNavItem(
+                title = "Advanced",
+                subtitle = "Advanced preferences",
+                iconRes = R.drawable.ic_settings
+            ) { onNavigateTo("settings/advanced") }
+            
+            SettingsNavItem(
+                title = "Analytics",
+                subtitle = "View reading statistics",
+                iconRes = R.drawable.ic_history
+            ) { onNavigateTo("analytics") }
         }
     }
 }

@@ -488,6 +488,39 @@ class ViewModelFactory<T : ViewModel>(
                                 }
                             }
                         )
+                    
+                    // Backup & Restore
+                    composable(
+                        route = "settings/backup",
+                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
+                    ) {
+                        com.pekempy.ReadAloudbooks.ui.settings.SettingsBackupScreen(
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                    
+                    // Advanced Settings
+                    composable(
+                        route = "settings/advanced",
+                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
+                    ) {
+                        com.pekempy.ReadAloudbooks.ui.settings.AdvancedSettingsScreen(
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                    
+                    // Reading Analytics
+                    composable(
+                        route = "analytics",
+                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
+                    ) {
+                        com.pekempy.ReadAloudbooks.ui.settings.ReadingAnalyticsScreen(
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
                         com.pekempy.ReadAloudbooks.ui.settings.StorageManagementScreen(
                             viewModel = storageViewModel,
                             onBack = { navController.popBackStack() }
