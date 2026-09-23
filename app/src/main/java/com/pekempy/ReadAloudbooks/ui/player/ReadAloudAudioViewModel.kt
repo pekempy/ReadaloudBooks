@@ -9,6 +9,7 @@ import androidx.media3.common.MediaMetadata
 import com.pekempy.ReadAloudbooks.data.Book
 import com.pekempy.ReadAloudbooks.data.UserPreferencesRepository
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
+import com.pekempy.ReadAloudbooks.util.AudioCodecConverter
 import com.pekempy.ReadAloudbooks.util.DownloadUtils
 import com.pekempy.ReadAloudbooks.util.FormatUtils
 import kotlinx.coroutines.Job
@@ -264,20 +265,18 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 
                 val calculatedDuration = localClipSegments.sumOf { it.clipEndMs - it.clipBeginMs }
                 android.util.Log.i("ReadAloudAudioVM", "TOTAL BOOK DURATION: ${FormatUtils.formatTime(calculatedDuration)} ($calculatedDuration ms)")
+                android.util.Log.i("ReadAloudAudioVM", "TOTAL BOOK DURATION: ${FormatUtils.formatTime(calculatedDuration)} ($calculatedDuration ms)")
                 
-                // Try to extract chapters from M4B file first (has real chapter names, not split_XXX)
+                // Probe M4B stream URL from Storyteller for real chapter names
                 val m4bChapters = try {
-                    val bookDir = com.pekempy.ReadAloudbooks.util.DownloadUtils.getBookDir(filesDir!!, book)
-                    val baseFileName = com.pekempy.ReadAloudbooks.util.DownloadUtils.getBaseFileName(book)
-                    val m4bFile = java.io.File(bookDir, "$baseFileName.m4b")
-                    
-                    if (m4bFile.exists()) {
-                        android.util.Log.i("ReadAloudAudioVM", "Extracting chapters from M4B file: ${m4bFile.absolutePath}")
-                        val metadata = com.pekempy.ReadAloudbooks.util.AudioCodecConverter.getAudioMetadata(m4bFile.absolutePath)
+                    val m4bUrl = book.audiobookUrl
+                    if (!m4bUrl.isNullOrBlank()) {
+                        android.util.Log.i("ReadAloudAudioVM", "Probing M4B stream for chapters: $m4bUrl")
+                        val metadata = AudioCodecConverter.getAudioMetadata(m4bUrl)
                         
                         if (metadata.chapters.isNotEmpty()) {
-                            android.util.Log.i("ReadAloudAudioVM", "Found ${metadata.chapters.size} chapters in M4B metadata")
-                            metadata.chapters.mapIndexed { index, probedChapter ->
+                            android.util.Log.i("ReadAloudAudioVM", "✅ Found ${metadata.chapters.size} chapters from Storyteller M4B stream!")
+                            metadata.chapters.map { probedChapter ->
                                 Chapter(
                                     title = probedChapter.title,
                                     startOffset = probedChapter.startMs,
@@ -285,14 +284,15 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                                 )
                             }
                         } else {
+                            android.util.Log.w("ReadAloudAudioVM", "M4B has no chapter metadata")
                             null
                         }
                     } else {
-                        android.util.Log.w("ReadAloudAudioVM", "M4B file not found, falling back to EPUB chapters")
+                        android.util.Log.w("ReadAloudAudioVM", "No M4B URL available")
                         null
                     }
                 } catch (e: Exception) {
-                    android.util.Log.w("ReadAloudAudioVM", "Failed to extract M4B chapters: ${e.message}")
+                    android.util.Log.w("ReadAloudAudioVM", "Failed to probe M4B chapters: ${e.message}")
                     null
                 }
                 
