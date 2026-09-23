@@ -1,473 +1,377 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.pekempy.ReadAloudbooks.ui.settings
 
-import androidx.compose.animation.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import com.pekempy.ReadAloudbooks.R
-import com.pekempy.ReadAloudbooks.util.HapticFeedback
-import com.pekempy.ReadAloudbooks.util.rememberHaptic
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 
-/**
- * Advanced settings architecture with categories, search, and backup
- * Premium customization for power users
- */
-
-sealed class SettingItem {
-    abstract val id: String
-    abstract val title: String
-    abstract val subtitle: String?
-    abstract val category: SettingCategory
-    abstract val icon: Int?
-    
-    data class Toggle(
-        override val id: String,
-        override val title: String,
-        override val subtitle: String? = null,
-        override val category: SettingCategory,
-        override val icon: Int? = null,
-        val value: Boolean,
-        val onChanged: (Boolean) -> Unit
-    ) : SettingItem()
-    
-    data class Choice(
-        override val id: String,
-        override val title: String,
-        override val subtitle: String? = null,
-        override val category: SettingCategory,
-        override val icon: Int? = null,
-        val options: List<String>,
-        val selectedIndex: Int,
-        val onSelected: (Int) -> Unit
-    ) : SettingItem()
-    
-    data class Slider(
-        override val id: String,
-        override val title: String,
-        override val subtitle: String? = null,
-        override val category: SettingCategory,
-        override val icon: Int? = null,
-        val value: Float,
-        val range: ClosedFloatingPointRange<Float>,
-        val steps: Int = 0,
-        val valueLabel: (Float) -> String = { it.toString() },
-        val onChanged: (Float) -> Unit
-    ) : SettingItem()
-    
-    data class Action(
-        override val id: String,
-        override val title: String,
-        override val subtitle: String? = null,
-        override val category: SettingCategory,
-        override val icon: Int? = null,
-        val onClick: () -> Unit
-    ) : SettingItem()
-}
-
-enum class SettingCategory(val displayName: String, val icon: Int) {
-    APPEARANCE("Appearance", R.drawable.ic_palette),
-    PLAYBACK("Playback", R.drawable.ic_play_arrow),
-    DOWNLOADS("Downloads", R.drawable.ic_download),
-    ORGANIZATION("Organization", R.drawable.ic_folder),
-    ADVANCED("Advanced", R.drawable.ic_settings),
-    ABOUT("About", R.drawable.ic_info)
-}
-
-class SettingsManager {
-    private val settings = MutableStateFlow<List<SettingItem>>(emptyList())
-    
-    fun registerSettings(items: List<SettingItem>) {
-        settings.value = items
-    }
-    
-    fun getSettings(): Flow<List<SettingItem>> = settings
-    
-    fun search(query: String): List<SettingItem> {
-        if (query.isBlank()) return settings.value
-        
-        val lowerQuery = query.lowercase()
-        return settings.value.filter {
-            it.title.lowercase().contains(lowerQuery) ||
-            it.subtitle?.lowercase()?.contains(lowerQuery) == true ||
-            it.category.displayName.lowercase().contains(lowerQuery)
-        }
-    }
-    
-    fun exportSettings(): Map<String, Any> {
-        return settings.value.associate { setting ->
-            val value: Any = when (setting) {
-                is SettingItem.Toggle -> setting.value
-                is SettingItem.Choice -> setting.selectedIndex
-                is SettingItem.Slider -> setting.value
-                is SettingItem.Action -> ""
-            }
-            setting.id to value
-        }
-    }
-    
-    fun importSettings(data: Map<String, Any>) {
-        // Apply imported values to settings
-        // This would need coordination with the actual preference storage
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdvancedSettingsScreen(
-    settingsManager: SettingsManager,
-    onBack: () -> Unit
+    viewModel: SettingsViewModel,
+    onBackClick: () -> Unit
 ) {
-    val haptic = rememberHaptic()
-    var searchQuery by remember { mutableStateOf("") }
-    val allSettings by settingsManager.getSettings().collectAsState(emptyList())
-    
-    val displayedSettings = remember(searchQuery, allSettings) {
-        if (searchQuery.isBlank()) allSettings else settingsManager.search(searchQuery)
-    }
-    
-    val groupedSettings = remember(displayedSettings) {
-        displayedSettings.groupBy { it.category }
-    }
-    
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings") },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        haptic(HapticFeedback.FeedbackType.LIGHT)
-                        onBack()
-                    }) {
-                        Icon(painterResource(R.drawable.ic_arrow_back), "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = {
-                        haptic(HapticFeedback.FeedbackType.MEDIUM)
-                        // Export settings
-                    }) {
-                        Icon(painterResource(R.drawable.ic_download), "Export")
-                    }
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text("Advanced Settings") },
+            navigationIcon = {
+                IconButton(onClick = onBackClick) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                 }
-            )
-        }
-    ) { padding ->
-        Column(
+            }
+        )
+
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(vertical = 8.dp)
         ) {
-            // Search bar
-            TextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("Search settings...") },
-                leadingIcon = {
-                    Icon(painterResource(R.drawable.ic_search), null)
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = {
-                            haptic(HapticFeedback.FeedbackType.LIGHT)
-                            searchQuery = ""
-                        }) {
-                            Icon(painterResource(R.drawable.ic_close), "Clear")
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                    unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
+            // Sync Settings Section
+            item {
+                SettingsCategoryHeader("Sync Settings")
+            }
+            item {
+                SwitchPreference(
+                    title = "Sync on WiFi Only",
+                    subtitle = "Only sync when connected to WiFi",
+                    checked = viewModel.syncWifiOnly,
+                    onCheckedChange = { viewModel.updateSyncWifiOnly(it) }
                 )
-            )
-            
-            // Settings list
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                groupedSettings.forEach { (category, settings) ->
-                    item {
-                        SettingCategoryHeader(category)
-                    }
-                    
-                    items(settings) { setting ->
-                        SettingItemView(setting, haptic)
-                    }
+            }
+            item {
+                SwitchPreference(
+                    title = "Auto-Sync Progress",
+                    subtitle = "Automatically sync reading progress",
+                    checked = viewModel.autoSyncProgress,
+                    onCheckedChange = { viewModel.updateAutoSyncProgress(it) }
+                )
+            }
+            item {
+                SwitchPreference(
+                    title = "Background Sync",
+                    subtitle = "Allow syncing in background",
+                    checked = viewModel.backgroundSyncEnabled,
+                    onCheckedChange = { viewModel.updateBackgroundSyncEnabled(it) }
+                )
+            }
+
+            // Download Settings Section
+            item {
+                SettingsCategoryHeader("Download Settings")
+            }
+            item {
+                ListPreference(
+                    title = "Download Quality",
+                    subtitle = "Current: ${viewModel.downloadQuality}",
+                    options = listOf("high", "medium", "low"),
+                    selectedOption = viewModel.downloadQuality,
+                    onOptionSelected = { viewModel.updateDownloadQuality(it) }
+                )
+            }
+            item {
+                SwitchPreference(
+                    title = "Auto-Download New Series",
+                    subtitle = "Automatically download books from followed series",
+                    checked = viewModel.autoDownloadNewSeries,
+                    onCheckedChange = { viewModel.updateAutoDownloadNewSeries(it) }
+                )
+            }
+            item {
+                SliderPreference(
+                    title = "Cache Size Limit",
+                    subtitle = "${viewModel.cacheLimitMb} MB",
+                    value = viewModel.cacheLimitMb.toFloat(),
+                    onValueChange = { viewModel.updateCacheLimit(it.toInt()) },
+                    valueRange = 100f..5000f,
+                    steps = 19
+                )
+            }
+
+            // Playback Settings Section
+            item {
+                SettingsCategoryHeader("Playback Settings")
+            }
+            item {
+                SwitchPreference(
+                    title = "Auto-Play Next Chapter",
+                    subtitle = "Automatically play next chapter when current finishes",
+                    checked = viewModel.autoPlayNextChapter,
+                    onCheckedChange = { viewModel.updateAutoPlayNextChapter(it) }
+                )
+            }
+            item {
+                SliderPreference(
+                    title = "Remember Position Threshold",
+                    subtitle = "${viewModel.rememberPositionThreshold} seconds",
+                    value = viewModel.rememberPositionThreshold.toFloat(),
+                    onValueChange = { viewModel.updateRememberPositionThreshold(it.toInt()) },
+                    valueRange = 5f..300f,
+                    steps = 59
+                )
+            }
+            item {
+                SwitchPreference(
+                    title = "Skip Silence",
+                    subtitle = "Skip silent sections during playback",
+                    checked = viewModel.skipSilence,
+                    onCheckedChange = { viewModel.updateSkipSilence(it) }
+                )
+            }
+
+            // Reader Settings Section
+            item {
+                SettingsCategoryHeader("Reader Settings")
+            }
+            item {
+                SliderPreference(
+                    title = "Auto-Scroll Speed",
+                    subtitle = "${viewModel.autoScrollSpeed} pixels/sec",
+                    value = viewModel.autoScrollSpeed.toFloat(),
+                    onValueChange = { viewModel.updateAutoScrollSpeed(it.toInt()) },
+                    valueRange = 10f..200f,
+                    steps = 38
+                )
+            }
+            item {
+                SwitchPreference(
+                    title = "Page Turn Animation",
+                    subtitle = "Show animation when turning pages",
+                    checked = viewModel.pageTurnAnimation,
+                    onCheckedChange = { viewModel.updatePageTurnAnimation(it) }
+                )
+            }
+            item {
+                SwitchPreference(
+                    title = "Brightness Override",
+                    subtitle = "Use custom brightness level",
+                    checked = viewModel.brightnessOverride,
+                    onCheckedChange = { viewModel.updateBrightnessOverride(it) }
+                )
+            }
+            if (viewModel.brightnessOverride) {
+                item {
+                    SliderPreference(
+                        title = "Brightness Level",
+                        subtitle = "${(viewModel.brightnessLevel * 100).toInt()}%",
+                        value = viewModel.brightnessLevel,
+                        onValueChange = { viewModel.updateBrightnessLevel(it) },
+                        valueRange = 0.1f..1.0f,
+                        steps = 8
+                    )
                 }
             }
+
+            // Advanced Options Section
+            item {
+                SettingsCategoryHeader("Advanced Options")
+            }
+            item {
+                SwitchPreference(
+                    title = "Developer Mode",
+                    subtitle = "Access developer-only features",
+                    checked = viewModel.developerMode,
+                    onCheckedChange = { viewModel.updateDeveloperMode(it) }
+                )
+            }
+            item {
+                SwitchPreference(
+                    title = "Export Logs",
+                    subtitle = "Allow exporting debug logs",
+                    checked = viewModel.exportLogsEnabled,
+                    onCheckedChange = { viewModel.updateExportLogsEnabled(it) }
+                )
+            }
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    onClick = { viewModel.clearAllCaches() }
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Clear All Caches")
+                }
+            }
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    ),
+                    onClick = { viewModel.resetToDefaults() }
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Reset to Defaults")
+                }
+            }
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
     }
 }
 
 @Composable
-private fun SettingCategoryHeader(category: SettingCategory) {
-    Row(
+fun SettingsCategoryHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            painter = painterResource(category.icon),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = category.displayName,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
-    }
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    )
 }
 
 @Composable
-private fun SettingItemView(
-    setting: SettingItem,
-    haptic: (HapticFeedback.FeedbackType) -> Unit
+fun SwitchPreference(
+    title: String,
+    subtitle: String = "",
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        when (setting) {
-            is SettingItem.Toggle -> ToggleSettingView(setting, haptic)
-            is SettingItem.Choice -> ChoiceSettingView(setting, haptic)
-            is SettingItem.Slider -> SliderSettingView(setting, haptic)
-            is SettingItem.Action -> ActionSettingView(setting, haptic)
-        }
-    }
-}
-
-@Composable
-private fun ToggleSettingView(
-    setting: SettingItem.Toggle,
-    haptic: (HapticFeedback.FeedbackType) -> Unit
-) {
-    Row(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable {
-                haptic(HapticFeedback.FeedbackType.LIGHT)
-                setting.onChanged(!setting.value)
-            }
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .clickable { onCheckedChange(!checked) }
     ) {
-        setting.icon?.let {
-            Icon(
-                painter = painterResource(it),
-                contentDescription = null,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-        }
-        
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = setting.title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
-            )
-            setting.subtitle?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        
-        Switch(
-            checked = setting.value,
-            onCheckedChange = {
-                haptic(HapticFeedback.FeedbackType.MEDIUM)
-                setting.onChanged(it)
-            }
-        )
-    }
-}
-
-@Composable
-private fun ChoiceSettingView(
-    setting: SettingItem.Choice,
-    haptic: (HapticFeedback.FeedbackType) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable {
-                haptic(HapticFeedback.FeedbackType.LIGHT)
-                expanded = true
-            }
-            .padding(16.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            setting.icon?.let {
-                Icon(
-                    painter = painterResource(it),
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-            }
-            
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = setting.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = setting.subtitle ?: setting.options[setting.selectedIndex],
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            setting.options.forEachIndexed { index, option ->
-                DropdownMenuItem(
-                    text = { Text(option) },
-                    onClick = {
-                        haptic(HapticFeedback.FeedbackType.MEDIUM)
-                        setting.onSelected(index)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SliderSettingView(
-    setting: SettingItem.Slider,
-    haptic: (HapticFeedback.FeedbackType) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            setting.icon?.let {
-                Icon(
-                    painter = painterResource(it),
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-            }
-            
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = setting.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium
-                )
-                setting.subtitle?.let {
+                Text(text = title, style = MaterialTheme.typography.bodyLarge)
+                if (subtitle.isNotEmpty()) {
                     Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-            
-            Text(
-                text = setting.valueLabel(setting.value),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold
+            Spacer(modifier = Modifier.width(8.dp))
+            Switch(
+                checked = checked,
+                onCheckedChange = { onCheckedChange(it) }
             )
         }
-        
-        Slider(
-            value = setting.value,
-            onValueChange = {
-                haptic(HapticFeedback.FeedbackType.LIGHT)
-                setting.onChanged(it)
+    }
+}
+
+@Composable
+fun ListPreference(
+    title: String,
+    subtitle: String,
+    options: List<String>,
+    selectedOption: String,
+    onOptionSelected: (String) -> Unit
+) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { showDialog = true }
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text(text = title) },
+            text = {
+                Column {
+                    options.forEach { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onOptionSelected(option)
+                                    showDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = (option == selectedOption),
+                                onClick = {
+                                    onOptionSelected(option)
+                                    showDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = option, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
             },
-            valueRange = setting.range,
-            steps = setting.steps,
-            modifier = Modifier.fillMaxWidth()
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }
 
 @Composable
-private fun ActionSettingView(
-    setting: SettingItem.Action,
-    haptic: (HapticFeedback.FeedbackType) -> Unit
+fun SliderPreference(
+    title: String,
+    subtitle: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int = 0
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable {
-                haptic(HapticFeedback.FeedbackType.MEDIUM)
-                setting.onClick()
-            }
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        setting.icon?.let {
-            Icon(
-                painter = painterResource(it),
-                contentDescription = null,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-        }
-        
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = setting.title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
-            )
-            setting.subtitle?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        
-        Icon(
-            painter = painterResource(R.drawable.ic_keyboard_arrow_right),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        Text(text = title, style = MaterialTheme.typography.bodyLarge)
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Slider(
+            value = value,
+            onValueChange = { onValueChange(it) },
+            valueRange = valueRange,
+            steps = steps
         )
     }
 }

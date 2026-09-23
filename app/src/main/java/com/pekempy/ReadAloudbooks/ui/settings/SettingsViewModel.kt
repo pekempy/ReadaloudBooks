@@ -25,6 +25,8 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
     var readerTheme by mutableStateOf(0)
     var readerFontFamily by mutableStateOf("serif")
     var playbackSpeed by mutableStateOf(1.0f)
+    var useBookColors by mutableStateOf(false)
+    var bookThemeColor by mutableStateOf(0)
     var readerHidePlayerWithControls by mutableStateOf(true)
     
     var showBooksTab by mutableStateOf(true)
@@ -36,6 +38,24 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
     var syncFrequencyBackground by mutableStateOf(0)
     var lastSyncTime by mutableStateOf(0L)
     var isSyncing by mutableStateOf(false)
+    var tabOrder by mutableStateOf(listOf("shelf", "books", "authors", "series", "collections"))
+    
+    // Advanced Settings
+    var syncWifiOnly by mutableStateOf(false)
+    var autoSyncProgress by mutableStateOf(true)
+    var backgroundSyncEnabled by mutableStateOf(true)
+    var downloadQuality by mutableStateOf("high")
+    var autoDownloadNewSeries by mutableStateOf(false)
+    var cacheLimitMb by mutableStateOf(1000)
+    var autoPlayNextChapter by mutableStateOf(false)
+    var rememberPositionThreshold by mutableStateOf(30)
+    var skipSilence by mutableStateOf(false)
+    var autoScrollSpeed by mutableStateOf(50)
+    var pageTurnAnimation by mutableStateOf(true)
+    var brightnessOverride by mutableStateOf(false)
+    var brightnessLevel by mutableStateOf(1.0f)
+    var developerMode by mutableStateOf(false)
+    var exportLogsEnabled by mutableStateOf(false)
 
     init {
         viewModelScope.launch {
@@ -45,6 +65,8 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
                 sleepTimerMinutes = settings.sleepTimerMinutes
                 themeSource = settings.themeSource
                 readerFontSize = settings.readerFontSize
+                useBookColors = settings.useBookColors
+                bookThemeColor = settings.bookThemeColor
                 readerTheme = settings.readerTheme
                 readerFontFamily = settings.readerFontFamily
                 playbackSpeed = settings.playbackSpeed
@@ -57,6 +79,22 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
                 syncFrequencyBackground = settings.syncFrequencyBackground
                 lastSyncTime = settings.lastSyncTime
                 readerHidePlayerWithControls = settings.readerHidePlayerWithControls
+                // Advanced Settings
+                syncWifiOnly = settings.syncWifiOnly
+                autoSyncProgress = settings.autoSyncProgress
+                backgroundSyncEnabled = settings.backgroundSyncEnabled
+                downloadQuality = settings.downloadQuality
+                autoDownloadNewSeries = settings.autoDownloadNewSeries
+                cacheLimitMb = settings.cacheLimitMb
+                autoPlayNextChapter = settings.autoPlayNextChapter
+                rememberPositionThreshold = settings.rememberPositionThreshold
+                skipSilence = settings.skipSilence
+                autoScrollSpeed = settings.autoScrollSpeed
+                pageTurnAnimation = settings.pageTurnAnimation
+                brightnessOverride = settings.brightnessOverride
+                brightnessLevel = settings.brightnessLevel
+                developerMode = settings.developerMode
+                exportLogsEnabled = settings.exportLogsEnabled
             }
         }
         viewModelScope.launch {
@@ -65,6 +103,11 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
                 localServerUrl = credentials?.localUrl ?: ""
                 useLocalOnWifi = credentials?.useLocalOnWifi ?: false
                 wifiSsid = credentials?.wifiSsid ?: ""
+            }
+        }
+        viewModelScope.launch {
+            repository.getTabOrder().collect { order ->
+                tabOrder = order
             }
         }
     }
@@ -170,5 +213,110 @@ class SettingsViewModel(private val repository: UserPreferencesRepository) : Vie
         } finally {
             isSyncing = false
         }
+    }
+
+    fun updateTabOrder(order: List<String>) {
+        tabOrder = order
+        viewModelScope.launch { 
+            repository.updateTabOrder(order)
+        }
+    }
+
+    fun toggleTab(tabId: String) {
+        when (tabId) {
+            "books" -> updateShowBooksTab(!showBooksTab)
+            "authors" -> updateShowAuthorsTab(!showAuthorsTab)
+            "series" -> updateShowSeriesTab(!showSeriesTab)
+            "collections" -> updateShowCollectionsTab(!showCollectionsTab)
+        }
+    }
+
+    fun updateUseBookColors(enabled: Boolean) {
+        useBookColors = enabled
+        viewModelScope.launch { repository.setUseBookColors(enabled) }
+    }
+
+    // Advanced Settings Update Methods
+    fun updateSyncWifiOnly(enabled: Boolean) {
+        syncWifiOnly = enabled
+        viewModelScope.launch { repository.updateSyncWifiOnly(enabled) }
+    }
+
+    fun updateAutoSyncProgress(enabled: Boolean) {
+        autoSyncProgress = enabled
+        viewModelScope.launch { repository.updateAutoSyncProgress(enabled) }
+    }
+
+    fun updateBackgroundSyncEnabled(enabled: Boolean) {
+        backgroundSyncEnabled = enabled
+        viewModelScope.launch { repository.updateBackgroundSyncEnabled(enabled) }
+    }
+
+    fun updateDownloadQuality(quality: String) {
+        downloadQuality = quality
+        viewModelScope.launch { repository.updateDownloadQuality(quality) }
+    }
+
+    fun updateAutoDownloadNewSeries(enabled: Boolean) {
+        autoDownloadNewSeries = enabled
+        viewModelScope.launch { repository.updateAutoDownloadNewSeries(enabled) }
+    }
+
+    fun updateCacheLimit(limitMb: Int) {
+        cacheLimitMb = limitMb
+        viewModelScope.launch { repository.updateCacheLimit(limitMb) }
+    }
+
+    fun updateAutoPlayNextChapter(enabled: Boolean) {
+        autoPlayNextChapter = enabled
+        viewModelScope.launch { repository.updateAutoPlayNextChapter(enabled) }
+    }
+
+    fun updateRememberPositionThreshold(seconds: Int) {
+        rememberPositionThreshold = seconds
+        viewModelScope.launch { repository.updateRememberPositionThreshold(seconds) }
+    }
+
+    fun updateSkipSilence(enabled: Boolean) {
+        skipSilence = enabled
+        viewModelScope.launch { repository.updateSkipSilence(enabled) }
+    }
+
+    fun updateAutoScrollSpeed(speed: Int) {
+        autoScrollSpeed = speed
+        viewModelScope.launch { repository.updateAutoScrollSpeed(speed) }
+    }
+
+    fun updatePageTurnAnimation(enabled: Boolean) {
+        pageTurnAnimation = enabled
+        viewModelScope.launch { repository.updatePageTurnAnimation(enabled) }
+    }
+
+    fun updateBrightnessOverride(enabled: Boolean) {
+        brightnessOverride = enabled
+        viewModelScope.launch { repository.updateBrightnessOverride(enabled) }
+    }
+
+    fun updateBrightnessLevel(level: Float) {
+        brightnessLevel = level
+        viewModelScope.launch { repository.updateBrightnessLevel(level) }
+    }
+
+    fun updateDeveloperMode(enabled: Boolean) {
+        developerMode = enabled
+        viewModelScope.launch { repository.updateDeveloperMode(enabled) }
+    }
+
+    fun updateExportLogsEnabled(enabled: Boolean) {
+        exportLogsEnabled = enabled
+        viewModelScope.launch { repository.updateExportLogsEnabled(enabled) }
+    }
+
+    fun clearAllCaches() {
+        viewModelScope.launch { repository.clearAllCaches() }
+    }
+
+    fun resetToDefaults() {
+        viewModelScope.launch { repository.resetToDefaults() }
     }
 }

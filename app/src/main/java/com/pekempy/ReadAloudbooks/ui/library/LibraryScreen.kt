@@ -261,6 +261,21 @@ fun LibraryScreen(
                     }
                 }
             }
+        },
+        bottomBar = {
+            if (viewModel.selectedBooks.isNotEmpty()) {
+                BatchOperationBar(
+                    selectedCount = viewModel.selectedBooks.size,
+                    onCancel = { viewModel.clearSelection() },
+                    onAction = { action ->
+                        when (action) {
+                            BatchAction.DOWNLOAD -> viewModel.batchDownload()
+                            BatchAction.DELETE -> viewModel.batchDelete()
+                            else -> {} // Handle other actions as needed
+                        }
+                    }
+                )
+            }
         }
     ) { padding ->
         BookActionMenu(
@@ -519,7 +534,10 @@ fun LibraryScreen(
                                             showMenu = true
                                         },
                                         onDownloadClick = { viewModel.downloadBook(book) },
-                                        isOfflineMode = viewModel.isOfflineMode
+                                        isOfflineMode = viewModel.isOfflineMode,
+                                        isSelectionMode = viewModel.selectionMode,
+                                        isSelected = viewModel.selectedBooks.contains(book.id),
+                                        onSelectionToggle = { viewModel.toggleBookSelection(book.id) }
                                     )
                                 }
                             }

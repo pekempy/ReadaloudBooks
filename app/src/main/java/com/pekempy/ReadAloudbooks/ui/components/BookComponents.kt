@@ -193,6 +193,30 @@ fun BookItem(
                         strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
                     )
                 }
+                
+                // Checkbox overlay - visible only in selection mode
+                if (isSelectionMode) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.9f))
+                            .padding(4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = { onSelectionToggle?.invoke() },
+                            modifier = Modifier.size(24.dp),
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = MaterialTheme.colorScheme.onPrimary,
+                                uncheckedColor = MaterialTheme.colorScheme.onPrimary,
+                                checkmarkColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                    }
+                }
             }
             Column(modifier = Modifier.padding(12.dp)) {
                 Text(

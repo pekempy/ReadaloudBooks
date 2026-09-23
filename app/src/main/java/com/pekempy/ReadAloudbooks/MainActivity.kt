@@ -36,6 +36,8 @@ import com.pekempy.ReadAloudbooks.ui.reader.ReaderScreen
 import com.pekempy.ReadAloudbooks.ui.reader.ReaderViewModel
 import com.pekempy.ReadAloudbooks.ui.player.AudiobookPlayerScreen
 import com.pekempy.ReadAloudbooks.ui.player.AudiobookViewModel
+import com.pekempy.ReadAloudbooks.ui.settings.AdvancedSettingsScreen
+import com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel
 import com.pekempy.ReadAloudbooks.ui.theme.ReadAloudBooksTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -167,7 +169,7 @@ class ViewModelFactory<T : ViewModel>(
         })[LibraryViewModel::class.java]
 
         setContent {
-            val settings by repository.userSettings.collectAsState(initial = com.pekempy.ReadAloudbooks.data.UserSettings(0, true, 0, 0, 18f, 0, "serif", 1.0f, false, true, true, true, true, 0, 0, 0L, false, emptySet()))
+            val settings by repository.userSettings.collectAsState(initial = com.pekempy.ReadAloudbooks.data.UserSettings(0, true, 0, 0, 0, false, 18f, 0, "serif", 1.0f, false, true, true, true, true, 0, 0, 0L, false, emptySet()))
             
             val isDarkTheme = when (settings.themeMode) {
                 1 -> false
@@ -516,6 +518,30 @@ class ViewModelFactory<T : ViewModel>(
                         )
                     }
                     
+                    // Tab Ordering
+                    composable(
+                        route = "settings/tabs",
+                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
+                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
+                    ) {
+                        val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
+                            factory = object : ViewModelProvider.Factory {
+                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel::class.java)) {
+                                        return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
+                                    }
+                                    throw IllegalArgumentException("Unknown ViewModel class")
+                                }
+                            }
+                        )
+                        com.pekempy.ReadAloudbooks.ui.settings.TabOrderingScreen(
+                            viewModel = settingsViewModel,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                    
                     // Reading Analytics
                     composable(
                         route = "analytics",
@@ -650,6 +676,22 @@ class ViewModelFactory<T : ViewModel>(
                             onSwitchToReadAloud = { id ->
                                 navController.navigate("reader/$id?isReadAloud=true")
                             }
+                        )
+                    }
+                    composable(route = "settings/advanced") {
+                        val settingsViewModel = viewModel<SettingsViewModel>(
+                            factory = object : ViewModelProvider.Factory {
+                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                    if (modelClass.isAssignableFrom(SettingsViewModel::class.java)) {
+                                        return SettingsViewModel(repository) as T
+                                    }
+                                    throw IllegalArgumentException("Unknown ViewModel class")
+                                }
+                            }
+                        )
+                        AdvancedSettingsScreen(
+                            viewModel = settingsViewModel,
+                            onBackClick = { navController.popBackStack() }
                         )
                     }
                     }

@@ -1,11 +1,12 @@
 package com.pekempy.ReadAloudbooks.data
 
-import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import android.content.Context
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
 
@@ -36,6 +37,8 @@ class UserPreferencesRepository(private val context: Context) {
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val SLEEP_TIMER = intPreferencesKey("sleep_timer")
         val THEME_SOURCE = intPreferencesKey("theme_source")
+        val BOOK_THEME_COLOR = intPreferencesKey("book_theme_color")
+        val USE_BOOK_COLORS = booleanPreferencesKey("use_book_colors")
         val PLAYBACK_SPEED = floatPreferencesKey("playback_speed")
         val SLEEP_TIMER_FINISH_CHAPTER = booleanPreferencesKey("sleep_timer_finish_chapter")
 
@@ -50,13 +53,37 @@ class UserPreferencesRepository(private val context: Context) {
         val SHOW_AUTHORS_TAB = booleanPreferencesKey("show_authors_tab")
         val SHOW_SERIES_TAB = booleanPreferencesKey("show_series_tab")
         val SHOW_COLLECTIONS_TAB = booleanPreferencesKey("show_collections_tab")
-
+        val TAB_ORDER = stringPreferencesKey("tab_order")
         val SYNC_FREQUENCY = intPreferencesKey("sync_frequency") // in minutes, 0 = manual
         val SYNC_FREQUENCY_BACKGROUND = intPreferencesKey("sync_frequency_background") // in minutes, 0 = manual
         val LAST_SYNC_TIME = longPreferencesKey("last_sync_time")
+        val IGNORED_SERIES = stringSetPreferencesKey("ignored_series")
         
         val READER_HIDE_PLAYER_WITH_CONTROLS = booleanPreferencesKey("reader_hide_player_with_controls")
-        val IGNORED_SERIES = stringSetPreferencesKey("ignored_series")
+        // Sync Settings
+        val SYNC_WIFI_ONLY = booleanPreferencesKey("sync_wifi_only")
+        val AUTO_SYNC_PROGRESS = booleanPreferencesKey("auto_sync_progress")
+        val BACKGROUND_SYNC_ENABLED = booleanPreferencesKey("background_sync_enabled")
+        
+        // Download Settings
+        val DOWNLOAD_QUALITY = stringPreferencesKey("download_quality") // "high", "medium", "low"
+        val AUTO_DOWNLOAD_NEW_SERIES = booleanPreferencesKey("auto_download_new_series")
+        val CACHE_LIMIT = intPreferencesKey("cache_limit_mb") // in MB
+        
+        // Playback Settings
+        val AUTO_PLAY_NEXT_CHAPTER = booleanPreferencesKey("auto_play_next_chapter")
+        val REMEMBER_POSITION_THRESHOLD = intPreferencesKey("remember_position_threshold") // in seconds
+        val SKIP_SILENCE = booleanPreferencesKey("skip_silence")
+        
+        // Reader Settings
+        val AUTO_SCROLL_SPEED = intPreferencesKey("auto_scroll_speed") // in pixels per second
+        val PAGE_TURN_ANIMATION = booleanPreferencesKey("page_turn_animation")
+        val BRIGHTNESS_OVERRIDE = booleanPreferencesKey("brightness_override")
+        val BRIGHTNESS_LEVEL = floatPreferencesKey("brightness_level") // 0.0 to 1.0
+        
+        // Advanced Options
+        val DEVELOPER_MODE = booleanPreferencesKey("developer_mode")
+        val EXPORT_LOGS_ENABLED = booleanPreferencesKey("export_logs_enabled")
     }
 
     val userCredentials: Flow<UserCredentials?> = context.dataStore.data.map { preferences ->
@@ -89,6 +116,8 @@ class UserPreferencesRepository(private val context: Context) {
             useDynamicColors = preferences[DYNAMIC_COLOR] ?: true,
             sleepTimerMinutes = preferences[SLEEP_TIMER] ?: 0,
             themeSource = preferences[THEME_SOURCE] ?: 0,
+            bookThemeColor = preferences[BOOK_THEME_COLOR] ?: 0,
+            useBookColors = preferences[USE_BOOK_COLORS] ?: false,
             readerFontSize = preferences[READER_FONT_SIZE] ?: 18f,
             readerTheme = preferences[READER_THEME] ?: 0,
             readerFontFamily = preferences[READER_FONT_FAMILY] ?: "serif",
@@ -102,7 +131,27 @@ class UserPreferencesRepository(private val context: Context) {
             syncFrequencyBackground = preferences[SYNC_FREQUENCY_BACKGROUND] ?: 0,
             lastSyncTime = preferences[LAST_SYNC_TIME] ?: 0L,
             readerHidePlayerWithControls = preferences[READER_HIDE_PLAYER_WITH_CONTROLS] ?: false,
-            ignoredSeries = preferences[IGNORED_SERIES] ?: emptySet()
+            ignoredSeries = preferences[IGNORED_SERIES] ?: emptySet(),
+            // Sync Settings
+            syncWifiOnly = preferences[SYNC_WIFI_ONLY] ?: false,
+            autoSyncProgress = preferences[AUTO_SYNC_PROGRESS] ?: true,
+            backgroundSyncEnabled = preferences[BACKGROUND_SYNC_ENABLED] ?: true,
+            // Download Settings
+            downloadQuality = preferences[DOWNLOAD_QUALITY] ?: "high",
+            autoDownloadNewSeries = preferences[AUTO_DOWNLOAD_NEW_SERIES] ?: false,
+            cacheLimitMb = preferences[CACHE_LIMIT] ?: 1000,
+            // Playback Settings
+            autoPlayNextChapter = preferences[AUTO_PLAY_NEXT_CHAPTER] ?: false,
+            rememberPositionThreshold = preferences[REMEMBER_POSITION_THRESHOLD] ?: 30,
+            skipSilence = preferences[SKIP_SILENCE] ?: false,
+            // Reader Settings
+            autoScrollSpeed = preferences[AUTO_SCROLL_SPEED] ?: 50,
+            pageTurnAnimation = preferences[PAGE_TURN_ANIMATION] ?: true,
+            brightnessOverride = preferences[BRIGHTNESS_OVERRIDE] ?: false,
+            brightnessLevel = preferences[BRIGHTNESS_LEVEL] ?: 1.0f,
+            // Advanced Options
+            developerMode = preferences[DEVELOPER_MODE] ?: false,
+            exportLogsEnabled = preferences[EXPORT_LOGS_ENABLED] ?: false
         )
     }
     suspend fun saveCredentials(
@@ -164,6 +213,18 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateThemeSource(source: Int) {
         context.dataStore.edit { preferences ->
             preferences[THEME_SOURCE] = source
+        }
+    }
+
+    suspend fun updateBookThemeColor(color: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[BOOK_THEME_COLOR] = color
+        }
+    }
+
+    suspend fun setUseBookColors(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[USE_BOOK_COLORS] = enabled
         }
     }
 
@@ -279,6 +340,20 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateShowCollectionsTab(enabled: Boolean) {
         context.dataStore.edit { preferences -> preferences[SHOW_COLLECTIONS_TAB] = enabled }
     }
+    suspend fun updateTabOrder(order: List<String>) {
+        context.dataStore.edit { preferences ->
+            preferences[TAB_ORDER] = order.joinToString(",")
+        }
+    }
+
+    fun getTabOrder(): Flow<List<String>> = context.dataStore.data.map { preferences ->
+        val order = preferences[TAB_ORDER] ?: ""
+        if (order.isEmpty()) {
+            listOf("shelf", "books", "authors", "series", "collections")
+        } else {
+            order.split(",")
+        }
+    }
 
     suspend fun updateSyncFrequency(minutes: Int) {
         context.dataStore.edit { preferences -> preferences[SYNC_FREQUENCY] = minutes }
@@ -311,6 +386,89 @@ class UserPreferencesRepository(private val context: Context) {
             preferences[IGNORED_SERIES] = current - seriesName
         }
     }
+    suspend fun updateIgnoredSeries(series: Set<String>) {
+        context.dataStore.edit { preferences ->
+            preferences[IGNORED_SERIES] = series
+        }
+    }
+
+    // Sync Settings
+    suspend fun updateSyncWifiOnly(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[SYNC_WIFI_ONLY] = enabled }
+    }
+
+    suspend fun updateAutoSyncProgress(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[AUTO_SYNC_PROGRESS] = enabled }
+    }
+
+    suspend fun updateBackgroundSyncEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[BACKGROUND_SYNC_ENABLED] = enabled }
+    }
+
+    // Download Settings
+    suspend fun updateDownloadQuality(quality: String) {
+        context.dataStore.edit { preferences -> preferences[DOWNLOAD_QUALITY] = quality }
+    }
+
+    suspend fun updateAutoDownloadNewSeries(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[AUTO_DOWNLOAD_NEW_SERIES] = enabled }
+    }
+
+    suspend fun updateCacheLimit(limitMb: Int) {
+        context.dataStore.edit { preferences -> preferences[CACHE_LIMIT] = limitMb }
+    }
+
+    // Playback Settings
+    suspend fun updateAutoPlayNextChapter(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[AUTO_PLAY_NEXT_CHAPTER] = enabled }
+    }
+
+    suspend fun updateRememberPositionThreshold(seconds: Int) {
+        context.dataStore.edit { preferences -> preferences[REMEMBER_POSITION_THRESHOLD] = seconds }
+    }
+
+    suspend fun updateSkipSilence(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[SKIP_SILENCE] = enabled }
+    }
+
+    // Reader Settings
+    suspend fun updateAutoScrollSpeed(speed: Int) {
+        context.dataStore.edit { preferences -> preferences[AUTO_SCROLL_SPEED] = speed }
+    }
+
+    suspend fun updatePageTurnAnimation(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[PAGE_TURN_ANIMATION] = enabled }
+    }
+
+    suspend fun updateBrightnessOverride(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[BRIGHTNESS_OVERRIDE] = enabled }
+    }
+
+    suspend fun updateBrightnessLevel(level: Float) {
+        context.dataStore.edit { preferences -> preferences[BRIGHTNESS_LEVEL] = level }
+    }
+
+    // Advanced Options
+    suspend fun updateDeveloperMode(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[DEVELOPER_MODE] = enabled }
+    }
+
+    suspend fun updateExportLogsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[EXPORT_LOGS_ENABLED] = enabled }
+    }
+
+    // Action methods
+    suspend fun clearAllCaches() {
+        // This would call into a CacheManager or similar
+        // For now, this is a placeholder that logs the action
+        android.util.Log.i("UserPreferencesRepository", "Clearing all caches")
+    }
+
+    suspend fun resetToDefaults() {
+        context.dataStore.edit { preferences ->
+            preferences.clear()
+        }
+    }
 }
 
 data class UserSettings(
@@ -318,6 +476,8 @@ data class UserSettings(
     val useDynamicColors: Boolean,
     val sleepTimerMinutes: Int,
     val themeSource: Int,
+    val bookThemeColor: Int,
+    val useBookColors: Boolean,
     val readerFontSize: Float,
     val readerTheme: Int,
     val readerFontFamily: String,
@@ -331,5 +491,25 @@ data class UserSettings(
     val syncFrequencyBackground: Int,
     val lastSyncTime: Long,
     val readerHidePlayerWithControls: Boolean,
-    val ignoredSeries: Set<String> = emptySet()
+    val ignoredSeries: Set<String> = emptySet(),
+    // Sync Settings
+    val syncWifiOnly: Boolean = false,
+    val autoSyncProgress: Boolean = true,
+    val backgroundSyncEnabled: Boolean = true,
+    // Download Settings
+    val downloadQuality: String = "high",
+    val autoDownloadNewSeries: Boolean = false,
+    val cacheLimitMb: Int = 1000,
+    // Playback Settings
+    val autoPlayNextChapter: Boolean = false,
+    val rememberPositionThreshold: Int = 30,
+    val skipSilence: Boolean = false,
+    // Reader Settings
+    val autoScrollSpeed: Int = 50,
+    val pageTurnAnimation: Boolean = true,
+    val brightnessOverride: Boolean = false,
+    val brightnessLevel: Float = 1.0f,
+    // Advanced Options
+    val developerMode: Boolean = false,
+    val exportLogsEnabled: Boolean = false
 )

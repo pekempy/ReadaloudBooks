@@ -115,6 +115,19 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
         selectedBooks = emptySet()
         selectionMode = false
     }
+
+    fun batchDownload() {
+        selectedBooks.forEach { bookId ->
+            books.find { it.id == bookId }?.let { downloadBook(it) }
+        }
+        clearSelection()
+    }
+
+    fun batchDelete() {
+        // Remove selected books from the list
+        books = books.filter { !selectedBooks.contains(it.id) }
+        clearSelection()
+    }
     
     enum class SortOption { TitleAsc, TitleDesc, AuthorAsc, AuthorDesc, SeriesAsc, SeriesDesc, AddedAsc, AddedDesc }
     var currentSort by mutableStateOf(SortOption.TitleAsc)

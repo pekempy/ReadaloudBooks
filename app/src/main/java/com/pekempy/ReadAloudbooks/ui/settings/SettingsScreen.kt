@@ -72,6 +72,12 @@ fun SettingsHome(
             ) { onNavigateTo("settings/theming") }
             
             SettingsNavItem(
+                title = "Tab Ordering",
+                subtitle = "Customize tab visibility and order",
+                iconRes = R.drawable.ic_list
+            ) { onNavigateTo("settings/tabs") }
+            
+            SettingsNavItem(
                 title = "Audio Playback",
                 subtitle = "Player settings",
                 iconRes = R.drawable.ic_headphones
@@ -456,6 +462,20 @@ fun SettingsTheming(
                         }
                     )
                  }
+             }
+
+             SettingsSection("Book Cover Theming") {
+                 Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Use colors from book covers")
+                    Switch(
+                        checked = viewModel.useBookColors,
+                        onCheckedChange = { viewModel.updateUseBookColors(it) }
+                    )
+                }
              }
         }
     }

@@ -12,6 +12,7 @@ import com.pekempy.ReadAloudbooks.data.api.AppContainer
 import com.pekempy.ReadAloudbooks.util.AudioCodecConverter
 import com.pekempy.ReadAloudbooks.util.DownloadUtils
 import com.pekempy.ReadAloudbooks.util.FormatUtils
+import com.pekempy.ReadAloudbooks.util.ColorExtractor
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -31,11 +32,14 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import java.util.concurrent.TimeUnit
 import com.pekempy.ReadAloudbooks.data.UnifiedProgress
+import com.pekempy.ReadAloudbooks.data.ReadingStatsRepository
+import com.pekempy.ReadAloudbooks.data.ReadingSession
 
 class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository) : ViewModel() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var player: Player? = null
-    
+    private lateinit var statsRepository: ReadingStatsRepository
+    private var sessionStartTime: Long? = null
     var currentBook by mutableStateOf<Book?>(null)
     var isPlaying by mutableStateOf(false)
     var currentPosition by mutableLongStateOf(0L)
@@ -100,6 +104,9 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
     fun initializePlayer(context: android.content.Context) {
         this.appContext = context.applicationContext
         this.filesDir = context.filesDir
+        if (!::statsRepository.isInitialized) {
+            statsRepository = ReadingStatsRepository(context.applicationContext)
+        }
         
         if (player == null) {
             val sessionToken = SessionToken(context, ComponentName(context, PlaybackService::class.java))
@@ -111,6 +118,11 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 controller.addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(playing: Boolean) {
                         this@ReadAloudAudioViewModel.isPlaying = playing
+                        if (playing) {
+                            this@ReadAloudAudioViewModel.startSession()
+                        } else {
+                            this@ReadAloudAudioViewModel.endSession()
+                        }
                     }
 
                     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -242,6 +254,15 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 
                 withContext(Dispatchers.Main) {
                     currentBook = book
+                }
+                // Extract dominant color from book cover
+                viewModelScope.launch {
+                    book.coverUrl?.let { coverUrl ->
+                        val color = ColorExtractor.extractDominantColor(coverUrl, appContext!!)
+                        if (color != null && ColorExtractor.isColorUsable(color)) {
+                            repository.updateBookThemeColor(color)
+                        }
+                    }
                 }
                 repository.saveLastActiveBook(bookId, "readaloud")
                 book.series?.let { repository.unignoreSeries(it) }
@@ -499,6 +520,13 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                          currentElementId = progress.elementId
                      }
                      isLoading = false
+                }
+                // Extract dominant color from book cover
+                book.coverUrl?.let { coverUrl ->
+                    val color = ColorExtractor.extractDominantColor(coverUrl, appContext!!)
+                    if (color != null && ColorExtractor.isColorUsable(color)) {
+                        repository.updateBookThemeColor(color)
+                    }
                 }
             } catch (e: Exception) {}
         }
@@ -890,6 +918,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
     fun pause() {
         player?.pause()
         saveBookProgress()
+        endSession()
     }
     
     fun seekToElement(elementId: String) {
@@ -1186,15 +1215,49 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         } catch (e: Exception) {}
     }
 
+    private fun startSession() {
+        // Only start a new session if there's a current book and we don't already have an active session
+        if (currentBook != null && sessionStartTime == null) {
+            sessionStartTime = System.currentTimeMillis()
+        }
+    }
+    
+    private fun endSession() {
+        sessionStartTime?.let { startTime ->
+            val endTime = System.currentTimeMillis()
+            val duration = endTime - startTime
+            
+            // Only log sessions > 10 seconds to avoid logging short pauses
+            if (duration > 10000 && currentBook != null && ::statsRepository.isInitialized) {
+                viewModelScope.launch {
+                    try {
+                        statsRepository.insertSession(
+                            ReadingSession(
+                                bookId = currentBook!!.id,
+                                startTime = startTime,
+                                endTime = endTime,
+                                durationMs = duration,
+                                bookType = "readaloud"
+                            )
+                        )
+                    } catch (e: Exception) {
+                        android.util.Log.e("ReadAloudAudioVM", "Error inserting reading session", e)
+                    }
+                }
+            }
+        }
+        sessionStartTime = null
+    }
+
     override fun onCleared() {
         super.onCleared()
+        endSession()
         controllerFuture?.let {
             MediaController.releaseFuture(it)
         }
         player = null
         progressJob?.cancel()
         sleepTimerJob?.cancel()
-        
         try {
             currentZipFile?.close()
         } catch (e: Exception) {

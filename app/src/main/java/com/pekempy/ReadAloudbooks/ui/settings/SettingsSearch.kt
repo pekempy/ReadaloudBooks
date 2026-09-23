@@ -14,6 +14,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.pekempy.ReadAloudbooks.R
 
+data class SettingCategory(val displayName: String)
+
+data class SettingItem(
+    val title: String,
+    val subtitle: String? = null,
+    val icon: Int? = null,
+    val category: SettingCategory,
+    val route: String
+)
+
 /**
  * Settings search with fuzzy matching
  */

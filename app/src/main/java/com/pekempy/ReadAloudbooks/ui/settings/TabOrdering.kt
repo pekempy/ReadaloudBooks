@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.pekempy.ReadAloudbooks.ui.settings
 
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -26,63 +28,104 @@ data class TabItem(
 
 @Composable
 fun TabOrderingScreen(
-    tabs: List<TabItem>,
-    onReorder: (List<TabItem>) -> Unit,
-    onToggle: (TabItem) -> Unit,
-    onSave: () -> Unit,
-    modifier: Modifier = Modifier
+    viewModel: SettingsViewModel,
+    onBack: () -> Unit
 ) {
     val haptic = rememberHaptic()
+    
+    // Create tab items from settings
+    val tabs = remember(
+        viewModel.showBooksTab,
+        viewModel.showAuthorsTab,
+        viewModel.showSeriesTab,
+        viewModel.showCollectionsTab
+    ) {
+        listOf(
+            TabItem("shelf", "Shelf", R.drawable.ic_shelves, enabled = true),
+            TabItem("books", "Books", R.drawable.ic_book, viewModel.showBooksTab),
+            TabItem("authors", "Authors", R.drawable.ic_person, viewModel.showAuthorsTab),
+            TabItem("series", "Series", R.drawable.ic_list, viewModel.showSeriesTab),
+            TabItem("collections", "Collections", R.drawable.ic_folder, viewModel.showCollectionsTab)
+        )
+    }
+    
     var currentTabs by remember { mutableStateOf(tabs) }
     
-    Column(modifier = modifier.fillMaxSize()) {
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Tab Ordering") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
         ) {
-            item {
-                Text(
-                    text = "Drag to reorder tabs",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Long press and drag to change order",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    Text(
+                        text = "Drag to reorder tabs",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Long press and drag to change order",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+                
+                itemsIndexed(
+                    items = currentTabs,
+                    key = { _, item -> item.id }
+                ) { index, tab ->
+                    DraggableTabCard(
+                        tab = tab,
+                        isEnabled = !tab.id.startsWith("shelf"),
+                        onToggle = {
+                            haptic(HapticFeedback.FeedbackType.LIGHT)
+                            viewModel.toggleTab(tab.id)
+                            // Update local state
+                            currentTabs = currentTabs.map {
+                                if (it.id == tab.id) it.copy(enabled = !it.enabled)
+                                else it
+                            }
+                        },
+                        onDragStart = {
+                            haptic(HapticFeedback.FeedbackType.MEDIUM)
+                        }
+                    )
+                }
             }
             
-            itemsIndexed(
-                items = currentTabs,
-                key = { _, item -> item.id }
-            ) { index, tab ->
-                DraggableTabCard(
-                    tab = tab,
-                    onToggle = {
-                        haptic(HapticFeedback.FeedbackType.LIGHT)
-                        onToggle(tab)
-                    },
-                    onDragStart = {
-                        haptic(HapticFeedback.FeedbackType.MEDIUM)
-                    }
-                )
+            Button(
+                onClick = {
+                    haptic(HapticFeedback.FeedbackType.HEAVY)
+                    viewModel.updateTabOrder(currentTabs.map { it.id })
+                    onBack()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text("Save Order")
             }
-        }
-        
-        Button(
-            onClick = {
-                haptic(HapticFeedback.FeedbackType.HEAVY)
-                onReorder(currentTabs)
-                onSave()
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Text("Save Order")
         }
     }
 }
@@ -90,6 +133,7 @@ fun TabOrderingScreen(
 @Composable
 private fun DraggableTabCard(
     tab: TabItem,
+    isEnabled: Boolean,
     onToggle: () -> Unit,
     onDragStart: () -> Unit
 ) {
@@ -152,10 +196,12 @@ private fun DraggableTabCard(
                 }
             )
             
-            Switch(
-                checked = tab.enabled,
-                onCheckedChange = { onToggle() }
-            )
+            if (isEnabled) {
+                Switch(
+                    checked = tab.enabled,
+                    onCheckedChange = { onToggle() }
+                )
+            }
         }
     }
 }
