@@ -180,7 +180,7 @@ class ViewModelFactory<T : ViewModel>(
             ReadAloudBooksTheme(
                 darkTheme = isDarkTheme,
                 dynamicColour = settings.useDynamicColors,
-                themeSource = settings.themeSource,
+                themeSource = if (settings.useBookColors && settings.bookThemeColor != 0) settings.bookThemeColor else settings.themeSource,
                 amoled = settings.themeMode == 3
             ) {
                 val navController = rememberNavController()
