@@ -59,65 +59,78 @@ fun SettingsHome(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
+            // ACCOUNT & SERVER
             SettingsNavItem(
-                title = "Connection",
-                subtitle = "Manage server and account",
+                title = "Account & Server",
+                subtitle = "Connection and account settings",
                 iconRes = R.drawable.ic_link
             ) { onNavigateTo("settings/connections") }
             
+            HorizontalDivider(thickness = 8.dp, color = Color.Transparent)
+            
+            // APPEARANCE
             SettingsNavItem(
                 title = "Appearance",
-                subtitle = "Customise appearance",
+                subtitle = "Theme, colors, and visual style",
                 iconRes = R.drawable.ic_palette
             ) { onNavigateTo("settings/theming") }
             
             SettingsNavItem(
-                title = "Tab Ordering",
-                subtitle = "Customize tab visibility and order",
+                title = "Library",
+                subtitle = "Tabs, layout, and organization",
                 iconRes = R.drawable.ic_list
-            ) { onNavigateTo("settings/tabs") }
+            ) { onNavigateTo("settings/library") }
             
-            SettingsNavItem(
-                title = "Audio Playback",
-                subtitle = "Player settings",
-                iconRes = R.drawable.ic_headphones
-            ) { onNavigateTo("settings/audio") }
+            HorizontalDivider(thickness = 8.dp, color = Color.Transparent)
             
+            // READING & LISTENING
             SettingsNavItem(
-                title = "eBook",
-                subtitle = "Reader settings",
+                title = "Reader",
+                subtitle = "eBook font, theme, and display",
                 iconRes = R.drawable.ic_book
             ) { onNavigateTo("settings/ebook") }
             
+            SettingsNavItem(
+                title = "Audio Playback",
+                subtitle = "Sleep timer and playback speed",
+                iconRes = R.drawable.ic_headphones
+            ) { onNavigateTo("settings/audio") }
+            
+            HorizontalDivider(thickness = 8.dp, color = Color.Transparent)
+            
+            // DATA & STORAGE
             SettingsNavItem(
                 title = "Storage",
                 subtitle = "Manage downloaded files",
                 iconRes = R.drawable.ic_storage
             ) { onNavigateTo("storage") }
-
-            SettingsNavItem(
-                title = "Support",
-                subtitle = "Support the projects and developer",
-                iconRes = R.drawable.ic_card_giftcard
-            ) { onNavigateTo("settings/support") }
             
             SettingsNavItem(
                 title = "Backup & Restore",
-                subtitle = "Export and import settings",
+                subtitle = "Export and import your data",
                 iconRes = R.drawable.ic_download
             ) { onNavigateTo("settings/backup") }
-            
-            SettingsNavItem(
-                title = "Advanced",
-                subtitle = "Advanced preferences",
-                iconRes = R.drawable.ic_settings
-            ) { onNavigateTo("settings/advanced") }
-            
+
             SettingsNavItem(
                 title = "Analytics",
                 subtitle = "View reading statistics",
                 iconRes = R.drawable.ic_history
             ) { onNavigateTo("analytics") }
+            
+            HorizontalDivider(thickness = 8.dp, color = Color.Transparent)
+            
+            // OTHER
+            SettingsNavItem(
+                title = "Advanced",
+                subtitle = "Developer options and advanced settings",
+                iconRes = R.drawable.ic_settings
+            ) { onNavigateTo("settings/advanced") }
+
+            SettingsNavItem(
+                title = "Support",
+                subtitle = "Help the project and developer",
+                iconRes = R.drawable.ic_card_giftcard
+            ) { onNavigateTo("settings/support") }
         }
     }
 }
@@ -395,40 +408,6 @@ fun SettingsTheming(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-             SettingsSection("Theme Mode") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ThemeOptionButton("System", viewModel.themeMode == 0, { viewModel.setTheme(0) }, Modifier.weight(1f))
-                        ThemeOptionButton("Light", viewModel.themeMode == 1, { viewModel.setTheme(1) }, Modifier.weight(1f))
-                    }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ThemeOptionButton("Dark", viewModel.themeMode == 2, { viewModel.setTheme(2) }, Modifier.weight(1f))
-                        ThemeOptionButton("Amoled", viewModel.themeMode == 3, { viewModel.setTheme(3) }, Modifier.weight(1f))
-                    }
-                }
-             }
-
-             SettingsSection("Navigation Bar") {
-                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                         Text("Show Books")
-                         Switch(checked = viewModel.showBooksTab, onCheckedChange = { viewModel.updateShowBooksTab(it) })
-                     }
-                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                         Text("Show Authors")
-                         Switch(checked = viewModel.showAuthorsTab, onCheckedChange = { viewModel.updateShowAuthorsTab(it) })
-                     }
-                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                         Text("Show Series")
-                         Switch(checked = viewModel.showSeriesTab, onCheckedChange = { viewModel.updateShowSeriesTab(it) })
-                     }
-                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                         Text("Show Collections")
-                         Switch(checked = viewModel.showCollectionsTab, onCheckedChange = { viewModel.updateShowCollectionsTab(it) })
-                     }
-                 }
-             }
-
              SettingsSection("Dynamic Colour") {
                  Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -476,6 +455,78 @@ fun SettingsTheming(
                         onCheckedChange = { viewModel.updateUseBookColors(it) }
                     )
                 }
+             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsLibrary(
+    viewModel: SettingsViewModel,
+    onBack: () -> Unit,
+    onTabOrdering: () -> Unit
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Library") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent
+                )
+            )
+        }
+    ) { padding ->
+        Column(
+             modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+             SettingsSection("Navigation Tabs") {
+                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                     Text(
+                         "Choose which tabs appear in the bottom navigation",
+                         style = MaterialTheme.typography.bodyMedium,
+                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                     )
+                     
+                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                         Text("Show Books Tab")
+                         Switch(checked = viewModel.showBooksTab, onCheckedChange = { viewModel.updateShowBooksTab(it) })
+                     }
+                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                         Text("Show Authors Tab")
+                         Switch(checked = viewModel.showAuthorsTab, onCheckedChange = { viewModel.updateShowAuthorsTab(it) })
+                     }
+                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                         Text("Show Series Tab")
+                         Switch(checked = viewModel.showSeriesTab, onCheckedChange = { viewModel.updateShowSeriesTab(it) })
+                     }
+                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                         Text("Show Collections Tab")
+                         Switch(checked = viewModel.showCollectionsTab, onCheckedChange = { viewModel.updateShowCollectionsTab(it) })
+                     }
+                 }
+             }
+             
+             SettingsSection("Tab Ordering") {
+                 Button(
+                     onClick = onTabOrdering,
+                     modifier = Modifier.fillMaxWidth()
+                 ) {
+                     Icon(painterResource(R.drawable.ic_list), contentDescription = null)
+                     Spacer(Modifier.width(8.dp))
+                     Text("Customize Tab Order")
+                 }
              }
         }
     }
