@@ -64,9 +64,6 @@ class ViewModelFactory<T : ViewModel>(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         @Suppress("UNCHECKED_CAST")
         return creator() as T
-        
-        // CRITICAL: Enable WebView debugging to see console.log in logcat
-        android.webkit.WebView.setWebContentsDebuggingEnabled(true)
     }
 }
     private lateinit var readerViewModel: ReaderViewModel
@@ -95,6 +92,9 @@ class ViewModelFactory<T : ViewModel>(
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         
+        
+        // CRITICAL: Enable WebView debugging to see console.log in logcat
+        android.webkit.WebView.setWebContentsDebuggingEnabled(true)
         repository = UserPreferencesRepository(applicationContext)
         lifecycleScope.launch {
             val initialSettings = repository.userSettings.first()
