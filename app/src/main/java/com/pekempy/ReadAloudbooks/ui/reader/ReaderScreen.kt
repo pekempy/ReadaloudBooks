@@ -605,25 +605,44 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 }
 
 
+                /* Premium Word Highlighting */
                 .highlight {
+                    background: linear-gradient(180deg, 
+                        transparent 0%, 
+                        transparent 40%,
+                        var(--accent-color) 40%,
+                        var(--accent-color) 95%,
+                        transparent 95%
+                    ) !important;
                     background-color: transparent !important;
-                    border-bottom: 2px solid var(--accent-color) !important;
+                    border-bottom: none !important;
+                    position: relative;
+                    transition: all 0.15s cubic-bezier(0.4, 0.0, 0.2, 1);
+                    opacity: 0.3;
                 }
                 
-                .search-highlight {
-                    color: inherit !important;
-                    border-bottom: 3px solid var(--accent-color);
-                    border-radius: 0;
-                    display: inline;
-                    box-shadow: none;
-                    position: relative !important;
-                    z-index: 9999 !important;
+                .highlight::before {
+                    content: '';
+                    position: absolute;
+                    left: -2px;
+                    right: -2px;
+                    top: -1px;
+                    bottom: -1px;
+                    background: var(--accent-color);
+                    opacity: 0.08;
+                    border-radius: 2px;
+                    z-index: -1;
                 }
                 
-                [data-theme="2"] .highlight, [data-theme="3"] .highlight {
-                    border-bottom: 2px solid var(--accent-color) !important;
+                /* Subtle pulse animation for active word */
+                @keyframes highlight-pulse {
+                    0%, 100% { opacity: 0.3; }
+                    50% { opacity: 0.5; }
                 }
-            </style>
+                
+                .highlight.active {
+                    animation: highlight-pulse 1.5s ease-in-out infinite;
+                }
             <script>
                 let currentPage = 0;
                 let pageCount = 0;
@@ -875,20 +894,34 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                         return;
                     }
 
-                    // Highlight visual style
+                    // Smooth highlight transition
                     if (currentHighlightId !== id) {
-                         document.querySelectorAll('.highlight').forEach(o => o.classList.remove('highlight'));
-                         parts.forEach(el => el.classList.add('highlight'));
+                         // Fade out old highlights
+                         document.querySelectorAll('.highlight').forEach(el => {
+                             el.classList.remove('active');
+                             setTimeout(() => el.classList.remove('highlight'), 150);
+                         });
+                         
+                         // Fade in new highlights with stagger
+                         parts.forEach((el, index) => {
+                             setTimeout(() => {
+                                 el.classList.add('highlight');
+                                 if (index === 0) el.classList.add('active');
+                             }, index * 20);
+                         });
+                         
                          currentHighlightId = id;
                     } else {
-                         // Ensure new parts are highlighted if something changed
-                         parts.forEach(el => el.classList.add('highlight'));
+                         // Ensure new parts are highlighted
+                         parts.forEach(el => {
+                             el.classList.add('highlight');
+                         });
+                         if (parts.length > 0) parts[0].classList.add('active');
                     }
 
                     const wrapper = document.getElementById('pagination-wrapper');
                     
-                    // HEURISTIC: Short Orphan Check
-                    // If the highlight is short and at the end of the page, checking next content.
+                    // Short Orphan Check
                     let totalLen = 0;
                     parts.forEach(p => totalLen += p.textContent.length);
                     
@@ -915,7 +948,7 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                                  if (nextPage) {
                                       const nextIdx = Array.from(wrapper.children).indexOf(nextPage);
                                       if (nextIdx > pIdx) {
-                                          console.log("Short highlight detected at page boundary. Eagerly advancing to Page " + nextIdx);
+                                          console.log("Short highlight detected at page boundary. Advancing to Page " + nextIdx);
                                           if (currentPage !== nextIdx) gotoPage(nextIdx, animated);
                                           return;
                                       }
@@ -924,7 +957,7 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                          }
                     }
 
-                    // STANDARD EAGER STRATEGY: Scroll to the LAST page containing any part of the highlight.
+                    // Scroll to the last page containing any part of the highlight
                     const lastPart = parts[parts.length - 1];
                     const page = lastPart.closest('.page');
                     
