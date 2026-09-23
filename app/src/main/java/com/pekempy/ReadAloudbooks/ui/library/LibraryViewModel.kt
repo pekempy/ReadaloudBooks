@@ -86,6 +86,36 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     
     var selectedFilter: String? by mutableStateOf(null)
     
+    // Batch selection
+    var selectionMode by mutableStateOf(false)
+        private set
+    var selectedBooks by mutableStateOf<Set<String>>(emptySet())
+        private set
+    
+    fun toggleSelectionMode() {
+        selectionMode = !selectionMode
+        if (!selectionMode) {
+            selectedBooks = emptySet()
+        }
+    }
+    
+    fun toggleBookSelection(bookId: String) {
+        selectedBooks = if (bookId in selectedBooks) {
+            selectedBooks - bookId
+        } else {
+            selectedBooks + bookId
+        }
+    }
+    
+    fun selectAllBooks() {
+        selectedBooks = displayedBooks.map { it.id }.toSet()
+    }
+    
+    fun clearSelection() {
+        selectedBooks = emptySet()
+        selectionMode = false
+    }
+    
     enum class SortOption { TitleAsc, TitleDesc, AuthorAsc, AuthorDesc, SeriesAsc, SeriesDesc, AddedAsc, AddedDesc }
     var currentSort by mutableStateOf(SortOption.TitleAsc)
 
