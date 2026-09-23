@@ -265,6 +265,37 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 val calculatedDuration = localClipSegments.sumOf { it.clipEndMs - it.clipBeginMs }
                 android.util.Log.i("ReadAloudAudioVM", "TOTAL BOOK DURATION: ${FormatUtils.formatTime(calculatedDuration)} ($calculatedDuration ms)")
                 
+                // Try to extract chapters from M4B file first (has real chapter names, not split_XXX)
+                val m4bChapters = try {
+                    val bookDir = com.pekempy.ReadAloudbooks.util.DownloadUtils.getBookDir(filesDir!!, book)
+                    val baseFileName = com.pekempy.ReadAloudbooks.util.DownloadUtils.getBaseFileName(book)
+                    val m4bFile = java.io.File(bookDir, "$baseFileName.m4b")
+                    
+                    if (m4bFile.exists()) {
+                        android.util.Log.i("ReadAloudAudioVM", "Extracting chapters from M4B file: ${m4bFile.absolutePath}")
+                        val metadata = com.pekempy.ReadAloudbooks.util.AudioCodecConverter.getAudioMetadata(m4bFile.absolutePath)
+                        
+                        if (metadata.chapters.isNotEmpty()) {
+                            android.util.Log.i("ReadAloudAudioVM", "Found ${metadata.chapters.size} chapters in M4B metadata")
+                            metadata.chapters.map { probedChapter ->
+                                Chapter(
+                                    title = probedChapter.title,
+                                    startOffset = probedChapter.startMs,
+                                    duration = probedChapter.durationMs
+                                )
+                            }
+                        } else {
+                            null
+                        }
+                    } else {
+                        android.util.Log.w("ReadAloudAudioVM", "M4B file not found, falling back to EPUB chapters")
+                        null
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("ReadAloudAudioVM", "Failed to extract M4B chapters: ${e.message}")
+                    null
+                }
+                
                 val chaptersFromXml = parseChaptersXml(currentZipFile!!, calculatedDuration)
                 val localChaptersList = if (chaptersFromXml != null && chaptersFromXml.isNotEmpty()) {
                     android.util.Log.i("ReadAloudAudioVM", "Using ${chaptersFromXml.size} chapters from misc/chapters.xml")
