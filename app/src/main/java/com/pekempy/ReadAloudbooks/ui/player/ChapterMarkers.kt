@@ -171,7 +171,7 @@ fun ChapterList(
             modifier = Modifier.padding(bottom = 8.dp)
         )
         
-        chapters.forEach { chapter ->
+        chapters.forEachIndexed { i, chapter ->
             val isCurrentChapter = currentPosition >= chapter.startOffset &&
                     currentPosition < chapter.startOffset + chapter.duration
             

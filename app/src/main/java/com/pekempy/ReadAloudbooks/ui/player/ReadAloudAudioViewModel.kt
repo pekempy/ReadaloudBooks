@@ -272,7 +272,8 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                     val m4bUrl = book.audiobookUrl
                     if (!m4bUrl.isNullOrBlank()) {
                         android.util.Log.i("ReadAloudAudioVM", "Probing M4B stream for chapters: $m4bUrl")
-                        val metadata = AudioCodecConverter.getAudioMetadata(m4bUrl)
+                        val converter = AudioCodecConverter(AppContainer.context)
+                        val metadata = converter.getAudioMetadata(m4bUrl)
                         
                         if (metadata.chapters.isNotEmpty()) {
                             android.util.Log.i("ReadAloudAudioVM", "✅ Found ${metadata.chapters.size} chapters from Storyteller M4B stream!")
