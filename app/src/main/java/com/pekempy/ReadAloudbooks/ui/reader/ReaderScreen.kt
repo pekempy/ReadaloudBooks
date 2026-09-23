@@ -1049,6 +1049,7 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 }
                 
                 // ERROR HANDLER
+                window.onerror = function(msg, url, lineNo, columnNo, error) {
                     console.error("JavaScript Error: " + msg + " at line " + lineNo + ":" + columnNo);
                     return false;
                 };
