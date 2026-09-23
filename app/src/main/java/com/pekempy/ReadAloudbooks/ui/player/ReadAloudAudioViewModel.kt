@@ -415,7 +415,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                     hrefToAudioOffset.clear()
                     hrefToAudioOffset.putAll(localChapterOffsets)
                     audioChapterOffsets = localChapterOffsets.mapValues { it.value / 1000.0 }
-                    chapters = localChaptersList
+                    chapters = m4bChapters ?: localChaptersList
                     duration = calculatedDuration
                     loadedSpineHrefs = spineHrefs
                     
