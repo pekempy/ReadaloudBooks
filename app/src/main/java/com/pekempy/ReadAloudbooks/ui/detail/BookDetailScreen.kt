@@ -352,8 +352,26 @@ fun BookDetailScreen(
                             }
                         }
 
+                        // Smart conditional action buttons
                         val currentActiveJob = viewModel.activeDownload
-                        if (!book.isDownloaded) {
+                        val downloadedCount = listOf(
+                            book.isEbookDownloaded,
+                            book.isAudiobookDownloaded,
+                            book.isReadAloudDownloaded
+                        ).count { it }
+                        
+                        val availableCount = listOf(
+                            book.hasEbook,
+                            book.hasAudiobook,
+                            book.hasReadAloud
+                        ).count { it }
+                        
+                        val hasMoreToDownload = downloadedCount > 0 && downloadedCount < availableCount
+                        val allDownloaded = downloadedCount == availableCount && downloadedCount > 0
+                        val nothingDownloaded = downloadedCount == 0
+                        
+                        if (nothingDownloaded) {
+                            // Nothing downloaded: Show full-width download button
                             Button(
                                 onClick = { showDownloadDialog = true },
                                 enabled = currentActiveJob == null && !viewModel.isOfflineMode,
@@ -361,7 +379,11 @@ fun BookDetailScreen(
                                 shape = RoundedCornerShape(16.dp)
                             ) {
                                 if (currentActiveJob != null) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
                                     Spacer(Modifier.width(12.dp))
                                     Text("Downloading...")
                                 } else if (viewModel.isOfflineMode) {
@@ -375,148 +397,115 @@ fun BookDetailScreen(
                                 }
                             }
                         } else {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().height(56.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f))
+                            // Something downloaded: Smart layout
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Row(modifier = Modifier.fillMaxSize()) {
-                                    val sections = mutableListOf<@Composable RowScope.() -> Unit>()
-
-                                    if (book.hasReadAloud) {
-                                        sections.add {
-                                            val isDownloaded = book.isReadAloudDownloaded
-                                            val isCurrentReadAloud = readAloudViewModel.currentBook?.id == book.id
-                                            val label = if (isCurrentReadAloud) "Resume" 
-                                                        else if (isDownloaded) "Read & Listen" 
-                                                        else if (viewModel.isOfflineMode) "Not Available\n(Offline)"
-                                                        else "Download\nReadAloud"
-                                            
-                                            Box(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .fillMaxHeight()
-                                                    .clickable(enabled = isDownloaded || !viewModel.isOfflineMode) { 
-                                                        if (isDownloaded) {
-                                                            if (isCurrentReadAloud && !readAloudViewModel.isPlaying) {
-                                                                readAloudViewModel.play()
-                                                            }
-                                                            onRead(book.id, true) 
-                                                        } else viewModel.downloadReadAloud(context.filesDir)
-                                                    },
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    Icon(
-                                                        painterResource(if (isDownloaded) {
-                                                            if (isCurrentReadAloud && readAloudViewModel.isPlaying) R.drawable.ic_pause else R.drawable.ic_menu_book
-                                                        } else if (viewModel.isOfflineMode) R.drawable.ic_warning else R.drawable.ic_download), 
-                                                        contentDescription = null, 
-                                                        modifier = Modifier.size(24.dp),
-                                                        tint = if (!isDownloaded && viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else LocalContentColor.current
-                                                    )
-                                                    Text(
-                                                        label, 
-                                                        style = MaterialTheme.typography.labelMedium, 
-                                                        fontWeight = FontWeight.Bold,
-                                                        textAlign = TextAlign.Center,
-                                                        color = if (!isDownloaded && viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else LocalContentColor.current
-                                                    )
-                                                }
-                                            }
+                                when {
+                                    allDownloaded && book.hasEbook -> {
+                                        // All downloaded: Read (50%) + Play (50%)
+                                        Button(
+                                            onClick = { onRead(book.id, book.hasReadAloud) },
+                                            modifier = Modifier.weight(1f).height(56.dp),
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.ic_book),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Read", style = MaterialTheme.typography.titleMedium)
                                         }
-                                    } else {
-                                        if (book.hasAudiobook) {
-                                            sections.add {
-                                                val isDownloaded = book.isAudiobookDownloaded
-                                                val isCurrentAudio = audiobookViewModel.currentBook?.id == book.id
-                                                val label = if (isCurrentAudio) "Resume" 
-                                                            else if (isDownloaded) "Audio" 
-                                                            else if (viewModel.isOfflineMode) "Offline"
-                                                            else "Download\nAudio"
-                                                
-                                                Box(
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .fillMaxHeight()
-                                                        .clickable(enabled = isDownloaded || !viewModel.isOfflineMode) { 
-                                                            if (isDownloaded) {
-                                                                if (isCurrentAudio && !audiobookViewModel.isPlaying) {
-                                                                    audiobookViewModel.play()
-                                                                }
-                                                                onPlay(book) 
-                                                            } else viewModel.downloadAudiobook(context.filesDir)
-                                                        },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                        Icon(
-                                                            painterResource(if (isDownloaded) {
-                                                                if (isCurrentAudio && audiobookViewModel.isPlaying) R.drawable.ic_pause else R.drawable.ic_headset
-                                                            } else if (viewModel.isOfflineMode) R.drawable.ic_warning else R.drawable.ic_download), 
-                                                            contentDescription = null, 
-                                                            modifier = Modifier.size(20.dp),
-                                                            tint = if (!isDownloaded && viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else LocalContentColor.current
-                                                        )
-                                                        Text(
-                                                            label, 
-                                                            style = MaterialTheme.typography.labelSmall, 
-                                                            fontWeight = FontWeight.Bold,
-                                                            textAlign = TextAlign.Center,
-                                                            color = if (!isDownloaded && viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else LocalContentColor.current
-                                                        )
-                                                    }
+                                        
+                                        Button(
+                                            onClick = { 
+                                                if (book.hasReadAloud) {
+                                                    onRead(book.id, true)
+                                                } else {
+                                                    onPlay(book)
                                                 }
-                                            }
-                                        }
-
-                                        if (book.hasEbook) {
-                                            sections.add {
-                                                val isDownloaded = book.isEbookDownloaded
-                                                val label = if (isDownloaded) "eBook" 
-                                                            else if (viewModel.isOfflineMode) "Offline"
-                                                            else "Download\neBook"
-                                                Box(
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .fillMaxHeight()
-                                                        .clickable(enabled = isDownloaded || !viewModel.isOfflineMode) { 
-                                                            if (isDownloaded) onRead(book.id, false) 
-                                                            else viewModel.downloadEbook(context.filesDir)
-                                                        },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                        Icon(
-                                                            painterResource(if (isDownloaded) R.drawable.ic_book 
-                                                                             else if (viewModel.isOfflineMode) R.drawable.ic_warning
-                                                                             else R.drawable.ic_download), 
-                                                            contentDescription = null, 
-                                                            modifier = Modifier.size(20.dp),
-                                                            tint = if (!isDownloaded && viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else LocalContentColor.current
-                                                        )
-                                                        Text(
-                                                            label, 
-                                                            style = MaterialTheme.typography.labelSmall, 
-                                                            fontWeight = FontWeight.Bold,
-                                                            textAlign = TextAlign.Center,
-                                                            color = if (!isDownloaded && viewModel.isOfflineMode) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else LocalContentColor.current
-                                                        )
-                                                    }
-                                                }
-                                            }
+                                            },
+                                            modifier = Modifier.weight(1f).height(56.dp),
+                                            shape = RoundedCornerShape(16.dp)
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.ic_play_arrow),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Play", style = MaterialTheme.typography.titleMedium)
                                         }
                                     }
-
-                                    sections.forEachIndexed { index, section ->
-                                        section()
-                                        if (index < sections.size - 1) {
-                                            VerticalDivider(
-                                                modifier = Modifier.padding(vertical = 12.dp),
-                                                color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
+                                    book.isEbookDownloaded && !book.isAudiobookDownloaded && !book.isReadAloudDownloaded -> {
+                                        // Only ebook downloaded: Read button (75%)
+                                        Button(
+                                            onClick = { onRead(book.id, false) },
+                                            modifier = Modifier.weight(3f).height(56.dp),
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.ic_book),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Read", style = MaterialTheme.typography.titleMedium)
+                                        }
+                                    }
+                                    book.isAudiobookDownloaded || book.isReadAloudDownloaded -> {
+                                        // Audio/ReadAloud downloaded: Play button (75%)
+                                        Button(
+                                            onClick = {
+                                                if (book.isReadAloudDownloaded) {
+                                                    onRead(book.id, true)
+                                                } else {
+                                                    onPlay(book)
+                                                }
+                                            },
+                                            modifier = Modifier.weight(3f).height(56.dp),
+                                            shape = RoundedCornerShape(16.dp)
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.ic_play_arrow),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                if (book.isReadAloudDownloaded) "Read & Listen" else "Play",
+                                                style = MaterialTheme.typography.titleMedium
                                             )
                                         }
+                                    }
+                                }
+                                
+                                // Download more button (25%) - only if more formats available
+                                if (hasMoreToDownload && !allDownloaded) {
+                                    Button(
+                                        onClick = { showDownloadDialog = true },
+                                        modifier = Modifier.weight(1f).height(56.dp),
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                    ) {
+                                        Icon(
+                                            painterResource(R.drawable.ic_download),
+                                            contentDescription = "Download more",
+                                            modifier = Modifier.size(24.dp)
+                                        )
                                     }
                                 }
                             }

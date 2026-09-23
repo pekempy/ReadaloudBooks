@@ -35,8 +35,6 @@ fun BookItem(
     onClick: () -> Unit, 
     onLongClick: (() -> Unit)? = null,
     onDownloadClick: (() -> Unit)? = null,
-    onReadClick: (() -> Unit)? = null,
-    onPlayClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     isOfflineMode: Boolean = false,
     isSelectionMode: Boolean = false,
@@ -220,119 +218,24 @@ fun BookItem(
                     }
                 }
             }
-            
-            // Action buttons at bottom
-            if (!isSelectionMode && (book.isDownloaded || downloadProgress != null)) {
-                val downloadedCount = listOf(
-                    book.isEbookDownloaded,
-                    book.isAudiobookDownloaded,
-                    book.isReadAloudDownloaded
-                ).count { it }
-                
-                val availableCount = listOf(
-                    book.hasEbook,
-                    book.hasAudiobook,
-                    book.hasReadAloud
-                ).count { it }
-                
-                val hasMoreToDownload = downloadedCount > 0 && downloadedCount < availableCount
-                val allDownloaded = downloadedCount == availableCount && downloadedCount > 0
-                
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Play/Read buttons (3/4 width or split)
-                    if (allDownloaded && book.hasEbook) {
-                        // All downloaded: Read (2/4) + Play (2/4)
-                        Button(
-                            onClick = { onReadClick?.invoke() },
-                            modifier = Modifier.weight(2f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                            )
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.ic_book),
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text("Read")
-                        }
-                        
-                        Button(
-                            onClick = { onPlayClick?.invoke() },
-                            modifier = Modifier.weight(2f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            )
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.ic_play_arrow),
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text("Play")
-                        }
-                    } else if (book.isEbookDownloaded && !book.isAudiobookDownloaded && !book.isReadAloudDownloaded) {
-                        // Only ebook downloaded: Read button (3/4)
-                        Button(
-                            onClick = { onReadClick?.invoke() },
-                            modifier = Modifier.weight(3f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                            )
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.ic_book),
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text("Read")
-                        }
-                    } else if (book.isAudiobookDownloaded || book.isReadAloudDownloaded) {
-                        // Audiobook or ReadAloud downloaded: Play button (3/4)
-                        Button(
-                            onClick = { onPlayClick?.invoke() },
-                            modifier = Modifier.weight(3f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            )
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.ic_play_arrow),
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text("Play")
-                        }
-                    }
-                    
-                    // Download button (1/4 width) - only if more formats available
-                    if (hasMoreToDownload && !allDownloaded) {
-                        Button(
-                            onClick = { onDownloadClick?.invoke() },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer
-                            ),
-                            contentPadding = PaddingValues(8.dp)
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.ic_download),
-                                contentDescription = "Download more",
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
             }
+            
+            // Book info
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    text = book.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = book.author,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             
             // Original text info
             Column(modifier = Modifier.padding(12.dp)) {
