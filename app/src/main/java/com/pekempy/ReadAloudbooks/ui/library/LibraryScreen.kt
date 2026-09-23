@@ -363,8 +363,9 @@ fun LibraryScreen(
                              ) {
                                 // Personalized Greeting Widget
                                 com.pekempy.ReadAloudbooks.ui.home.PersonalizedGreeting(
-                                    userName = "Reader",
+                                    userName = viewModel.userName,
                                     currentStreak = viewModel.continueReadingBooks.size.coerceAtLeast(1),
+                                    booksInProgress = viewModel.continueReadingBooks.size,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                                 )
                                 

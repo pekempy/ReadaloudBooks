@@ -80,7 +80,8 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     var continueReadingBooks by mutableStateOf<List<Book>>(emptyList())
     var continueSeriesBooks by mutableStateOf<List<Book>>(emptyList())
     var downloadedBooks by mutableStateOf<List<Book>>(emptyList())
-    
+    var userName by mutableStateOf<String?>(null)
+        private set
     val totalProcessingCount: Int get() = serverProcessingList.size
     val hasProcessing: Boolean get() = serverProcessingList.isNotEmpty()
     
@@ -169,6 +170,12 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     }
 
     init {
+        viewModelScope.launch {
+            // Load username
+            repository.userCredentials.collect { credentials ->
+                userName = credentials?.username
+            }
+        }
         viewModelScope.launch {
             repository.userSettings.collect { settings ->
                 if (ignoredSeries != settings.ignoredSeries) {
