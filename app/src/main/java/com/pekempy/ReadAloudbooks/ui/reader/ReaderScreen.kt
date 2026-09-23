@@ -844,6 +844,7 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                 }
                 
                 function gotoPage(index, animate = true) {
+                    console.log("gotoPage(" + index + ") called. animate=" + animate + " currentPage=" + currentPage + " pageCount=" + pageCount);
                     if (index < 0) index = 0;
                     if (index >= pageCount) index = pageCount - 1;
                     currentPage = index;
@@ -851,26 +852,25 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     if (wrapper) {
                         wrapper.style.transition = animate ? 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)' : 'none';
                         wrapper.style.transform = 'translateX(-' + (index * 100) + 'vw)';
+                        console.log("Transformed wrapper to page " + index);
                         if (window.Android) {
                              const percent = pageCount > 1 ? index / (pageCount - 1) : 0;
                              let bestId = null;
                              const page = wrapper.children[index];
-                function gotoPage(n) {
-                    console.log("gotoPage(" + n + ") called. pageCount=" + pageCount);
-                    if (n < 0 || n >= pageCount) {
-                        console.log("Invalid page number, returning");
-                        return;
-                    }
-                    currentPage = n;
-                    const offset = -n * window.innerWidth;
-                    console.log("Setting wrapper transform to translateX(" + offset + "px)");
-                    const wrapper = document.getElementById('pagination-wrapper');
-                    if (wrapper) {
-                        wrapper.style.transform = 'translateX(' + offset + 'px)';
-                        console.log("Page changed to " + n);
+                             if (page) {
+                                 const firstId = page.querySelector('[id]');
+                                 if (firstId) bestId = firstId.id;
+                             }
+                             window.Android.onScrollWithId(percent, bestId);
+                        }
                     } else {
                         console.log("ERROR: pagination-wrapper not found!");
                     }
+                }
+                
+                function scrollToPercent(percent) {
+                    const target = Math.round(percent * (pageCount - 1));
+                    gotoPage(target, false);
                 }
                 function pageLeft() {
                     console.log("pageLeft() called. currentPage=" + currentPage + " pageCount=" + pageCount);
