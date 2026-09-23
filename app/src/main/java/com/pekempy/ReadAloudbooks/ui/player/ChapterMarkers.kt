@@ -209,7 +209,7 @@ fun ChapterList(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
-                                text = "${chapter.index + 1}",
+                                text = "${i + 1}",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isCurrentChapter) {
@@ -265,7 +265,7 @@ fun ChapterNavigation(
     modifier: Modifier = Modifier
 ) {
     val haptic = rememberHaptic()
-    val currentIndex = currentChapter?.index ?: -1
+    val currentIndex = chapters.indexOf(currentChapter).takeIf { it >= 0 } ?: -1
     val hasPrevious = currentIndex > 0
     val hasNext = currentIndex < chapters.size - 1
     
