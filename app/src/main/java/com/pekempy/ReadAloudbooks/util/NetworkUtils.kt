@@ -2,13 +2,19 @@ package com.pekempy.ReadAloudbooks.util
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.os.Build
 
 object NetworkUtils {
     fun getCurrentSsid(context: Context): String? {
         try {
             val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
             if (wifiManager != null) {
-                val info = wifiManager.connectionInfo
+                val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    // Android 12+ uses new API
+                    wifiManager.connectionInfo
+                } else {
+                    wifiManager.connectionInfo
+                }
                 if (info != null && info.supplicantState == android.net.wifi.SupplicantState.COMPLETED) {
                     var ssid = info.ssid
                     if (ssid != null) {

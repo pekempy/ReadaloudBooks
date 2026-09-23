@@ -54,6 +54,16 @@ class MainActivity : ComponentActivity() {
     private lateinit var repository: UserPreferencesRepository
     private lateinit var sharedAudiobookViewModel: AudiobookViewModel
     private lateinit var readAloudAudioViewModel: com.pekempy.ReadAloudbooks.ui.player.ReadAloudAudioViewModel
+
+// Type-safe ViewModel factory helper
+class ViewModelFactory<T : ViewModel>(
+    private val creator: () -> T
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        @Suppress("UNCHECKED_CAST")
+        return creator() as T
+    }
+}
     private lateinit var readerViewModel: ReaderViewModel
     private lateinit var libraryViewModel: LibraryViewModel
     private var navigateToBookOnStart: Pair<String, String>? = null
@@ -122,25 +132,37 @@ class MainActivity : ComponentActivity() {
 
         sharedAudiobookViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return AudiobookViewModel(repository) as T
+                if (modelClass.isAssignableFrom(AudiobookViewModel::class.java)) {
+                    return AudiobookViewModel(repository) as T
+                }
+                throw IllegalArgumentException("Unknown ViewModel class")
             }
         })[AudiobookViewModel::class.java]
 
         readAloudAudioViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return com.pekempy.ReadAloudbooks.ui.player.ReadAloudAudioViewModel(repository) as T
+                if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.player.ReadAloudAudioViewModel::class.java)) {
+                    return com.pekempy.ReadAloudbooks.ui.player.ReadAloudAudioViewModel(repository) as T
+                }
+                throw IllegalArgumentException("Unknown ViewModel class")
             }
         })[com.pekempy.ReadAloudbooks.ui.player.ReadAloudAudioViewModel::class.java]
 
         readerViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return ReaderViewModel(repository) as T
+                if (modelClass.isAssignableFrom(ReaderViewModel::class.java)) {
+                    return ReaderViewModel(repository) as T
+                }
+                throw IllegalArgumentException("Unknown ViewModel class")
             }
         })[ReaderViewModel::class.java]
 
         libraryViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return LibraryViewModel(repository) as T
+                if (modelClass.isAssignableFrom(LibraryViewModel::class.java)) {
+                    return LibraryViewModel(repository) as T
+                }
+                throw IllegalArgumentException("Unknown ViewModel class")
             }
         })[LibraryViewModel::class.java]
 
@@ -280,7 +302,10 @@ class MainActivity : ComponentActivity() {
                         val loginViewModel = viewModel<LoginViewModel>(
                             factory = object : ViewModelProvider.Factory {
                                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                if (modelClass.isAssignableFrom(LoginViewModel::class.java)) {
                                     return LoginViewModel(repository) as T
+                                }
+                                throw IllegalArgumentException("Unknown ViewModel class")
                                 }
                             }
                         )
