@@ -1046,9 +1046,8 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                          }
                      } else if (retryCount < 5) {
                          setTimeout(() => findAndHighlight(text, retryCount + 1, matchIndex), 100);
-                     }
+                }
                 
-                // ERROR HANDLER
                 window.onerror = function(msg, url, lineNo, columnNo, error) {
                     console.error("JavaScript Error: " + msg + " at line " + lineNo + ":" + columnNo);
                     return false;
