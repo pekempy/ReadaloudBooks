@@ -550,21 +550,23 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
                 }
 
-                /* Standard content styling with support for theme consistency */
-                .page, .page *:not(.highlight):not(.search-highlight) {
+                /* Standard content styling - preserve epub formatting */
+                .page, .page * {
                     word-wrap: break-word;
                     overflow-wrap: break-word;
                     -webkit-hyphens: auto;
                     hyphens: auto;
-                    font-size: var(--font-size) !important;
-                    font-family: var(--font-family) !important;
-                    line-height: 1.6 !important;
-                    color: var(--text-color) !important;
-                    background-color: transparent !important;
-                    max-width: 100% !important;
                     -webkit-user-select: none;
                     user-select: none;
                     -webkit-touch-callout: none;
+                }
+                
+                /* Only override base font and color, preserve bold/italic/sizes */
+                .page {
+                    font-size: var(--font-size);
+                    font-family: var(--font-family);
+                    line-height: 1.6;
+                    color: var(--text-color);
                 }
 
                 /* Nuclear reset for unwanted lines (ruled paper, global underlining) */
