@@ -276,7 +276,7 @@ private fun StreakCard(currentStreak: Int, longestStreak: Int) {
                 }
             }
             
-            Divider(
+            HorizontalDivider(
                 modifier = Modifier
                     .width(1.dp)
                     .height(48.dp)

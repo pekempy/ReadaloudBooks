@@ -75,7 +75,7 @@ fun SettingsBackupDialog(
                     style = MaterialTheme.typography.bodyMedium
                 )
                 
-                Divider()
+                HorizontalDivider()
                 
                 BackupOption(
                     title = "Export Settings",

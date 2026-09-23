@@ -117,7 +117,7 @@ fun BatchActionSheet(
                 Text(getBatchActionDescription(action, selectedBooks.size))
                 
                 if (selectedBooks.size <= 5) {
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     selectedBooks.forEach { book ->
                         Text(
                             text = "• ${book.title}",

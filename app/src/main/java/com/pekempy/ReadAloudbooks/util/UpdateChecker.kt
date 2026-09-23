@@ -232,7 +232,7 @@ fun UpdatePromptDialog(
                     }
                 }
                 
-                Divider()
+                HorizontalDivider()
                 
                 // Actions
                 Row(
