@@ -518,11 +518,11 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
         }
     }
 
-    fun downloadBook(book: Book) {
+    fun downloadBook(book: Book, type: com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType = com.pekempy.ReadAloudbooks.data.DownloadManager.DownloadType.All) {
         addPendingDownload(book.id)
         downloadingBooks[book.id] = DownloadStatus(0f, "Queued")
         
-        com.pekempy.ReadAloudbooks.data.DownloadManager.downloadAll(book, AppContainer.context.filesDir)
+        com.pekempy.ReadAloudbooks.data.DownloadManager.download(book, AppContainer.context.filesDir, type)
     }
 
     fun ignoreSeries(seriesName: String) {

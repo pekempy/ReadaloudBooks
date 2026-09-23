@@ -68,13 +68,23 @@ object DownloadManager {
             var shouldDownloadAudio = false
             var shouldDownloadEbook = false
             var shouldDownloadReadAloud = false
-
-            if (hasReadAloud) {
-                shouldDownloadReadAloud = true
-            } else {
-                shouldDownloadAudio = (type == DownloadType.All || type == DownloadType.Audio) && book.hasAudiobook
-                shouldDownloadEbook = (type == DownloadType.All || type == DownloadType.Ebook) && book.hasEbook
-                shouldDownloadReadAloud = (type == DownloadType.ReadAloud) 
+            
+            // Respect user's format selection
+            when (type) {
+                DownloadType.All -> {
+                    shouldDownloadAudio = book.hasAudiobook
+                    shouldDownloadEbook = book.hasEbook
+                    shouldDownloadReadAloud = hasReadAloud
+                }
+                DownloadType.Audio -> {
+                    shouldDownloadAudio = book.hasAudiobook
+                }
+                DownloadType.Ebook -> {
+                    shouldDownloadEbook = book.hasEbook
+                }
+                DownloadType.ReadAloud -> {
+                    shouldDownloadReadAloud = hasReadAloud
+                }
             }
 
             if (shouldDownloadAudio) book.audiobookUrl?.takeIf { it.isNotBlank() }?.let { downloads.add(it to File(bookDir, "$baseFileName.m4b")) }
