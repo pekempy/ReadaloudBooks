@@ -1,7 +1,5 @@
 package com.pekempy.ReadAloudbooks.ui.reader
 
-import android.view.ViewGroup
-import android.webkit.*
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -9,20 +7,21 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.ui.res.painterResource
 import com.pekempy.ReadAloudbooks.R
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.launch
-import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import com.pekempy.ReadAloudbooks.data.UserSettings
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,10 +33,10 @@ fun ReaderScreen(
     onBack: () -> Unit
 ) {
     val userSettings = viewModel.settings
-    
-     var showSearchSheet by remember { mutableStateOf(false) }
-     var showContentsSheet by remember { mutableStateOf(false) }
-    
+
+    var showSearchSheet by remember { mutableStateOf(false) }
+    var showContentsSheet by remember { mutableStateOf(false) }
+
     LaunchedEffect(bookId) {
         viewModel.loadEpub(bookId, isReadAloud)
     }
@@ -46,7 +45,7 @@ fun ReaderScreen(
         AlertDialog(
             onDismissRequest = { viewModel.dismissSync() },
             title = { Text("Progress Sync") },
-            text = { 
+            text = {
                 Text("Progress is out of sync with Storyteller.")
             },
             confirmButton = {
@@ -73,7 +72,7 @@ fun ReaderScreen(
             CircularProgressIndicator()
         }
     } else if (viewModel.error != null) {
-        val context = LocalContext.current
+        val context = androidx.compose.ui.platform.LocalContext.current
         AlertDialog(
             onDismissRequest = onBack,
             title = { Text("Error Opening Book") },
@@ -95,26 +94,27 @@ fun ReaderScreen(
             }
         )
     } else if (userSettings != null && viewModel.totalChapters > 0) {
-        val theme = getReaderTheme(userSettings.readerTheme)
-        
         val accentColor = MaterialTheme.colorScheme.primary
-        val accentHex = String.format("#%06X", (0xFFFFFF and accentColor.toArgb()))
+        val theme = readerThemeFor(userSettings.readerTheme, accentColor)
+        val fontFamily = readerFontFamilyFor(userSettings)
+        val materialYouColor = rememberMaterialYouColor(dark = userSettings.readerTheme == 2 || userSettings.readerTheme == 3)
+        val bookThemeColor = if (userSettings.bookThemeColor != 0) Color(userSettings.bookThemeColor) else null
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(theme.bgInt))
+                .background(theme.background)
         ) {
-            EpubWebView(
-                html = viewModel.getCurrentChapterHtml() ?: "",
-                userSettings = userSettings,
+            ReaderBody(
                 viewModel = viewModel,
-                accentHex = accentHex,
-                highlightId = viewModel.currentHighlightId,
-                syncTrigger = viewModel.syncTrigger,
-                activeSearch = viewModel.activeSearchHighlight,
-                activeSearchMatchIndex = viewModel.activeSearchMatchIndex,
-                pendingAnchor = viewModel.pendingAnchorId.value,
+                theme = theme,
+                fontFamily = fontFamily,
+                userSettings = userSettings,
+                isReadAloud = false,
+                highlightId = null,
+                searchQuery = viewModel.activeSearchHighlight,
+                materialYouColor = materialYouColor,
+                bookThemeColor = bookThemeColor,
                 onTap = { viewModel.showControls = !viewModel.showControls }
             )
 
@@ -128,33 +128,33 @@ fun ReaderScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(theme.bgInt).copy(alpha = 0.95f))
+                            .background(theme.background.copy(alpha = 0.95f))
                             .statusBarsPadding()
                             .height(56.dp)
                             .padding(horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(onClick = onBack) {
-                            Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back", tint = Color(theme.textInt))
+                            Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back", tint = theme.text)
                         }
                         Text(
                             viewModel.epubTitle,
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
-                            color = Color(theme.textInt)
+                            color = theme.text
                         )
                         IconButton(onClick = {
                             viewModel.clearSearch()
                             showSearchSheet = true
                         }) {
-                            Icon(painterResource(R.drawable.ic_search), contentDescription = "Search", tint = Color(theme.textInt))
+                            Icon(painterResource(R.drawable.ic_search), contentDescription = "Search", tint = theme.text)
                         }
                         IconButton(onClick = { showContentsSheet = true }) {
-                            Icon(painterResource(R.drawable.ic_list), contentDescription = "Contents", tint = Color(theme.textInt))
+                            Icon(painterResource(R.drawable.ic_list), contentDescription = "Contents", tint = theme.text)
                         }
                         IconButton(onClick = { viewModel.showControls = !viewModel.showControls }) {
-                            Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings", tint = Color(theme.textInt))
+                            Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings", tint = theme.text)
                         }
                     }
                 }
@@ -176,14 +176,20 @@ fun ReaderScreen(
                         onFontSizeChange = viewModel::updateFontSize,
                         onThemeChange = viewModel::updateTheme,
                         onFontFamilyChange = viewModel::updateFontFamily,
+                        onUseCustomFontChange = viewModel::updateUseCustomFont,
+                        onHighlightStyleChange = viewModel::updateHighlightStyle,
+                        onHighlightColorChange = viewModel::updateHighlightColor,
+                        onHighlightRoundedChange = viewModel::updateHighlightRounded,
+                        materialYouColor = materialYouColor,
+                        bookThemeColor = bookThemeColor,
                         onChapterChange = viewModel::changeChapter,
-                        backgroundColor = Color(theme.bgInt).copy(alpha = 0.95f),
-                        contentColor = Color(theme.textInt)
+                        backgroundColor = theme.background.copy(alpha = 0.95f),
+                        contentColor = theme.text
                     )
                 }
             }
         }
-        
+
         if (showSearchSheet) {
             ModalBottomSheet(onDismissRequest = { showSearchSheet = false }) {
                 com.pekempy.ReadAloudbooks.ui.player.SearchContent(
@@ -205,24 +211,19 @@ fun ReaderScreen(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
-                    
-                    val chapters = viewModel.lazyBook?.spineHrefs ?: emptyList()
-                    val titles = viewModel.lazyBook?.spineTitles ?: emptyMap()
-                    val hasParts = titles.values.any { it.contains("Part", ignoreCase = true) }
+
+                    val chapterCount = viewModel.lazyBook?.spineHrefs?.size ?: 0
 
                     LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                        itemsIndexed(chapters) { index, href ->
-                            val title = titles[href] ?: "Chapter ${index + 1}"
+                        items(chapterCount) { index ->
+                            val title = viewModel.getChapterTitle(index)
                             val isPart = title.contains("Part", ignoreCase = true)
-                            val isChapter = title.contains("Chapter", ignoreCase = true)
-                            val indent = if (hasParts && isChapter && !isPart) 32.dp else 0.dp
-                            
+
                             ListItem(
                                 headlineContent = {
                                     Text(
                                         text = title,
-                                        fontWeight = if (isPart) FontWeight.Bold else FontWeight.Normal,
-                                        modifier = Modifier.padding(start = indent)
+                                        fontWeight = if (isPart) FontWeight.Bold else FontWeight.Normal
                                     )
                                 },
                                 modifier = Modifier.clickable {
@@ -244,879 +245,63 @@ fun ReaderScreen(
     }
 }
 
+/**
+ * Shared native reader body used by both the plain ebook screen and the combined
+ * readaloud reader+player screen. Renders the current chapter's paragraphs, keeps the
+ * scroll position saved as reading progress, and (in readaloud mode) highlights whichever
+ * sentence [highlightId] points at.
+ */
 @Composable
-fun EpubWebView(
-    html: String,
-    userSettings: UserSettings,
+fun ReaderBody(
     viewModel: ReaderViewModel,
-    accentHex: String,
+    theme: ReaderTheme,
+    fontFamily: androidx.compose.ui.text.font.FontFamily,
+    userSettings: UserSettings,
+    isReadAloud: Boolean,
     highlightId: String?,
-    syncTrigger: Int,
-    activeSearch: String? = null,
-    activeSearchMatchIndex: Int = 0,
-    pendingAnchor: String? = null,
+    searchQuery: String? = null,
+    materialYouColor: Color? = null,
+    bookThemeColor: Color? = null,
     onTap: () -> Unit
 ) {
-    val theme = getReaderTheme(userSettings.readerTheme)
-    val isReadAloud = viewModel.isReadAloudMode
+    val chapterIndex = viewModel.currentChapterIndex
+    val paragraphs = remember(chapterIndex, viewModel.lazyBook) { viewModel.getCurrentChapterParagraphs() }
 
-    
-    key(userSettings.readerTheme, userSettings.readerFontFamily, userSettings.readerFontSize) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { context ->
-                WebView(context).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    setBackgroundColor(theme.bgInt)
-                    
-                    this.settings.apply {
-                        javaScriptEnabled = true
-                        domStorageEnabled = true
-                        useWideViewPort = true
-                        loadWithOverviewMode = true
-                    }
-                    
-                    webViewClient = object : WebViewClient() {
-                        override fun shouldInterceptRequest(
-                            view: WebView?,
-                            request: WebResourceRequest?
-                        ): WebResourceResponse? {
-                            val url = request?.url?.toString() ?: return null
-                            if (url.startsWith("https://epub-internal/")) {
-                                return viewModel.getResourceResponse(url)
-                            }
-                            return super.shouldInterceptRequest(view, request)
-                        }
+    LaunchedEffect(paragraphs.isNotEmpty()) {
+        if (paragraphs.isNotEmpty()) viewModel.markReady()
+    }
 
-                        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                            val url = request?.url?.toString() ?: return false
-                            if (url.startsWith("https://epub-internal/")) {
-                                val path = url.removePrefix("https://epub-internal/")
-                                viewModel.navigateToHref(path)
-                                return true
-                            }
-                            return false
-                        }
-
-                        override fun onPageFinished(view: WebView?, url: String?) {
-                            super.onPageFinished(view, url)
-                            
-                            viewModel.activeSearchHighlight?.let { search ->
-                                val index = viewModel.activeSearchMatchIndex
-                                android.util.Log.d("EpubWebView", "onPageFinished: scheduling findAndHighlight('$search', 0, $index)")
-                                view?.postDelayed({
-                                    android.util.Log.d("EpubWebView", "onPageFinished: executing findAndHighlight")
-                                    view.evaluateJavascript("findAndHighlight('$search', 0, $index)", null)
-                                }, 300)
-                                view?.setTag(com.pekempy.ReadAloudbooks.R.id.search_tag, search)
-                            }
-                            
-                            viewModel.pendingAnchorId.value?.let { anchor ->
-                                view?.evaluateJavascript("if (typeof highlightElement === 'function') highlightElement('$anchor', 0)", null)
-                                view?.setTag(com.pekempy.ReadAloudbooks.R.id.anchor_tag, anchor)
-                            }
-                        }
-                    }
-                    
-                    setOnTouchListener { _, event ->
-                        if (event.action == android.view.MotionEvent.ACTION_UP) {
-                        }
-                        false 
-                    }
-                    
-                    addJavascriptInterface(object {
-                        @JavascriptInterface
-                        fun onBodyClick(x: Float, width: Float) {
-                            val ratio = x / width
-                            when {
-                                ratio < 0.25f -> {
-                                    this@apply.post { this@apply.evaluateJavascript("pageLeft()", null) }
-                                }
-                                ratio > 0.75f -> {
-                                    this@apply.post { this@apply.evaluateJavascript("pageRight()", null) }
-                                }
-                                else -> {
-                                    onTap()
-                                }
-                            }
-                        }
-
-                        @JavascriptInterface
-                        fun onNextChapter() {
-                            viewModel.viewModelScope.launch {
-                                viewModel.changeChapter(viewModel.currentChapterIndex + 1)
-                            }
-                        }
-
-                        @JavascriptInterface
-                        fun onPrevChapter() {
-                            viewModel.viewModelScope.launch {
-                                viewModel.changeChapter(viewModel.currentChapterIndex - 1, scrollToEnd = true)
-                            }
-                        }
-
-                        @JavascriptInterface
-                        fun onScroll(percent: Float) {
-                            viewModel.saveProgress(viewModel.currentChapterIndex, percent)
-                        }
-
-                        @JavascriptInterface
-                        fun onScrollWithId(percent: Float, elementId: String?) {
-                            var audioTime: Long? = null
-                            if (!elementId.isNullOrEmpty()) {
-                                val time = viewModel.getTimeAtElement(viewModel.currentChapterIndex, elementId)
-                                if (time != null) {
-                                    audioTime = (time * 1000).toLong()
-                                }
-                            }
-                            viewModel.saveProgress(viewModel.currentChapterIndex, percent, audioTime, elementId)
-                        }
-
-                        @JavascriptInterface
-                        fun onElementLongPress(id: String) {
-                            viewModel.viewModelScope.launch {
-                                viewModel.jumpToElementRequest.value = id
-                            }
-                        }
-
-                        @JavascriptInterface
-                        fun onReaderReady() {
-                            android.util.Log.d("EpubWebView", "Reader reported ready.")
-                            viewModel.markReady()
-                        }
-                    }, "Android")
-                }
-            },
-            update = { webView ->
-                val currentHighlightId = highlightId
-                val trigger = syncTrigger
-                val chapterPath = viewModel.getCurrentChapterPath()
-                val baseUrl = "https://epub-internal/$chapterPath"
-                
-                val contentSignature = "$baseUrl-${userSettings.readerTheme}-${userSettings.readerFontSize}-${userSettings.readerFontFamily}-$isReadAloud"
-                val lastSignature = webView.tag as? String
-                
-                if (lastSignature != contentSignature) {
-                    val styledHtml = wrapHtml(html, userSettings, theme, viewModel.lastScrollPercent, accentHex, highlightId, isReadAloud)
-                    android.util.Log.d("EpubWebView", "Reloading content. Signature changed: $contentSignature")
-                    webView.loadDataWithBaseURL(baseUrl, styledHtml, "text/html", "UTF-8", null)
-                    webView.scrollTo(0, 0)
-                    webView.tag = contentSignature
-                    webView.setTag(com.pekempy.ReadAloudbooks.R.id.highlight_tag, highlightId)
-                    webView.setTag(com.pekempy.ReadAloudbooks.R.id.trigger_tag, trigger)
-                    webView.setTag(com.pekempy.ReadAloudbooks.R.id.search_tag, null)
-                    webView.setTag(com.pekempy.ReadAloudbooks.R.id.anchor_tag, null)
-                }
-
-                if (currentHighlightId != null) {
-                    val id = currentHighlightId
-                    if (id.isNotEmpty()) {
-                        val lastId = webView.getTag(com.pekempy.ReadAloudbooks.R.id.highlight_tag) as? String
-                        val lastTrigger = webView.getTag(com.pekempy.ReadAloudbooks.R.id.trigger_tag) as? Int ?: -1
-                        
-                        if (lastId != id || lastTrigger != trigger) {
-                            android.util.Log.d("EpubWebView", "Highlighting: $id (trigger $trigger)")
-                            webView.evaluateJavascript("if (typeof highlightElement === 'function') highlightElement('$id', 0, true)", null)
-                            webView.setTag(com.pekempy.ReadAloudbooks.R.id.highlight_tag, id)
-                            webView.setTag(com.pekempy.ReadAloudbooks.R.id.trigger_tag, trigger)
-                        }
-                    }
-                } else {
-                    val lastTrigger = webView.getTag(com.pekempy.ReadAloudbooks.R.id.trigger_tag) as? Int ?: -1
-                    if (lastTrigger != trigger) {
-                        val percent = viewModel.lastScrollPercent
-                        android.util.Log.d("EpubWebView", "Scroll jump to $percent (trigger $trigger)")
-                        webView.evaluateJavascript("if (typeof scrollToPercent === 'function') scrollToPercent($percent)", null)
-                        webView.setTag(com.pekempy.ReadAloudbooks.R.id.trigger_tag, trigger)
-                    }
-                }
-                
-                if (activeSearch != null) {
-                    val searchSignature = "$activeSearch|$activeSearchMatchIndex"
-                    val lastSignature = webView.getTag(com.pekempy.ReadAloudbooks.R.id.search_tag) as? String
-                    
-                    if (lastSignature != searchSignature) {
-                        android.util.Log.d("EpubWebView", "Update: scheduling findAndHighlight('$activeSearch', 0, $activeSearchMatchIndex)")
-                        webView.postDelayed({
-                            android.util.Log.d("EpubWebView", "Update: executing findAndHighlight")
-                            webView.evaluateJavascript("if (typeof findAndHighlight === 'function') findAndHighlight('$activeSearch', 0, $activeSearchMatchIndex)", null)
-                        }, 300)
-                        webView.setTag(com.pekempy.ReadAloudbooks.R.id.search_tag, searchSignature)
-                    }
-                }
-                
-                if (pendingAnchor != null) {
-                    val lastAnchor = webView.getTag(com.pekempy.ReadAloudbooks.R.id.anchor_tag) as? String
-                    if (lastAnchor != pendingAnchor) {
-                         webView.evaluateJavascript("if (typeof highlightElement === 'function') highlightElement('$pendingAnchor', 0)", null)
-                         webView.setTag(com.pekempy.ReadAloudbooks.R.id.anchor_tag, pendingAnchor)
-                    }
-                }
+    EpubReaderContent(
+        paragraphs = paragraphs,
+        theme = theme,
+        fontFamily = fontFamily,
+        fontSize = userSettings.readerFontSize,
+        highlightId = highlightId,
+        highlightStyle = highlightStyleFor(userSettings.readerHighlightStyle),
+        highlightColor = readerHighlightColorFor(userSettings, theme, materialYouColor, bookThemeColor),
+        highlightRounded = userSettings.readerHighlightRounded,
+        isReadAloud = isReadAloud,
+        initialCharOffsetFraction = viewModel.lastScrollPercent,
+        searchQuery = searchQuery,
+        onPageProgress = { fraction, sentenceId ->
+            // Readaloud progress is driven by audio position instead (see ReadAloudPlayerScreen);
+            // only plain ebook reading persists page position from this callback.
+            if (!isReadAloud) {
+                viewModel.saveProgress(chapterIndex, fraction, null, sentenceId)
             }
-        )
-    }
-}
-
-fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, initialScrollPercent: Float, accentColor: String, initialHighlightId: String? = null, isReadAloud: Boolean = false): String {
-    val fontFamily = when(userSettings.readerFontFamily) {
-        "serif" -> "serif"
-        "sans-serif" -> "sans-serif"
-        "monospace" -> "monospace"
-        else -> "serif"
-    }
-    
-    return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-            <style>
-                :root {
-                    --bg-color: ${theme.bg};
-                    --text-color: ${theme.text};
-                    --font-size: ${userSettings.readerFontSize}px;
-                    --font-family: $fontFamily;
-                    --padding-left: 24px;
-                    --padding-right: 24px;
-                    --top-padding: 60px;
-                    --bottom-padding: ${if (isReadAloud) "100px" else "60px"};
-                    --accent-color: $accentColor;
-                }
-                
-                html, body {
-                    margin: 0;
-                    padding: 0;
-                    height: 100vh;
-                    width: 100vw;
-                    overflow: hidden;
-                    background-color: var(--bg-color);
-                    color: var(--text-color);
-                    -webkit-user-select: none;
-                    
-                    /* Maximize text density */
-                    line-height: 1.6 !important;
-                    hyphens: auto;
-                    -webkit-hyphens: auto;
-                    text-align: justify;
-                }
-
-                p {
-                    text-indent: 1.5em;
-                }
-
-                /* PAGINATION STYLES */
-                body {
-                    overflow: hidden !important; 
-                    width: 100vw;
-                    height: 100vh;
-                    margin: 0;
-                    padding: 0;
-                }
-
-                #pagination-wrapper {
-                    display: flex;
-                    flex-direction: row;
-                    height: 100vh;
-                    width: max-content; 
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    will-change: transform;
-                    transform: translateX(0);
-                }
-                
-                #pagination-wrapper.animate {
-                    transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
-                }
-
-                .page {
-                    width: 100vw;
-                    height: 100vh;
-                    padding: var(--top-padding) var(--padding-right) var(--bottom-padding) var(--padding-left);
-                    box-sizing: border-box;
-                    overflow: hidden;
-                    position: relative;
-                    flex-shrink: 0;
-                }
-                
-                #content-container {
-                    display: none;
-                }
-
-                #content-container.animate {
-                    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-                }
-
-                /* Standard content styling - preserve epub formatting */
-                .page, .page * {
-                    word-wrap: break-word;
-                    overflow-wrap: break-word;
-                    -webkit-hyphens: auto;
-                    hyphens: auto;
-                    -webkit-user-select: none;
-                    user-select: none;
-                    -webkit-touch-callout: none;
-                }
-                
-                /* Only override base font and color, preserve bold/italic/sizes */
-                .page {
-                    font-size: var(--font-size);
-                    font-family: var(--font-family);
-                    line-height: 1.6;
-                    color: var(--text-color);
-                }
-
-                /* Nuclear reset for unwanted lines (ruled paper, global underlining) */
-                /* Excludes images, highlights, and intentional headers/emphasis tags */
-                html, body, .page, .page *:not(img):not(.highlight):not(.search-highlight):not(h1):not(h2):not(h3):not(h4):not(h5):not(h6):not(u):not(b):not(strong) {
-                    background-image: none !important;
-                    text-decoration: none !important;
-                    border-bottom: none !important;
-                    box-shadow: none !important;
-                }
-
-                h1, h2, h3 {
-                    font-weight: bold !important;
-                    break-inside: avoid-column;
-                    -webkit-column-break-inside: avoid;
-                    break-after: avoid;
-                    text-align: left;
-                    text-indent: 0;
-                }
-
-                p, div, blockquote, [id] {
-                    orphans: 2;
-                    widows: 2;
-                }
-
-                img {
-                    max-width: 100% !important;
-                    max-height: calc(100vh - var(--top-padding) - var(--bottom-padding) - 20px) !important;
-                    height: auto !important;
-                    display: block;
-                    margin: 10px auto;
-                    break-inside: avoid;
-                }
-
-                a {
-                    color: var(--text-color) !important;
-                    text-decoration: none;
-                }
-
-
-                /* Premium Word Highlighting */
-                .highlight {
-                    background: linear-gradient(180deg, 
-                        transparent 0%, 
-                        transparent 40%,
-                        var(--accent-color) 40%,
-                        var(--accent-color) 95%,
-                        transparent 95%
-                    ) !important;
-                    background-color: transparent !important;
-                    border-bottom: none !important;
-                    position: relative;
-                    transition: all 0.15s cubic-bezier(0.4, 0.0, 0.2, 1);
-                    opacity: 0.3;
-                }
-                
-                .highlight::before {
-                    content: '';
-                    position: absolute;
-                    left: -2px;
-                    right: -2px;
-                    top: -1px;
-                    bottom: -1px;
-                    background: var(--accent-color);
-                    opacity: 0.08;
-                    border-radius: 2px;
-                    z-index: -1;
-                }
-                
-                /* Subtle pulse animation for active word */
-                @keyframes highlight-pulse {
-                    0%, 100% { opacity: 0.3; }
-                    50% { opacity: 0.5; }
-                }
-                
-                .highlight.active {
-                    animation: highlight-pulse 1.5s ease-in-out infinite;
-                }
-            <script>
-                let currentPage = 0;
-                let pageCount = 0;
-                let currentHighlightId = null;
-                let elementPageMap = {};
-
-                function getPageWidth() { return window.innerWidth; }
-
-                function paginate() {
-                    console.log("Starting pagination...");
-                    const wrapper = document.createElement('div');
-                    wrapper.id = 'pagination-wrapper';
-                    
-                    const contentContainer = document.getElementById('content-container');
-                    let sourceNodes = [];
-                    if (contentContainer) {
-                         sourceNodes = Array.from(contentContainer.childNodes);
-                         contentContainer.parentNode.removeChild(contentContainer);
-                    } else {
-                         sourceNodes = Array.from(document.body.childNodes).filter(child => 
-                             child.tagName !== 'SCRIPT' && 
-                             child.tagName !== 'STYLE' && 
-                             child.id !== 'pagination-wrapper'
-                         );
-                    }
-
-                    const fragment = document.createDocumentFragment();
-                    sourceNodes.forEach(node => fragment.appendChild(node));
-
-                    document.body.appendChild(wrapper);
-
-                    let currentPageDiv = createPage();
-                    wrapper.appendChild(currentPageDiv);
-                    pageCount = 1;
-
-                    const pageLimit = currentPageDiv.clientHeight || window.innerHeight;
-                    console.log("Page limit: " + pageLimit);
-
-                    function createPage() {
-                        const p = document.createElement('div');
-                        p.className = 'page';
-                        return p;
-                    }
-
-                    function startNewPage() {
-                        currentPageDiv = createPage();
-                        wrapper.appendChild(currentPageDiv);
-                        pageCount++;
-                    }
-
-                    function splitTextNode(textNode, container) {
-                        container.appendChild(textNode);
-                        const text = textNode.textContent;
-                        let min = 0;
-                        let max = text.length;
-                        let safe = 0;
-                        
-                        while (min <= max) {
-                            const mid = Math.floor((min + max) / 2);
-                            const chunk = text.substring(0, mid);
-                            textNode.textContent = chunk;
-                            if (currentPageDiv.scrollHeight <= pageLimit) {
-                                safe = mid;
-                                min = mid + 1;
-                            } else {
-                                max = mid - 1;
-                            }
-                        }
-                        
-                        // Respect word boundaries
-                        if (safe < text.length) {
-                             const lastSpace = text.lastIndexOf(' ', safe);
-                             if (lastSpace > 0) {
-                                 safe = lastSpace + 1; // Include the space on the first page
-                             }
-                        }
-                        
-                        const firstPart = text.substring(0, safe);
-                        const secondPart = text.substring(safe);
-                        textNode.textContent = firstPart;
-                        if (!secondPart) return null;
-                        return document.createTextNode(secondPart);
-                    }
-                    
-                    function splitElementAcrossPages(element, parentContainer) {
-                        const clone = element.cloneNode(false);
-                        parentContainer.appendChild(clone);
-                        const kids = Array.from(element.childNodes);
-                        let subContainer = clone;
-                        
-                        for (let k = 0; k < kids.length; k++) {
-                            const kid = kids[k];
-                            // Try append
-                            subContainer.appendChild(kid);
-                            
-                            if (currentPageDiv.scrollHeight > pageLimit) {
-                                subContainer.removeChild(kid);
-                                
-                                if (kid.nodeType === Node.TEXT_NODE) {
-                                    const rem = splitTextNode(kid, subContainer);
-                                    if (rem) {
-                                        startNewPage();
-                                        
-                                        let newParent;
-                                        if (parentContainer.classList && parentContainer.classList.contains('page')) {
-                                            newParent = currentPageDiv;
-                                        } else {
-                                            const parentClone = parentContainer.cloneNode(false);
-                                            if(parentClone.id) {
-                                                parentClone.setAttribute('data-continuation-of', parentClone.id);
-                                                parentClone.removeAttribute('id');
-                                            }
-                                            currentPageDiv.appendChild(parentClone);
-                                            newParent = parentClone;
-                                        }
-                                        
-                                        const elClone = element.cloneNode(false);
-                                        if(elClone.id) {
-                                            elClone.setAttribute('data-continuation-of', elClone.id);
-                                            elClone.removeAttribute('id');
-                                        }
-                                        newParent.appendChild(elClone);
-                                        
-                                        subContainer = elClone;
-                                        parentContainer = newParent;
-                                        
-                                        subContainer.appendChild(rem);
-                                    }
-                                } else if (kid.tagName === 'IMG') {
-                                    startNewPage();
-                                    
-                                    let newParent;
-                                    if (parentContainer.classList && parentContainer.classList.contains('page')) {
-                                        newParent = currentPageDiv;
-                                    } else {
-                                        const parentClone = parentContainer.cloneNode(false);
-                                        if(parentClone.id) {
-                                            parentClone.setAttribute('data-continuation-of', parentClone.id);
-                                            parentClone.removeAttribute('id');
-                                        }
-                                        currentPageDiv.appendChild(parentClone);
-                                        newParent = parentClone;
-                                    }
-                                    
-                                    const elClone = element.cloneNode(false);
-                                    if(elClone.id) {
-                                        elClone.setAttribute('data-continuation-of', elClone.id);
-                                        elClone.removeAttribute('id');
-                                    }
-                                    newParent.appendChild(elClone);
-                                    
-                                    subContainer = elClone;
-                                    parentContainer = newParent;
-                                    
-                                    subContainer.appendChild(kid);
-                                } else {
-                                    subContainer = splitElementAcrossPages(kid, subContainer);
-                                }
-                            }
-                        }
-                        return subContainer;
-                    }
-
-                    while(fragment.childNodes.length > 0) {
-                         const node = fragment.childNodes[0];
-                         fragment.removeChild(node);
-                         currentPageDiv.appendChild(node);
-                         
-                         if (currentPageDiv.scrollHeight > pageLimit) {
-                             currentPageDiv.removeChild(node);
-                             if (node.nodeType === Node.TEXT_NODE) {
-                                 const rem = splitTextNode(node, currentPageDiv);
-                                 if (rem) {
-                                     startNewPage();
-                                     currentPageDiv.appendChild(rem);
-                                 }
-                             } else if (node.nodeType === Node.ELEMENT_NODE) {
-                                 if (node.tagName === 'IMG') {
-                                     startNewPage();
-                                     currentPageDiv.appendChild(node);
-                                 } else {
-                                     splitElementAcrossPages(node, currentPageDiv);
-                                 }
-                             }
-                         }
-                    }
-                    console.log("Pagination complete. Pages: " + pageCount);
-                    
-                    const allElements = wrapper.querySelectorAll('[id]');
-                    allElements.forEach(el => {
-                        const page = el.closest('.page');
-                        if (page) {
-                            const index = Array.from(wrapper.children).indexOf(page);
-                            elementPageMap[el.id] = index;
-                        }
-                    });
-                }
-                
-                function gotoPage(index, animate = true) {
-                    console.log("gotoPage(" + index + ") called. animate=" + animate + " currentPage=" + currentPage + " pageCount=" + pageCount);
-                    if (index < 0) index = 0;
-                    if (index >= pageCount) index = pageCount - 1;
-                    currentPage = index;
-                    const wrapper = document.getElementById('pagination-wrapper');
-                    if (wrapper) {
-                        wrapper.style.transition = animate ? 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)' : 'none';
-                        wrapper.style.transform = 'translateX(-' + (index * 100) + 'vw)';
-                        console.log("Transformed wrapper to page " + index);
-                        if (window.Android) {
-                             const percent = pageCount > 1 ? index / (pageCount - 1) : 0;
-                             let bestId = null;
-                             const page = wrapper.children[index];
-                             if (page) {
-                                 const firstId = page.querySelector('[id]');
-                                 if (firstId) bestId = firstId.id;
-                             }
-                             window.Android.onScrollWithId(percent, bestId);
-                        }
-                    } else {
-                        console.log("ERROR: pagination-wrapper not found!");
-                    }
-                }
-                
-                function scrollToPercent(percent) {
-                    const target = Math.round(percent * (pageCount - 1));
-                    gotoPage(target, false);
-                }
-                function pageLeft() {
-                    console.log("pageLeft() called. currentPage=" + currentPage + " pageCount=" + pageCount);
-                    if (currentPage <= 0) {
-                        console.log("At first page, calling onPrevChapter");
-                        if (window.Android) window.Android.onPrevChapter();
-                        return;
-                    }
-                    console.log("Going to page " + (currentPage - 1));
-                    gotoPage(currentPage - 1);
-                }
-                
-                function pageRight() {
-                    console.log("pageRight() called. currentPage=" + currentPage + " pageCount=" + pageCount);
-                    if (currentPage >= pageCount - 1) {
-                        console.log("At last page, calling onNextChapter");
-                         if (window.Android) window.Android.onNextChapter();
-                         return;
-                    }
-                    console.log("Going to page " + (currentPage + 1));
-                    gotoPage(currentPage + 1);
-                }
-                
-                function highlightElement(id, retry = 0, animated = true) {
-                    if (!id) return;
-                    
-                    // Find all parts (original ID + continuations)
-                    const parts = Array.from(document.querySelectorAll(`[id="${'$'}{id}"], [data-continuation-of="${'$'}{id}"]`));
-                    
-                    if (parts.length === 0) {
-                        if (retry < 5) setTimeout(() => highlightElement(id, retry+1, animated), 200);
-                        return;
-                    }
-
-                    // Smooth highlight transition
-                    if (currentHighlightId !== id) {
-                         // Fade out old highlights
-                         document.querySelectorAll('.highlight').forEach(el => {
-                             el.classList.remove('active');
-                             setTimeout(() => el.classList.remove('highlight'), 150);
-                         });
-                         
-                         // Fade in new highlights with stagger
-                         parts.forEach((el, index) => {
-                             setTimeout(() => {
-                                 el.classList.add('highlight');
-                                 if (index === 0) el.classList.add('active');
-                             }, index * 20);
-                         });
-                         
-                         currentHighlightId = id;
-                    } else {
-                         // Ensure new parts are highlighted
-                         parts.forEach(el => {
-                             el.classList.add('highlight');
-                         });
-                         if (parts.length > 0) parts[0].classList.add('active');
-                    }
-
-                    const wrapper = document.getElementById('pagination-wrapper');
-                    
-                    // Short Orphan Check
-                    let totalLen = 0;
-                    parts.forEach(p => totalLen += p.textContent.length);
-                    
-                    if (totalLen < 40) {
-                         const lastPart = parts[parts.length - 1];
-                         const page = lastPart.closest('.page');
-                         
-                         if (page && wrapper) {
-                             const pIdx = Array.from(wrapper.children).indexOf(page);
-                             
-                             // Traverse forward to find next content node
-                             let scan = lastPart;
-                             let foundNext = null;
-                             while(scan && scan !== wrapper) {
-                                 if (scan.nextSibling) {
-                                     foundNext = scan.nextSibling;
-                                     break;
-                                 }
-                                 scan = scan.parentNode;
-                             }
-                             
-                             if (foundNext) {
-                                 const nextPage = foundNext.closest('.page');
-                                 if (nextPage) {
-                                      const nextIdx = Array.from(wrapper.children).indexOf(nextPage);
-                                      if (nextIdx > pIdx) {
-                                          console.log("Short highlight detected at page boundary. Advancing to Page " + nextIdx);
-                                          if (currentPage !== nextIdx) gotoPage(nextIdx, animated);
-                                          return;
-                                      }
-                                 }
-                             }
-                         }
-                    }
-
-                    // Scroll to the last page containing any part of the highlight
-                    const lastPart = parts[parts.length - 1];
-                    const page = lastPart.closest('.page');
-                    
-                    if (page && wrapper) {
-                        const pageIndex = Array.from(wrapper.children).indexOf(page);
-                        
-                        if (pageIndex >= 0 && currentPage !== pageIndex) {
-                             gotoPage(pageIndex, animated);
-                        }
-                    }
-                }
-
-                window.onload = function() {
-                    paginate();
-                    const highlightId = ${if (initialHighlightId != null) "'$initialHighlightId'" else "null"};
-                    const initialPercent = $initialScrollPercent;
-                    if (highlightId) {
-                        highlightElement(highlightId);
-                    } else if (initialPercent > 0) {
-                        scrollToPercent(initialPercent);
-                    }
-                    if (window.Android) window.Android.onReaderReady();
-                };
-
-                function findAndHighlight(text, retryCount = 0, matchIndex = 0) {
-                     if (!text) return;
-                     if (retryCount === 0) {
-                          document.querySelectorAll('.search-highlight').forEach(el => {
-                              const parent = el.parentNode;
-                              while(el.firstChild) parent.insertBefore(el.firstChild, el);
-                              parent.removeChild(el);
-                          });
-                     }
-                     
-                     const walker = document.createTreeWalker(document.getElementById('pagination-wrapper') || document.body, NodeFilter.SHOW_TEXT, null, false);
-                     let node;
-                     let currentMatch = 0;
-                     let foundRange = null;
-                     text = text.toLowerCase();
-                     
-                     while(node = walker.nextNode()) {
-                         const content = node.textContent.toLowerCase();
-                         let searchIndex = 0;
-                         while(true) {
-                             const foundIndex = content.indexOf(text, searchIndex);
-                             if (foundIndex === -1) break;
-                             if (currentMatch === matchIndex) {
-                                 foundRange = document.createRange();
-                                 foundRange.setStart(node, foundIndex);
-                                 foundRange.setEnd(node, foundIndex + text.length);
-                                 break;
-                             }
-                             currentMatch++;
-                             searchIndex = foundIndex + 1;
-                         }
-                         if (foundRange) break;
-                     }
-                     
-                     if (foundRange) {
-                         try {
-                             const span = document.createElement('span');
-                             span.className = 'search-highlight';
-                             foundRange.surroundContents(span);
-                             
-                             const page = span.closest('.page');
-                             if (page) {
-                                 const wrapper = document.getElementById('pagination-wrapper');
-                                 const index = Array.from(wrapper.children).indexOf(page);
-                                 if (index !== -1 && index !== currentPage) {
-                                     gotoPage(index, false);
-                                 }
-                             }
-                         } catch (e) {
-                             console.error("Highlight error", e);
-                         }
-                     } else if (retryCount < 5) {
-                        setTimeout(() => findAndHighlight(text, retryCount + 1, matchIndex), 100);
-                    }
-                }
-                
-                // ERROR HANDLER
-                window.onerror = function(msg, url, lineNo, columnNo, error) {
-                    console.error("JavaScript Error: " + msg + " at line " + lineNo + ":" + columnNo);
-                    return false;
-                };
-                
-                console.log("=== JAVASCRIPT INITIALIZATION ===");
-                console.log("pageCount: " + pageCount);
-                console.log("currentPage: " + currentPage);
-                console.log("typeof pageLeft: " + typeof pageLeft);
-                console.log("typeof pageRight: " + typeof pageRight);
-                console.log("typeof highlightElement: " + typeof highlightElement);
-                console.log("typeof gotoPage: " + typeof gotoPage);
-                console.log("window.Android exists: " + (window.Android ? "YES" : "NO"));
-                console.log("=== ADDING TOUCH LISTENERS ===");
-                let touchStartX = 0;
-                let touchStartTime = 0;
-                
-                document.addEventListener('touchstart', function(e) {
-                    touchStartX = e.changedTouches[0].screenX;
-                    touchStartTime = Date.now();
-                }, false);
-                
-                document.addEventListener('touchend', function(e) {
-                    const deltaX = e.changedTouches[0].screenX - touchStartX;
-                    const deltaTime = Date.now() - touchStartTime;
-                    console.log("touchend: deltaX=" + deltaX + " deltaTime=" + deltaTime);
-                    if (Math.abs(deltaX) > 40 && deltaTime < 300) {
-                        console.log("SWIPE detected, deltaX=" + deltaX);
-                        if (deltaX > 0) pageLeft();
-                        else pageRight();
-                    } else if (Math.abs(deltaX) < 10 && deltaTime < 300) {
-                        const tapX = e.changedTouches[0].clientX;
-                        const width = window.innerWidth;
-                        const ratio = tapX / width;
-                        console.log("TAP detected at x=" + tapX + " width=" + width + " ratio=" + ratio);
-                        if (window.Android) window.Android.onBodyClick(tapX, width);
-                    }
-                }, false);
-
-                window.oncontextmenu = function(event) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    let target = event.target;
-                    
-                    function getValidId(el) {
-                        return el.id || el.getAttribute('data-continuation-of');
-                    }
-
-                    while (target && (!getValidId(target) || target.classList.contains('page') || target.id === 'pagination-wrapper' || target.id === 'content-container')) {
-                        target = target.parentElement;
-                    }
-                    
-                    const finalId = target ? getValidId(target) : null;
-                    if (finalId && window.Android) {
-                        window.Android.onElementLongPress(finalId);
-                        return false;
-                    }
-                };
-            </script>
-        </head>
-        <body data-theme="${userSettings.readerTheme}">
-            <div id="content-container">
-                $html
-            </div>
-        </body>
-        </html>
-    """.trimIndent()
+        },
+        onSentenceLongPress = { sentenceId ->
+            viewModel.jumpToElementRequest.value = sentenceId
+        },
+        onCenterTap = onTap,
+        onPrevChapter = {
+            if (chapterIndex > 0) viewModel.changeChapter(chapterIndex - 1, scrollToEnd = true)
+        },
+        onNextChapter = {
+            if (chapterIndex < viewModel.totalChapters - 1) viewModel.changeChapter(chapterIndex + 1)
+        },
+        modifier = Modifier.fillMaxSize()
+    )
 }
 
 @Composable
@@ -1127,6 +312,12 @@ fun ReaderControls(
     onFontSizeChange: (Float) -> Unit,
     onThemeChange: (Int) -> Unit,
     onFontFamilyChange: (String) -> Unit,
+    onUseCustomFontChange: (Boolean) -> Unit,
+    onHighlightStyleChange: (Int) -> Unit,
+    onHighlightColorChange: (Int) -> Unit,
+    onHighlightRoundedChange: (Boolean) -> Unit,
+    materialYouColor: Color? = null,
+    bookThemeColor: Color? = null,
     onChapterChange: (Int) -> Unit,
     backgroundColor: Color,
     contentColor: Color
@@ -1154,9 +345,9 @@ fun ReaderControls(
                 }
             }
             Text("Chapter ${currentChapter + 1} of $totalChapters", style = MaterialTheme.typography.labelSmall)
-            
+
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = contentColor.copy(alpha = 0.2f))
-            
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(painterResource(R.drawable.ic_text_format), contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
@@ -1168,7 +359,7 @@ fun ReaderControls(
                 )
                 Icon(painterResource(R.drawable.ic_text_format), contentDescription = null, modifier = Modifier.size(24.dp))
             }
-            
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -1178,16 +369,90 @@ fun ReaderControls(
                 ReaderThemeIcon(userSettings.readerTheme == 2, Color(0xFF121212), Color(0xFFE0E0E0)) { onThemeChange(2) }
                 ReaderThemeIcon(userSettings.readerTheme == 3, Color.Black, Color.White) { onThemeChange(3) }
             }
-            
+
             Spacer(Modifier.height(8.dp))
-            
+            HorizontalDivider(Modifier.padding(bottom = 8.dp), color = contentColor.copy(alpha = 0.2f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Custom font", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Switch(checked = userSettings.readerUseCustomFont, onCheckedChange = onUseCustomFontChange)
+            }
+
+            if (userSettings.readerUseCustomFont) {
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    FontButton("Serif", userSettings.readerFontFamily == "serif") { onFontFamilyChange("serif") }
+                    FontButton("Sans", userSettings.readerFontFamily == "sans-serif") { onFontFamilyChange("sans-serif") }
+                    FontButton("Mono", userSettings.readerFontFamily == "monospace") { onFontFamilyChange("monospace") }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(Modifier.padding(bottom = 8.dp), color = contentColor.copy(alpha = 0.2f))
+
+            Text("Highlight", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                FontButton("Serif", userSettings.readerFontFamily == "serif") { onFontFamilyChange("serif") }
-                FontButton("Sans", userSettings.readerFontFamily == "sans-serif") { onFontFamilyChange("sans-serif") }
-                FontButton("Mono", userSettings.readerFontFamily == "monospace") { onFontFamilyChange("monospace") }
+                FontButton("Fill", userSettings.readerHighlightStyle == 0) { onHighlightStyleChange(0) }
+                FontButton("Underline", userSettings.readerHighlightStyle == 1) { onHighlightStyleChange(1) }
+                FontButton("Outline", userSettings.readerHighlightStyle == 2) { onHighlightStyleChange(2) }
+            }
+
+            Spacer(Modifier.height(4.dp))
+            if (materialYouColor != null || bookThemeColor != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (materialYouColor != null) {
+                        HighlightColorChip(
+                            label = "Material You",
+                            color = materialYouColor,
+                            selected = userSettings.readerHighlightColor == HIGHLIGHT_COLOR_MATERIAL_YOU
+                        ) { onHighlightColorChange(HIGHLIGHT_COLOR_MATERIAL_YOU) }
+                    }
+                    if (bookThemeColor != null) {
+                        HighlightColorChip(
+                            label = "Book Theme",
+                            color = bookThemeColor,
+                            selected = userSettings.readerHighlightColor == HIGHLIGHT_COLOR_BOOK_THEME
+                        ) { onHighlightColorChange(HIGHLIGHT_COLOR_BOOK_THEME) }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HighlightColorSwatch(
+                    color = null,
+                    selected = userSettings.readerHighlightColor == HIGHLIGHT_COLOR_THEME_DEFAULT,
+                    borderColor = contentColor
+                ) { onHighlightColorChange(HIGHLIGHT_COLOR_THEME_DEFAULT) }
+                HIGHLIGHT_COLOR_PRESETS.forEach { preset ->
+                    Spacer(Modifier.width(8.dp))
+                    HighlightColorSwatch(
+                        color = preset,
+                        selected = userSettings.readerHighlightColor == preset.toArgb(),
+                        borderColor = contentColor
+                    ) { onHighlightColorChange(preset.toArgb()) }
+                }
+            }
+
+            if (userSettings.readerHighlightStyle != 1) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Rounded corners", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    Switch(checked = userSettings.readerHighlightRounded, onCheckedChange = onHighlightRoundedChange)
+                }
             }
         }
     }
@@ -1221,13 +486,37 @@ fun FontButton(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-data class ReaderThemeData(val bg: String, val text: String, val bgInt: Int, val textInt: Int)
-
-fun getReaderTheme(themeId: Int): ReaderThemeData {
-    return when(themeId) {
-        1 -> ReaderThemeData("#F4ECD8", "#5B4636", 0xFFF4ECD8.toInt(), 0xFF5B4636.toInt())
-        2 -> ReaderThemeData("#121212", "#E0E0E0", 0xFF121212.toInt(), 0xFFE0E0E0.toInt())
-        3 -> ReaderThemeData("#000000", "#FFFFFF", 0xFF000000.toInt(), 0xFFFFFFFF.toInt())
-        else -> ReaderThemeData("#FFFFFF", "#000000", 0xFFFFFFFF.toInt(), 0xFF000000.toInt())
+@Composable
+fun HighlightColorSwatch(color: Color?, selected: Boolean, borderColor: Color, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .size(28.dp)
+            .clickable(onClick = onClick),
+        shape = CircleShape,
+        color = color ?: Color.Transparent,
+        border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else borderColor.copy(alpha = 0.4f))
+    ) {
+        if (color == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("A", color = borderColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            }
+        }
     }
+}
+
+@Composable
+fun HighlightColorChip(label: String, color: Color, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        leadingIcon = {
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .clip(CircleShape)
+                    .background(color)
+            )
+        }
+    )
 }

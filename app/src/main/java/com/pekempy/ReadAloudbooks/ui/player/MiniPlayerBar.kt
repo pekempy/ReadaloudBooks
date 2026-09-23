@@ -164,6 +164,16 @@ fun MiniPlayerBar(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    val currentMs = if (isReadAloud) readAloudViewModel.currentPosition else audiobookViewModel.currentPosition
+                    val totalMs = if (isReadAloud) readAloudViewModel.duration else audiobookViewModel.duration
+                    if (totalMs > 0) {
+                        Text(
+                            text = "${com.pekempy.ReadAloudbooks.util.FormatUtils.formatTime(currentMs)} / ${com.pekempy.ReadAloudbooks.util.FormatUtils.formatTime(totalMs)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            maxLines = 1
+                        )
+                    }
                 }
                 
                 IconButton(

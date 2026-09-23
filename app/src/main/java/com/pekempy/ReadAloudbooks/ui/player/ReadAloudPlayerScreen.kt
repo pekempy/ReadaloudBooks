@@ -14,7 +14,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -23,9 +22,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.ImageLoader
+import com.pekempy.ReadAloudbooks.data.Chapter
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
 import com.pekempy.ReadAloudbooks.ui.reader.*
-import com.pekempy.ReadAloudbooks.ui.player.AudiobookViewModel
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import com.pekempy.ReadAloudbooks.util.FormatUtils
@@ -59,14 +58,14 @@ fun ReadAloudPlayerScreen(
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showChaptersSheet by remember { mutableStateOf(false) }
     var showSearchSheet by remember { mutableStateOf(false) }
-    
+
     LaunchedEffect(bookId) {
         readerViewModel.loadEpub(bookId, isReadAloud = true)
         readAloudAudioViewModel.initializePlayer(context)
     }
-    
+
     val highlightId = readAloudAudioViewModel.currentElementId
-    
+
     LaunchedEffect(readerViewModel.lazyBook, readAloudAudioViewModel.isLoading) {
         if (readerViewModel.lazyBook != null && !readAloudAudioViewModel.isLoading) {
             val audioCh = readAloudAudioViewModel.currentChapterIndex
@@ -76,7 +75,6 @@ fun ReadAloudPlayerScreen(
             }
             if (audioId != null) {
                 readerViewModel.currentHighlightId = audioId
-                readerViewModel.forceScrollUpdate()
             }
         }
     }
@@ -84,13 +82,6 @@ fun ReadAloudPlayerScreen(
     LaunchedEffect(highlightId, readAloudAudioViewModel.isLoading) {
         if (!readAloudAudioViewModel.isLoading && highlightId != null && readerViewModel.currentHighlightId != highlightId) {
             readerViewModel.currentHighlightId = highlightId
-            readerViewModel.forceScrollUpdate()
-        }
-    }
-
-    LaunchedEffect(readAloudAudioViewModel.isPlaying, readAloudAudioViewModel.currentPosition) {
-        if (readAloudAudioViewModel.isPlaying && readAloudAudioViewModel.currentPosition > 0) {
-            readerViewModel.forceScrollUpdate()
         }
     }
 
@@ -136,8 +127,6 @@ fun ReadAloudPlayerScreen(
         }
     }
 
-
-    
     LaunchedEffect(readerViewModel.jumpToElementRequest.value) {
         readerViewModel.jumpToElementRequest.value?.let { elementId ->
             readAloudAudioViewModel.seekToElement(elementId)
@@ -205,7 +194,7 @@ fun ReadAloudPlayerScreen(
         AlertDialog(
             onDismissRequest = { readAloudAudioViewModel.dismissSync() },
             title = { Text("Progress Sync") },
-            text = { 
+            text = {
                 Text("Progress is out of sync with Storyteller.")
             },
             confirmButton = {
@@ -229,7 +218,7 @@ fun ReadAloudPlayerScreen(
         AlertDialog(
             onDismissRequest = { readerViewModel.dismissSync() },
             title = { Text("Progress Sync") },
-            text = { 
+            text = {
                 Text("Progress is out of sync with Storyteller.")
             },
             confirmButton = {
@@ -252,28 +241,30 @@ fun ReadAloudPlayerScreen(
     }
 
     if (userSettings != null && readerViewModel.totalChapters > 0) {
-        val theme = getReaderTheme(userSettings.readerTheme)
         val accentColor = MaterialTheme.colorScheme.primary
-        val accentHex = String.format("#%06X", (0xFFFFFF and accentColor.toArgb()))
-        
+        val theme = readerThemeFor(userSettings.readerTheme, accentColor)
+        val fontFamily = readerFontFamilyFor(userSettings)
+        val materialYouColor = rememberMaterialYouColor(dark = userSettings.readerTheme == 2 || userSettings.readerTheme == 3)
+        val bookThemeColor = if (userSettings.bookThemeColor != 0) Color(userSettings.bookThemeColor) else null
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(theme.bgInt))
+                .background(theme.background)
         ) {
-            EpubWebView(
-                html = readerViewModel.getCurrentChapterHtml() ?: "",
-                userSettings = userSettings,
+            ReaderBody(
                 viewModel = readerViewModel,
-                accentHex = accentHex,
+                theme = theme,
+                fontFamily = fontFamily,
+                userSettings = userSettings,
+                isReadAloud = true,
                 highlightId = if (readerViewModel.activeSearchHighlight == null) readerViewModel.currentHighlightId else null,
-                syncTrigger = readerViewModel.syncTrigger,
-                activeSearch = readerViewModel.activeSearchHighlight,
-                activeSearchMatchIndex = readerViewModel.activeSearchMatchIndex,
-                pendingAnchor = readerViewModel.pendingAnchorId.value,
+                searchQuery = readerViewModel.activeSearchHighlight,
+                materialYouColor = materialYouColor,
+                bookThemeColor = bookThemeColor,
                 onTap = { readerViewModel.showControls = !readerViewModel.showControls }
             )
-            
+
             AnimatedVisibility(
                 visible = readerViewModel.showControls,
                 enter = slideInVertically { -it },
@@ -283,7 +274,7 @@ fun ReadAloudPlayerScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(theme.bgInt).copy(alpha = 0.95f))
+                        .background(theme.background.copy(alpha = 0.95f))
                         .statusBarsPadding()
                         .height(40.dp)
                         .padding(horizontal = 4.dp),
@@ -292,50 +283,49 @@ fun ReadAloudPlayerScreen(
                 ) {
                     IconButton(onClick = onBack) {
                         Icon(
-                            painterResource(R.drawable.ic_keyboard_arrow_down), 
+                            painterResource(R.drawable.ic_keyboard_arrow_down),
                             contentDescription = "Back",
-                            tint = Color(theme.textInt)
+                            tint = theme.text
                         )
                     }
-                    
+
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (readAloudAudioViewModel.sleepTimerRemaining > 0 || readAloudAudioViewModel.isWaitingForChapterEnd) {
                             Text(
                                 text = if (readAloudAudioViewModel.isWaitingForChapterEnd) "Stopping at end of chapter" else FormatUtils.formatSleepTime(readAloudAudioViewModel.sleepTimerRemaining),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color(theme.textInt),
+                                color = theme.text,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(end = 4.dp)
                             )
                         }
-                        IconButton(onClick = { 
+                        IconButton(onClick = {
                             if (readAloudAudioViewModel.isPlaying) readAloudAudioViewModel.togglePlayPause()
                             readerViewModel.clearSearch()
-                            showSearchSheet = true 
+                            showSearchSheet = true
                         }) {
                             Icon(
                                 painterResource(R.drawable.ic_search),
                                 contentDescription = "Search",
-                                tint = Color(theme.textInt)
+                                tint = theme.text
                             )
                         }
-                        IconButton(onClick = { 
-                            if (readAloudAudioViewModel.sleepTimerRemaining <= 0) {
-                                readAloudAudioViewModel.applyDefaultSleepTimer()
+                        com.pekempy.ReadAloudbooks.ui.components.SleepTimerIndicator(
+                            remainingMs = readAloudAudioViewModel.sleepTimerRemaining,
+                            isWaitingForChapterEnd = readAloudAudioViewModel.isWaitingForChapterEnd,
+                            tint = theme.text,
+                            onClick = {
+                                if (readAloudAudioViewModel.sleepTimerRemaining <= 0) {
+                                    readAloudAudioViewModel.applyDefaultSleepTimer()
+                                }
+                                showSleepTimerSheet = true
                             }
-                            showSleepTimerSheet = true 
-                        }) {
-                            Icon(
-                                painterResource(if (readAloudAudioViewModel.sleepTimerRemaining > 0) R.drawable.ic_snooze else R.drawable.ic_bedtime),
-                                contentDescription = "Sleep Timer",
-                                tint = Color(theme.textInt)
-                            )
-                        }
+                        )
                         IconButton(onClick = { readerViewModel.showControls = !readerViewModel.showControls }) {
                             Icon(
-                                painterResource(R.drawable.ic_settings), 
+                                painterResource(R.drawable.ic_settings),
                                 contentDescription = "Preferences",
-                                tint = Color(theme.textInt)
+                                tint = theme.text
                             )
                         }
                     }
@@ -363,9 +353,15 @@ fun ReadAloudPlayerScreen(
                             onFontSizeChange = readerViewModel::updateFontSize,
                             onThemeChange = readerViewModel::updateTheme,
                             onFontFamilyChange = readerViewModel::updateFontFamily,
+                            onUseCustomFontChange = readerViewModel::updateUseCustomFont,
+                            onHighlightStyleChange = readerViewModel::updateHighlightStyle,
+                            onHighlightColorChange = readerViewModel::updateHighlightColor,
+                            onHighlightRoundedChange = readerViewModel::updateHighlightRounded,
+                            materialYouColor = materialYouColor,
+                            bookThemeColor = bookThemeColor,
                             onChapterChange = readerViewModel::changeChapter,
-                            backgroundColor = Color(theme.bgInt).copy(alpha = 0.95f),
-                            contentColor = Color(theme.textInt)
+                            backgroundColor = theme.background.copy(alpha = 0.95f),
+                            contentColor = theme.text
                         )
                     }
                     AnimatedVisibility(
@@ -420,7 +416,7 @@ fun ReadAloudPlayerScreen(
                 )
             }
         }
-        
+
         if (showSearchSheet) {
             ModalBottomSheet(onDismissRequest = { showSearchSheet = false }) {
                 SearchContent(
@@ -441,13 +437,13 @@ fun SearchContent(
     onResultClick: (ReaderViewModel.SearchResult, String) -> Unit
 ) {
     var query by remember { mutableStateOf(viewModel.activeSearchHighlight ?: "") }
-    
+
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Search in Book", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
-        
+
         OutlinedTextField(
             value = query,
-            onValueChange = { 
+            onValueChange = {
                 query = it
                 viewModel.search(it)
             },
@@ -457,16 +453,16 @@ fun SearchContent(
             leadingIcon = { Icon(painterResource(R.drawable.ic_search), null) },
             trailingIcon = {
                 if (query.isNotEmpty()) {
-                    IconButton(onClick = { 
+                    IconButton(onClick = {
                         query = ""
                         viewModel.clearSearch()
                     }) { Icon(painterResource(R.drawable.ic_clear), null) }
                 }
             }
         )
-        
+
         Spacer(Modifier.height(16.dp))
-        
+
         if (viewModel.isSearching) {
             Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -480,12 +476,12 @@ fun SearchContent(
                 itemsIndexed(viewModel.searchResults) { index, result ->
                     ListItem(
                         headlineContent = { Text(result.title) },
-                        supportingContent = { 
+                        supportingContent = {
                             Text(
-                                result.textSnippet, 
-                                maxLines = 3, 
+                                result.textSnippet,
+                                maxLines = 3,
                                 overflow = TextOverflow.Ellipsis
-                            ) 
+                            )
                         },
                         modifier = Modifier.clickable {
                             onResultClick(result, query)
@@ -536,9 +532,9 @@ fun SleepTimerContent(viewModel: ReadAloudAudioViewModel) {
             valueRange = 0f..120f,
             steps = 119
         )
-        
+
         Spacer(Modifier.height(8.dp))
-        
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -574,27 +570,15 @@ fun ChaptersContent(
             }
         } else {
             val validChapters = viewModel.chapters.filter { it.duration >= 1000 }
-            val hasParts = validChapters.any { it.title.contains("Part", ignoreCase = true) }
-            
+
             LazyColumn {
                 itemsIndexed(validChapters) { index, chapter ->
-                    val isPart = chapter.title.contains("Part", ignoreCase = true)
-                    val isChapter = chapter.title.contains("Chapter", ignoreCase = true)
-                    val indent = if (hasParts && isChapter && !isPart) 32.dp else 0.dp
-                    
                     ListItem(
-                        headlineContent = { 
-                            Text(
-                                text = chapter.title,
-                                fontWeight = if (isPart) FontWeight.Bold else FontWeight.Normal,
-                                modifier = Modifier.padding(start = indent)
-                            ) 
+                        headlineContent = {
+                            Text(text = chapter.title)
                         },
-                        supportingContent = { 
-                            Text(
-                                text = FormatUtils.formatTime(chapter.startOffset),
-                                modifier = Modifier.padding(start = indent)
-                            ) 
+                        supportingContent = {
+                            Text(text = FormatUtils.formatTime(chapter.startOffset))
                         },
                         trailingContent = { Text(FormatUtils.formatTime(chapter.duration)) },
                         modifier = Modifier.clickable {
@@ -602,8 +586,8 @@ fun ChaptersContent(
                             if (originalIndex >= 0) onChapterClick(originalIndex)
                         },
                         colors = ListItemDefaults.colors(
-                            containerColor = if (viewModel.currentPosition >= chapter.startOffset && 
-                                                 (viewModel.currentPosition < chapter.startOffset + chapter.duration || 
+                            containerColor = if (viewModel.currentPosition >= chapter.startOffset &&
+                                                 (viewModel.currentPosition < chapter.startOffset + chapter.duration ||
                                                   (chapter.duration == 0L && viewModel.currentPosition == chapter.startOffset)))
                                 MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
                         )
@@ -638,7 +622,7 @@ fun ReadAloudFullPlayerOverlay(
             IconButton(onClick = onClose, modifier = Modifier.align(Alignment.Start)) {
                 Icon(painterResource(R.drawable.ic_keyboard_arrow_down), contentDescription = "Close")
             }
-            
+
             Box(modifier = Modifier.weight(1f).padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
                 Card(
                     modifier = Modifier.aspectRatio(1f).fillMaxWidth(0.8f),
@@ -646,44 +630,29 @@ fun ReadAloudFullPlayerOverlay(
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
                     AsyncImage(
-                        model = book?.coverUrl ?: book?.audiobookCoverUrl,
+                        model = book?.audiobookCoverUrl ?: book?.coverUrl,
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
                 }
             }
-            
-            val currentChapterTitle by remember {
-                derivedStateOf {
-                    val pos = viewModel.currentPosition
-                    viewModel.chapters.find { 
-                        pos >= it.startOffset && 
-                        (pos < it.startOffset + it.duration || (it.duration == 0L && pos == it.startOffset))
-                    }?.title
-                }
-            }
-            
+
             Text(book?.title ?: "Unknown", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-            currentChapterTitle?.let { title ->
-                Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
             Text(book?.author ?: "Unknown", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
-            
+
             Spacer(Modifier.height(24.dp))
-            
-            Slider(
-                value = if (viewModel.duration > 0) viewModel.currentPosition.toFloat() else 0f,
-                onValueChange = { viewModel.seekTo(it.toLong()) },
-                valueRange = 0f..(if (viewModel.duration > 0) viewModel.duration.toFloat() else 1f)
+
+            ChapterProgressBar(
+                currentPosition = viewModel.currentPosition,
+                totalDuration = viewModel.duration,
+                chapters = viewModel.chapters,
+                onSeek = { viewModel.seekTo(it) },
+                modifier = Modifier.fillMaxWidth()
             )
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(FormatUtils.formatTime(viewModel.currentPosition), style = MaterialTheme.typography.labelMedium)
-                Text(FormatUtils.formatTime(viewModel.duration), style = MaterialTheme.typography.labelMedium)
-            }
-            
+
             Spacer(Modifier.height(24.dp))
-            
+
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { viewModel.rewind10s() }) { Icon(painterResource(R.drawable.ic_replay_10), null, Modifier.size(32.dp)) }
                 IconButton(onClick = { viewModel.togglePlayPause() }, modifier = Modifier.size(72.dp)) {
@@ -691,12 +660,19 @@ fun ReadAloudFullPlayerOverlay(
                 }
                 IconButton(onClick = { viewModel.forward30s() }) { Icon(painterResource(R.drawable.ic_forward_30), null, Modifier.size(32.dp)) }
             }
-            
+
             Spacer(Modifier.height(32.dp))
-            
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onShowSpeed) { Text("${"%.2f".format(viewModel.playbackSpeed)}x Speed") }
-                IconButton(onClick = onShowChapters) { Icon(painterResource(R.drawable.ic_list), null) }
+                Row {
+                    com.pekempy.ReadAloudbooks.ui.components.SleepTimerIndicator(
+                        remainingMs = viewModel.sleepTimerRemaining,
+                        isWaitingForChapterEnd = viewModel.isWaitingForChapterEnd,
+                        onClick = onShowSleep
+                    )
+                    IconButton(onClick = onShowChapters) { Icon(painterResource(R.drawable.ic_list), null) }
+                }
             }
         }
     }
@@ -705,13 +681,13 @@ fun ReadAloudFullPlayerOverlay(
 @Composable
 fun ReadAloudMinimalCard(
     audiobookViewModel: ReadAloudAudioViewModel,
-    theme: ReaderThemeData,
+    theme: ReaderTheme,
     onClick: () -> Unit
 ) {
     val book = audiobookViewModel.currentBook
     val context = LocalContext.current
     val imageLoader = remember {
-        val client = AppContainer.apiClientManager.okHttpClient 
+        val client = AppContainer.apiClientManager.okHttpClient
             ?: return@remember ImageLoader(context)
         ImageLoader.Builder(context)
             .okHttpClient(client)
@@ -724,8 +700,8 @@ fun ReadAloudMinimalCard(
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .clickable { onClick() },
         shape = RoundedCornerShape(24.dp),
-        color = Color(theme.bgInt).copy(alpha = 0.95f),
-        border = BorderStroke(1.dp, Color(theme.textInt).copy(alpha = 0.1f)),
+        color = theme.background.copy(alpha = 0.95f),
+        border = BorderStroke(1.dp, theme.text.copy(alpha = 0.1f)),
         tonalElevation = 8.dp
     ) {
         Row(
@@ -743,29 +719,29 @@ fun ReadAloudMinimalCard(
                     .clip(RoundedCornerShape(12.dp)),
                 contentScale = ContentScale.Crop
             )
-            
+
             Spacer(Modifier.width(16.dp))
-            
+
             val currentChapterTitle by remember {
                 derivedStateOf {
                     val pos = audiobookViewModel.currentPosition
-                    audiobookViewModel.chapters.find { 
-                        pos >= it.startOffset && 
-                        pos < it.startOffset + it.duration 
+                    audiobookViewModel.chapters.find {
+                        pos >= it.startOffset &&
+                        pos < it.startOffset + it.duration
                     }?.title
                 }
             }
-            
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = book?.title ?: "Unknown",
                     style = MaterialTheme.typography.titleMedium,
-                    color = Color(theme.textInt),
+                    color = theme.text,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                
+
                 currentChapterTitle?.let { title ->
                     Text(
                         text = title,
@@ -775,20 +751,20 @@ fun ReadAloudMinimalCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                
+
                 Spacer(Modifier.height(4.dp))
-                
-                val progress = if (audiobookViewModel.duration > 0) 
-                    audiobookViewModel.currentPosition.toFloat() / audiobookViewModel.duration 
+
+                val progress = if (audiobookViewModel.duration > 0)
+                    audiobookViewModel.currentPosition.toFloat() / audiobookViewModel.duration
                 else 0f
-                
+
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
                     color = MaterialTheme.colorScheme.primary,
-                    trackColor = Color(theme.textInt).copy(alpha = 0.1f)
+                    trackColor = theme.text.copy(alpha = 0.1f)
                 )
-                
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -796,18 +772,18 @@ fun ReadAloudMinimalCard(
                     Text(
                         text = com.pekempy.ReadAloudbooks.util.FormatUtils.formatTime(audiobookViewModel.currentPosition),
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(theme.textInt).copy(alpha = 0.7f)
+                        color = theme.text.copy(alpha = 0.7f)
                     )
                     Text(
                         text = com.pekempy.ReadAloudbooks.util.FormatUtils.formatTime(audiobookViewModel.duration),
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(theme.textInt).copy(alpha = 0.7f)
+                        color = theme.text.copy(alpha = 0.7f)
                     )
                 }
             }
-            
+
             Spacer(Modifier.width(16.dp))
-            
+
             FilledIconButton(
                 onClick = { audiobookViewModel.togglePlayPause() },
                 modifier = Modifier.size(48.dp),
@@ -825,5 +801,3 @@ fun ReadAloudMinimalCard(
         }
     }
 }
-
-

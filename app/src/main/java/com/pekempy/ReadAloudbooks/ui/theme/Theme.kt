@@ -52,19 +52,37 @@ fun ReadAloudBooksTheme(
                 }
                 else -> androidx.compose.ui.graphics.Color(themeSource)
             }
-            
+
+            // Book-cover/custom colours can land anywhere in brightness; guarantee they still
+            // read clearly as a button fill (and that the text drawn on top of them is legible)
+            // instead of trusting Material3's default onPrimary/onSecondary/onTertiary (fixed
+            // white/black tokens that assume a mid-tone seed).
             if (darkTheme) {
-                 darkColorScheme(
-                    primary = seedColor,
-                    secondary = seedColor,
-                    tertiary = seedColor
-                 )
+                val safeSeed = com.pekempy.ReadAloudbooks.util.ContrastUtils.ensureContrast(
+                    seedColor, androidx.compose.ui.graphics.Color(0xFF1C1B1F), minContrast = 3.5f
+                )
+                val onSeed = com.pekempy.ReadAloudbooks.util.ContrastUtils.readableOn(safeSeed)
+                darkColorScheme(
+                    primary = safeSeed,
+                    onPrimary = onSeed,
+                    secondary = safeSeed,
+                    onSecondary = onSeed,
+                    tertiary = safeSeed,
+                    onTertiary = onSeed
+                )
             } else {
-                 lightColorScheme(
-                    primary = seedColor,
-                    secondary = seedColor,
-                    tertiary = seedColor
-                 )
+                val safeSeed = com.pekempy.ReadAloudbooks.util.ContrastUtils.ensureContrast(
+                    seedColor, androidx.compose.ui.graphics.Color(0xFFFFFBFE), minContrast = 3.5f
+                )
+                val onSeed = com.pekempy.ReadAloudbooks.util.ContrastUtils.readableOn(safeSeed)
+                lightColorScheme(
+                    primary = safeSeed,
+                    onPrimary = onSeed,
+                    secondary = safeSeed,
+                    onSecondary = onSeed,
+                    tertiary = safeSeed,
+                    onTertiary = onSeed
+                )
             }
         }
     }.let {

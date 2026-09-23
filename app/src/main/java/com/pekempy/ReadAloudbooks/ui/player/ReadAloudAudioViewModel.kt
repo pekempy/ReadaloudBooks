@@ -9,7 +9,7 @@ import androidx.media3.common.MediaMetadata
 import com.pekempy.ReadAloudbooks.data.Book
 import com.pekempy.ReadAloudbooks.data.UserPreferencesRepository
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
-import com.pekempy.ReadAloudbooks.util.AudioCodecConverter
+import com.pekempy.ReadAloudbooks.data.Chapter
 import com.pekempy.ReadAloudbooks.util.DownloadUtils
 import com.pekempy.ReadAloudbooks.util.FormatUtils
 import com.pekempy.ReadAloudbooks.util.ColorExtractor
@@ -92,11 +92,6 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         val durationMs: Long
     )
     
-    data class Chapter(
-        val title: String,
-        val startOffset: Long,
-        val duration: Long
-    )
     
     private val clipSegments = mutableListOf<ClipSegment>()
     private val extractedAudioFiles = mutableMapOf<String, File>() 
@@ -163,7 +158,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         spineTitles: Map<String, String> = emptyMap(),
         autoPlay: Boolean = true
     ) {
-        if (currentBook?.id == bookId && player != null && player?.playbackState != androidx.media3.common.Player.STATE_IDLE) {
+        if (currentBook?.id == bookId && player != null && player?.playbackState != androidx.media3.common.Player.STATE_IDLE && clipSegments.isNotEmpty()) {
             if (syncConfirmation != null || System.currentTimeMillis() - lastSyncCheckTime < 10000) {
                 isLoading = false
                 return
@@ -288,36 +283,6 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 android.util.Log.i("ReadAloudAudioVM", "TOTAL BOOK DURATION: ${FormatUtils.formatTime(calculatedDuration)} ($calculatedDuration ms)")
                 android.util.Log.i("ReadAloudAudioVM", "TOTAL BOOK DURATION: ${FormatUtils.formatTime(calculatedDuration)} ($calculatedDuration ms)")
                 
-                // Probe M4B stream URL from Storyteller for real chapter names
-                val m4bChapters = try {
-                    val m4bUrl = book.audiobookUrl
-                    if (!m4bUrl.isNullOrBlank()) {
-                        android.util.Log.i("ReadAloudAudioVM", "Probing M4B stream for chapters: $m4bUrl")
-                        val converter = AudioCodecConverter(AppContainer.context)
-                        val metadata = converter.getAudioMetadata(m4bUrl)
-                        
-                        if (metadata.chapters.isNotEmpty()) {
-                            android.util.Log.i("ReadAloudAudioVM", "✅ Found ${metadata.chapters.size} chapters from Storyteller M4B stream!")
-                            metadata.chapters.map { probedChapter ->
-                                Chapter(
-                                    title = probedChapter.title,
-                                    startOffset = probedChapter.startMs,
-                                    duration = probedChapter.durationMs
-                                )
-                            }
-                        } else {
-                            android.util.Log.w("ReadAloudAudioVM", "M4B has no chapter metadata")
-                            null
-                        }
-                    } else {
-                        android.util.Log.w("ReadAloudAudioVM", "No M4B URL available")
-                        null
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.w("ReadAloudAudioVM", "Failed to probe M4B chapters: ${e.message}")
-                    null
-                }
-                
                 val chaptersFromXml = parseChaptersXml(currentZipFile!!, calculatedDuration)
                 val localChaptersList = if (chaptersFromXml != null && chaptersFromXml.isNotEmpty()) {
                     android.util.Log.i("ReadAloudAudioVM", "Using ${chaptersFromXml.size} chapters from misc/chapters.xml")
@@ -415,7 +380,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                     hrefToAudioOffset.clear()
                     hrefToAudioOffset.putAll(localChapterOffsets)
                     audioChapterOffsets = localChapterOffsets.mapValues { it.value / 1000.0 }
-                    chapters = m4bChapters ?: localChaptersList
+                    chapters = localChaptersList
                     duration = calculatedDuration
                     loadedSpineHrefs = spineHrefs
                     
@@ -710,7 +675,8 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             }
             val durationMs = nextStartMs - startMs
             
-            val chapterTitle = spineTitles[entry.key] ?: entry.key.substringAfterLast("/").substringBeforeLast(".")
+            val chapterTitle = spineTitles[entry.key]?.takeIf { it.isNotBlank() }
+                ?: com.pekempy.ReadAloudbooks.util.StringUtils.formatChapterTitle(entry.key.substringAfterLast("/").substringBeforeLast("."), chapterList.size)
             
             chapterList.add(Chapter(chapterTitle, startMs, durationMs))
         }
@@ -1216,7 +1182,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
     }
 
     private fun startSession() {
-        // Only start a new session if there's a current book and we don't already have an active session
+        // Only start a new session if there's a current book, and we don't already have an active session
         if (currentBook != null && sessionStartTime == null) {
             sessionStartTime = System.currentTimeMillis()
         }

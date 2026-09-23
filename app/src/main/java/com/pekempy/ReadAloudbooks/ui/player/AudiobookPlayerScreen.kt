@@ -137,29 +137,16 @@ fun AudiobookPlayerScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Box(contentAlignment = Alignment.TopEnd) {
-                        IconButton(onClick = { 
+                    com.pekempy.ReadAloudbooks.ui.components.SleepTimerIndicator(
+                        remainingMs = viewModel.sleepTimerRemaining,
+                        isWaitingForChapterEnd = viewModel.isWaitingForChapterEnd,
+                        onClick = {
                             if (viewModel.sleepTimerRemaining <= 0 && !viewModel.isWaitingForChapterEnd) {
                                 viewModel.applyDefaultSleepTimer()
                             }
-                            showSleepTimerSheet = true 
-                        }) {
-                            Icon(
-                                painterResource(if (viewModel.sleepTimerRemaining > 0 || viewModel.isWaitingForChapterEnd) R.drawable.ic_snooze else R.drawable.ic_bedtime),
-                                contentDescription = "Sleep Timer",
-                                tint = if (viewModel.sleepTimerRemaining > 0 || viewModel.isWaitingForChapterEnd) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                            )
+                            showSleepTimerSheet = true
                         }
-                        if (viewModel.sleepTimerRemaining > 0 || viewModel.isWaitingForChapterEnd) {
-                            Text(
-                                text = if (viewModel.isWaitingForChapterEnd) "Stopping at end of chapter" else FormatUtils.formatSleepTime(viewModel.sleepTimerRemaining),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(top = 32.dp, end = 8.dp)
-                            )
-                        }
-                    }
+                    )
                 }
 
                 Box(
@@ -220,19 +207,14 @@ fun AudiobookPlayerScreen(
                 }
 
                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
-                    Slider(
-                        value = if (viewModel.duration > 0) viewModel.currentPosition.toFloat() else 0f,
-                        onValueChange = { viewModel.seekTo(it.toLong()) },
-                        valueRange = 0f..(if (viewModel.duration > 0) viewModel.duration.toFloat() else 1f),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(
+                    ChapterProgressBar(
+                        currentPosition = viewModel.currentPosition,
+                        totalDuration = viewModel.duration,
+                        chapters = viewModel.chapters,
+                        onSeek = { viewModel.seekTo(it) },
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(text = FormatUtils.formatTime(viewModel.currentPosition), style = MaterialTheme.typography.labelMedium)
-                        Text(text = FormatUtils.formatTime(viewModel.duration), style = MaterialTheme.typography.labelMedium)
-                    }
+                        showChapterLabel = false
+                    )
                 }
 
                 Row(

@@ -7,6 +7,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.pekempy.ReadAloudbooks.data.Book
+import com.pekempy.ReadAloudbooks.data.Chapter
 import com.pekempy.ReadAloudbooks.data.UserPreferencesRepository
 import com.pekempy.ReadAloudbooks.data.api.AppContainer
 import kotlinx.coroutines.Job
@@ -182,7 +183,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
             nativeRetryCount = 0
         }
         
-        if (currentBook?.id == bookId && player != null && !isRetry) {
+        if (currentBook?.id == bookId && player != null && !isRetry && duration > 0) {
             android.util.Log.d("AudiobookVM", "Book $bookId already loaded. Checking for external progress updates...")
             viewModelScope.launch {
                 val progressStr = repository.getBookProgress(bookId).first()
@@ -288,6 +289,13 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                     currentBook = book
                 }
                 repository.saveLastActiveBook(bookId, "audiobook")
+                viewModelScope.launch {
+                    val coverUrl = book.audiobookCoverUrl ?: book.coverUrl
+                    val color = com.pekempy.ReadAloudbooks.util.ColorExtractor.extractDominantColor(coverUrl, AppContainer.context)
+                    if (color != null && com.pekempy.ReadAloudbooks.util.ColorExtractor.isColorUsable(color)) {
+                        repository.updateBookThemeColor(color)
+                    }
+                }
                 book.series?.let { repository.unignoreSeries(it) }
 
                 val localFile = filesDir?.let { fDir ->
@@ -893,9 +901,3 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
         sleepTimerJob?.cancel()
     }
 }
-
-data class Chapter(
-    val title: String,
-    val startOffset: Long,
-    val duration: Long
-)

@@ -3,6 +3,8 @@ package com.pekempy.ReadAloudbooks.ui.player
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,17 +16,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pekempy.ReadAloudbooks.data.Chapter
 import com.pekempy.ReadAloudbooks.util.HapticFeedback
 import com.pekempy.ReadAloudbooks.util.rememberHaptic
 import kotlin.math.roundToInt
 
 /**
  * Chapter markers on audiobook progress bar
- * Visual indicators showing chapter boundaries with tap-to-seek
+ * Visual indicators showing chapter boundaries with tap/drag-to-seek
  */
 
 
@@ -34,13 +38,16 @@ fun ChapterProgressBar(
     totalDuration: Long,
     chapters: List<Chapter>,
     onSeek: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showChapterLabel: Boolean = true
 ) {
     val haptic = rememberHaptic()
-    val progress = if (totalDuration > 0) {
+    // While the user is dragging, show the drag position instead of the (laggy) real position.
+    var dragFraction by remember { mutableStateOf<Float?>(null) }
+    val progress = dragFraction ?: if (totalDuration > 0) {
         (currentPosition.toFloat() / totalDuration).coerceIn(0f, 1f)
     } else 0f
-    
+
     Column(modifier = modifier) {
         // Current chapter indicator
         val currentChapter = remember(currentPosition, chapters) {
@@ -49,87 +56,110 @@ fun ChapterProgressBar(
                 currentPosition < chapter.startOffset + chapter.duration
             }
         }
-        
-        currentChapter?.let {
-            Text(
-                text = it.title,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+
+        if (showChapterLabel) {
+            currentChapter?.let {
+                Text(
+                    text = it.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
         }
-        
+
         // Progress bar with chapter markers
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(24.dp)
+                .pointerInput(totalDuration) {
+                    if (totalDuration <= 0) return@pointerInput
+                    detectTapGestures(
+                        onTap = { offset ->
+                            val fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                            haptic(HapticFeedback.FeedbackType.LIGHT)
+                            onSeek((fraction * totalDuration).toLong())
+                        }
+                    )
+                }
+                .pointerInput(totalDuration) {
+                    if (totalDuration <= 0) return@pointerInput
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            dragFraction = (offset.x / size.width).coerceIn(0f, 1f)
+                        },
+                        onDragEnd = {
+                            dragFraction?.let { onSeek((it * totalDuration).toLong()) }
+                            dragFraction = null
+                        },
+                        onDragCancel = { dragFraction = null },
+                        onDrag = { change, _ ->
+                            dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                        }
+                    )
+                }
         ) {
+            val barWidth = maxWidth
+
             // Background track
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(4.dp)
-                    .align(Alignment.Center)
+                    .align(Alignment.CenterStart)
                     .clip(RoundedCornerShape(2.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             )
-            
+
             // Progress track
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(progress)
+                    .width(barWidth * progress)
                     .height(4.dp)
                     .align(Alignment.CenterStart)
                     .clip(RoundedCornerShape(2.dp))
                     .background(MaterialTheme.colorScheme.primary)
             )
-            
+
             // Chapter markers
             chapters.forEach { chapter ->
                 val markerPosition = if (totalDuration > 0) {
                     (chapter.startOffset.toFloat() / totalDuration).coerceIn(0f, 1f)
                 } else 0f
-                
+
                 // Skip first marker (0:00)
                 if (markerPosition > 0.01f) {
                     Box(
                         modifier = Modifier
-                            .fillMaxHeight()
-                            .offset(x = (markerPosition * 100).dp) // Approximate positioning
+                            .offset(x = barWidth * markerPosition - 1.dp)
                             .width(2.dp)
+                            .height(12.dp)
                             .align(Alignment.CenterStart)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(2.dp)
-                                .height(12.dp)
-                                .align(Alignment.Center)
-                                .background(
-                                    color = if (currentPosition >= chapter.startOffset) {
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                                    }
-                                )
-                        )
-                    }
+                            .background(
+                                color = if (currentPosition >= chapter.startOffset) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                }
+                            )
+                    )
                 }
             }
-            
+
             // Seek thumb
             Box(
                 modifier = Modifier
+                    .offset(x = barWidth * progress - 8.dp)
                     .size(16.dp)
-                    .offset(x = (progress * 100).dp) // Approximate positioning
                     .align(Alignment.CenterStart)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primary)
             )
         }
-        
+
         // Time labels
         Row(
             modifier = Modifier
@@ -138,7 +168,7 @@ fun ChapterProgressBar(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = formatTime(currentPosition),
+                text = formatTime(if (dragFraction != null) (progress * totalDuration).toLong() else currentPosition),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

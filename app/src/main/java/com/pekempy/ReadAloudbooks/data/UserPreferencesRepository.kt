@@ -45,6 +45,10 @@ class UserPreferencesRepository(private val context: Context) {
         val READER_FONT_SIZE = floatPreferencesKey("reader_font_size")
         val READER_THEME = intPreferencesKey("reader_theme")
         val READER_FONT_FAMILY = stringPreferencesKey("reader_font_family")
+        val READER_USE_CUSTOM_FONT = booleanPreferencesKey("reader_use_custom_font")
+        val READER_HIGHLIGHT_STYLE = intPreferencesKey("reader_highlight_style")
+        val READER_HIGHLIGHT_COLOR = intPreferencesKey("reader_highlight_color")
+        val READER_HIGHLIGHT_ROUNDED = booleanPreferencesKey("reader_highlight_rounded")
 
         val LAST_ACTIVE_BOOK_ID = stringPreferencesKey("last_active_book_id")
         val LAST_ACTIVE_BOOK_TYPE = stringPreferencesKey("last_active_book_type")
@@ -121,6 +125,10 @@ class UserPreferencesRepository(private val context: Context) {
             readerFontSize = preferences[READER_FONT_SIZE] ?: 18f,
             readerTheme = preferences[READER_THEME] ?: 0,
             readerFontFamily = preferences[READER_FONT_FAMILY] ?: "serif",
+            readerUseCustomFont = preferences[READER_USE_CUSTOM_FONT] ?: false,
+            readerHighlightStyle = preferences[READER_HIGHLIGHT_STYLE] ?: 0,
+            readerHighlightColor = preferences[READER_HIGHLIGHT_COLOR] ?: 0,
+            readerHighlightRounded = preferences[READER_HIGHLIGHT_ROUNDED] ?: true,
             playbackSpeed = preferences[PLAYBACK_SPEED] ?: 1.0f,
             sleepTimerFinishChapter = preferences[SLEEP_TIMER_FINISH_CHAPTER] ?: false,
             showBooksTab = preferences[SHOW_BOOKS_TAB] ?: true,
@@ -256,6 +264,30 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateReaderFontFamily(family: String) {
         context.dataStore.edit { preferences ->
             preferences[READER_FONT_FAMILY] = family
+        }
+    }
+
+    suspend fun updateReaderUseCustomFont(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_USE_CUSTOM_FONT] = enabled
+        }
+    }
+
+    suspend fun updateReaderHighlightStyle(style: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_HIGHLIGHT_STYLE] = style
+        }
+    }
+
+    suspend fun updateReaderHighlightColor(colorArgb: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_HIGHLIGHT_COLOR] = colorArgb
+        }
+    }
+
+    suspend fun updateReaderHighlightRounded(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_HIGHLIGHT_ROUNDED] = enabled
         }
     }
 
@@ -513,5 +545,12 @@ data class UserSettings(
     val brightnessLevel: Float = 1.0f,
     // Advanced Options
     val developerMode: Boolean = false,
-    val exportLogsEnabled: Boolean = false
+    val exportLogsEnabled: Boolean = false,
+    // Reader font: off (default) uses the standard system font at the chosen size;
+    // on lets the user pick readerFontFamily.
+    val readerUseCustomFont: Boolean = false,
+    // Sentence highlight: style 0=fill, 1=underline, 2=outline; colour 0 = theme default.
+    val readerHighlightStyle: Int = 0,
+    val readerHighlightColor: Int = 0,
+    val readerHighlightRounded: Boolean = true
 )

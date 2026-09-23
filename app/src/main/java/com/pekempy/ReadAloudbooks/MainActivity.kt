@@ -92,9 +92,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         
-        
-        // CRITICAL: Enable WebView debugging to see console.log in logcat
-        android.webkit.WebView.setWebContentsDebuggingEnabled(true)
         repository = UserPreferencesRepository(applicationContext)
         lifecycleScope.launch {
             val initialSettings = repository.userSettings.first()

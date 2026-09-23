@@ -115,6 +115,16 @@ class BookDetailViewModel(private val repository: UserPreferencesRepository) : V
                     isReadAloudDownloaded = com.pekempy.ReadAloudbooks.util.DownloadUtils.isReadAloudDownloaded(AppContainer.context.filesDir, tempBook),
                     progress = this@BookDetailViewModel.localProgress
                 )
+
+                // Refresh the book-theme accent as soon as we know which book is being viewed,
+                // not only once its audio/readaloud starts playing.
+                launch {
+                    val coverUrl = tempBook.audiobookCoverUrl ?: tempBook.coverUrl
+                    val color = com.pekempy.ReadAloudbooks.util.ColorExtractor.extractDominantColor(coverUrl, AppContainer.context)
+                    if (color != null && com.pekempy.ReadAloudbooks.util.ColorExtractor.isColorUsable(color)) {
+                        repository.updateBookThemeColor(color)
+                    }
+                }
             } catch (e: Exception) {
                 isOfflineMode = true
                 error = "Failed to load book: ${e.message}"

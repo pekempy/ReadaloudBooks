@@ -9,9 +9,10 @@ import com.pekempy.ReadAloudbooks.data.UnifiedProgress
 import nl.siegmann.epublib.epub.EpubReader
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import java.io.File
 import java.io.FileInputStream
-import android.webkit.WebResourceResponse
 import com.pekempy.ReadAloudbooks.data.Book
 import com.pekempy.ReadAloudbooks.data.api.Position
 import com.pekempy.ReadAloudbooks.data.api.Locator
@@ -50,6 +51,21 @@ class ReaderViewModel(
 
     var settings by mutableStateOf<com.pekempy.ReadAloudbooks.data.UserSettings?>(null)
     private var currentBookId: String? = null
+
+    init {
+        // `settings` is otherwise a one-shot snapshot taken when a chapter loads; the book's
+        // extracted cover accent can change after that (or while a different book is being
+        // viewed elsewhere), so keep just that field live so "Book Theme" highlight colouring
+        // reflects it without needing to reopen the reader.
+        viewModelScope.launch {
+            repository.userSettings
+                .map { it.bookThemeColor }
+                .distinctUntilChanged()
+                .collect { color ->
+                    settings = settings?.copy(bookThemeColor = color)
+                }
+        }
+    }
     
     var showControls by mutableStateOf(false)
     var isReadAloudMode by mutableStateOf(false)
@@ -164,6 +180,7 @@ class ReaderViewModel(
         readerInitialized = false
         syncData = emptyMap()
         chapterOffsets = emptyMap()
+        paragraphCache.clear()
         
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
@@ -201,6 +218,13 @@ class ReaderViewModel(
                 }
                 
                 book.series?.let { repository.unignoreSeries(it) }
+                viewModelScope.launch {
+                    val coverUrl = book.ebookCoverUrl ?: book.coverUrl
+                    val color = com.pekempy.ReadAloudbooks.util.ColorExtractor.extractDominantColor(coverUrl, AppContainer.context)
+                    if (color != null && com.pekempy.ReadAloudbooks.util.ColorExtractor.isColorUsable(color)) {
+                        repository.updateBookThemeColor(color)
+                    }
+                }
                 
                 val bookDir = DownloadUtils.getBookDir(AppContainer.context.filesDir, book)
                 val baseFileName = DownloadUtils.getBaseFileName(book)
@@ -301,6 +325,31 @@ class ReaderViewModel(
                 } catch (e: Exception) {
                     android.util.Log.w("ReaderViewModel", "Failed to parse NCX titles: ${e.message}")
                 }
+
+                // Readaloud/plain EPUBs frequently have no usable NCX chapter titles (or only a
+                // single "Start" entry). Derive real titles from each chapter's own heading text
+                // ("Chapter One — The Boy Who Lived") so the reader, mini player and full player
+                // never fall back to showing raw spine filenames.
+                val derivedTitles = java.util.concurrent.ConcurrentHashMap<String, String>()
+                coroutineScope {
+                    spineHrefs.map { href ->
+                        async {
+                            if (!spineTitles[href].isNullOrBlank()) return@async
+                            val entryName = resourcesMap[href] ?: return@async
+                            val chapterEntry = zip.getEntry(entryName) ?: return@async
+                            try {
+                                val rawHtml = zip.getInputStream(chapterEntry).bufferedReader().readText()
+                                val paragraphs = EpubContentParser.parse(rawHtml)
+                                EpubContentParser.extractChapterTitle(paragraphs)?.let { title ->
+                                    derivedTitles[href] = title
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.w("ReaderViewModel", "Failed to derive chapter title for $href: ${e.message}")
+                            }
+                        }
+                    }.awaitAll()
+                }
+                spineTitles.putAll(derivedTitles)
 
                 lazyBook = LazyBook(epubTitle, spineHrefs, resourcesMap, mediaTypeMap, spineTitles)
                 totalChapters = spineHrefs.size
@@ -605,23 +654,48 @@ class ReaderViewModel(
         }
     }
 
-    fun getResourceResponse(href: String): WebResourceResponse? {
-        val zip = currentZipFile ?: return null
-        val book = lazyBook ?: return null
-        
-        val cleanHref = href.substringAfter("https://epub-internal/")
-            .substringBefore("?")
-            .substringBefore("#")
-
-        val zipEntryName = book.resources[cleanHref] ?: return null
-        val entry = zip.getEntry(zipEntryName) ?: return null
-        val mimeType = book.mediaTypes[cleanHref] ?: "application/octet-stream"
-        
-        return try {
-            WebResourceResponse(mimeType, null, zip.getInputStream(entry))
-        } catch (e: Exception) {
-            null
+    fun updateUseCustomFont(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateReaderUseCustomFont(enabled)
+            settings = settings?.copy(readerUseCustomFont = enabled)
         }
+    }
+
+    fun updateHighlightStyle(style: Int) {
+        viewModelScope.launch {
+            repository.updateReaderHighlightStyle(style)
+            settings = settings?.copy(readerHighlightStyle = style)
+        }
+    }
+
+    fun updateHighlightColor(colorArgb: Int) {
+        viewModelScope.launch {
+            repository.updateReaderHighlightColor(colorArgb)
+            settings = settings?.copy(readerHighlightColor = colorArgb)
+        }
+    }
+
+    fun updateHighlightRounded(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateReaderHighlightRounded(enabled)
+            settings = settings?.copy(readerHighlightRounded = enabled)
+        }
+    }
+
+    private val paragraphCache = mutableMapOf<Int, List<ReaderParagraph>>()
+
+    fun getCurrentChapterParagraphs(): List<ReaderParagraph> {
+        val idx = currentChapterIndex
+        paragraphCache[idx]?.let { return it }
+        val html = getCurrentChapterHtml() ?: return emptyList()
+        val parsed = EpubContentParser.parse(html)
+        paragraphCache[idx] = parsed
+        return parsed
+    }
+
+    fun getChapterTitle(index: Int): String {
+        val href = lazyBook?.spineHrefs?.getOrNull(index) ?: return "Chapter ${index + 1}"
+        return lazyBook?.spineTitles?.get(href)?.takeIf { it.isNotBlank() } ?: "Chapter ${index + 1}"
     }
 
     fun getCurrentChapterHtml(): String? {
@@ -882,6 +956,7 @@ class ReaderViewModel(
         } catch (e: Exception) {}
         currentZipFile = null
         lazyBook = null
+        paragraphCache.clear()
     }
 
     fun redownloadBook(context: android.content.Context) {
