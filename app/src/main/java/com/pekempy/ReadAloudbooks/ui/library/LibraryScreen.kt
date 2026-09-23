@@ -361,6 +361,42 @@ fun LibraryScreen(
                                      .padding(top = 8.dp, bottom = 8.dp)
                                      .verticalScroll(rememberScrollState())
                              ) {
+                                // Personalized Greeting Widget
+                                com.pekempy.ReadAloudbooks.ui.home.PersonalizedGreeting(
+                                    userName = "Reader",
+                                    currentStreak = viewModel.continueReadingBooks.size.coerceAtLeast(1),
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                                
+                                Spacer(Modifier.height(16.dp))
+                                
+                                // Quick Stats Widget
+                                com.pekempy.ReadAloudbooks.ui.home.QuickStatsWidget(
+                                    stats = com.pekempy.ReadAloudbooks.ui.home.QuickStatsData(
+                                        booksRead = viewModel.downloadedBooks.size,
+                                        currentStreak = viewModel.continueReadingBooks.size.coerceAtLeast(1),
+                                        hoursListened = 0f,
+                                        weeklyGoalProgress = 0.5f
+                                    ),
+                                    onViewAllClick = { /* TODO: Navigate to analytics */ },
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+                                
+                                Spacer(Modifier.height(16.dp))
+                                
+                                // Quick Actions Bar
+                                com.pekempy.ReadAloudbooks.ui.home.QuickActionsBar(
+                                    actions = com.pekempy.ReadAloudbooks.ui.home.QuickActions.getDefaultActions(
+                                        onSearchClick = { isSearchMode = true },
+                                        onDownloadsClick = { viewModel.setViewMode(LibraryViewModel.ViewMode.Downloads) },
+                                        onTagsClick = { /* TODO */ },
+                                        onStatsClick = { /* TODO */ }
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+                                
+                                Spacer(Modifier.height(24.dp))
+                                
                                 if (viewModel.continueReadingBooks.isNotEmpty()) {
                                     HomeSection(
                                         title = "Continue Reading",
