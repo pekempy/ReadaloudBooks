@@ -131,6 +131,7 @@ class UserPreferencesRepository(private val context: Context) {
             syncFrequencyBackground = preferences[SYNC_FREQUENCY_BACKGROUND] ?: 0,
             lastSyncTime = preferences[LAST_SYNC_TIME] ?: 0L,
             readerHidePlayerWithControls = preferences[READER_HIDE_PLAYER_WITH_CONTROLS] ?: false,
+            tabOrder = preferences[TAB_ORDER] ?: "shelf,books,authors,series,collections",
             ignoredSeries = preferences[IGNORED_SERIES] ?: emptySet(),
             // Sync Settings
             syncWifiOnly = preferences[SYNC_WIFI_ONLY] ?: false,
@@ -491,6 +492,7 @@ data class UserSettings(
     val syncFrequencyBackground: Int,
     val lastSyncTime: Long,
     val readerHidePlayerWithControls: Boolean,
+    val tabOrder: String = "shelf,books,authors,series,collections",
     val ignoredSeries: Set<String> = emptySet(),
     // Sync Settings
     val syncWifiOnly: Boolean = false,

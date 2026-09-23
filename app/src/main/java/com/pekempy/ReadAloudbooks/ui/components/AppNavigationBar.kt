@@ -23,7 +23,8 @@ fun AppNavigationBar(
     showBooks: Boolean = true,
     showAuthors: Boolean = true,
     showSeries: Boolean = true,
-    showCollections: Boolean = true
+    showCollections: Boolean = true,
+    tabOrder: List<String> = listOf("shelf", "books", "authors", "series", "collections")
 ) {
     val isLibraryRoute = currentRoute?.startsWith("library") == true
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -31,58 +32,76 @@ fun AppNavigationBar(
     NavigationBar(
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
-        NavigationBarItem(
-            icon = { Icon(painterResource(R.drawable.ic_shelves), contentDescription = null) },
-            label = { Text("Shelf", maxLines = 1) },
-            selected = currentViewMode == LibraryViewModel.ViewMode.Home,
-            onClick = {
-                onNavigateToLibrary()
-                onViewModeChange(LibraryViewModel.ViewMode.Home)
+        // Define all available tabs
+        val allTabs = mapOf(
+            "shelf" to @Composable {
+                NavigationBarItem(
+                    icon = { Icon(painterResource(R.drawable.ic_shelves), contentDescription = null) },
+                    label = { Text("Shelf", maxLines = 1) },
+                    selected = currentViewMode == LibraryViewModel.ViewMode.Home,
+                    onClick = {
+                        onNavigateToLibrary()
+                        onViewModeChange(LibraryViewModel.ViewMode.Home)
+                    }
+                )
+            },
+            "books" to @Composable {
+                if (showBooks) {
+                    NavigationBarItem(
+                        icon = { Icon(painterResource(R.drawable.ic_book), contentDescription = null) },
+                        label = { Text("Books", maxLines = 1) },
+                        selected = currentViewMode == LibraryViewModel.ViewMode.Library,
+                        onClick = {
+                            onNavigateToLibrary()
+                            onViewModeChange(LibraryViewModel.ViewMode.Library)
+                        }
+                    )
+                }
+            },
+            "authors" to @Composable {
+                if (showAuthors) {
+                    NavigationBarItem(
+                        icon = { Icon(painterResource(R.drawable.ic_person), contentDescription = null) },
+                        label = { Text("Authors", maxLines = 1) },
+                        selected = currentViewMode == LibraryViewModel.ViewMode.Authors,
+                        onClick = {
+                            onNavigateToLibrary()
+                            onViewModeChange(LibraryViewModel.ViewMode.Authors)
+                        }
+                    )
+                }
+            },
+            "series" to @Composable {
+                if (showSeries) {
+                    NavigationBarItem(
+                        icon = { Icon(painterResource(R.drawable.ic_list), contentDescription = null) },
+                        label = { Text("Series", maxLines = 1) },
+                        selected = currentViewMode == LibraryViewModel.ViewMode.Series,
+                        onClick = {
+                            onNavigateToLibrary()
+                            onViewModeChange(LibraryViewModel.ViewMode.Series)
+                        }
+                    )
+                }
+            },
+            "collections" to @Composable {
+                if (showCollections) {
+                    NavigationBarItem(
+                        icon = { Icon(painterResource(R.drawable.ic_folder), contentDescription = null) },
+                        label = { Text("Collections", maxLines = 1) },
+                        selected = currentViewMode == LibraryViewModel.ViewMode.Collections,
+                        onClick = {
+                            onNavigateToLibrary()
+                            onViewModeChange(LibraryViewModel.ViewMode.Collections)
+                        }
+                    )
+                }
             }
         )
-        if (showBooks) {
-            NavigationBarItem(
-                icon = { Icon(painterResource(R.drawable.ic_book), contentDescription = null) },
-                label = { Text("Books", maxLines = 1) },
-                selected = currentViewMode == LibraryViewModel.ViewMode.Library,
-                onClick = {
-                    onNavigateToLibrary()
-                    onViewModeChange(LibraryViewModel.ViewMode.Library)
-                }
-            )
-        }
-        if (showAuthors) {
-            NavigationBarItem(
-                icon = { Icon(painterResource(R.drawable.ic_person), contentDescription = null) },
-                label = { Text("Authors", maxLines = 1) },
-                selected = currentViewMode == LibraryViewModel.ViewMode.Authors,
-                onClick = {
-                    onNavigateToLibrary()
-                    onViewModeChange(LibraryViewModel.ViewMode.Authors)
-                }
-            )
-        }
-        if (showSeries) {
-            NavigationBarItem(
-                icon = { Icon(painterResource(R.drawable.ic_list), contentDescription = null) },
-                label = { Text("Series", maxLines = 1) },
-                selected = currentViewMode == LibraryViewModel.ViewMode.Series,
-                onClick = {
-                    onNavigateToLibrary()
-                    onViewModeChange(LibraryViewModel.ViewMode.Series)
-                }
-            )
-        }
-        if (showCollections) {
-            NavigationBarItem(
-                icon = { Icon(painterResource(R.drawable.ic_folder), contentDescription = null) },
-                label = { Text("Collections", maxLines = 1) },
-                selected = currentViewMode == LibraryViewModel.ViewMode.Collections,
-                onClick = {
-                    onNavigateToLibrary()
-                    onViewModeChange(LibraryViewModel.ViewMode.Collections)
-                }
-            )
+        
+        // Render tabs in the specified order
+        tabOrder.forEach { tabId ->
+            allTabs[tabId]?.invoke()
         }
         
         if (hasProcessing && hasDownloads) {

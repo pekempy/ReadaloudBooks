@@ -169,7 +169,7 @@ class ViewModelFactory<T : ViewModel>(
         })[LibraryViewModel::class.java]
 
         setContent {
-            val settings by repository.userSettings.collectAsState(initial = com.pekempy.ReadAloudbooks.data.UserSettings(0, true, 0, 0, 0, false, 18f, 0, "serif", 1.0f, false, true, true, true, true, 0, 0, 0L, false, emptySet()))
+            val settings by repository.userSettings.collectAsState(initial = com.pekempy.ReadAloudbooks.data.UserSettings(0, true, 0, 0, 0, false, 18f, 0, "serif", 1.0f, false, true, true, true, true, 0, 0, 0L, false, "shelf,books,authors,series,collections", emptySet()))
             
             val isDarkTheme = when (settings.themeMode) {
                 1 -> false
@@ -246,7 +246,8 @@ class ViewModelFactory<T : ViewModel>(
                                     showBooks = settings.showBooksTab,
                                     showAuthors = settings.showAuthorsTab,
                                     showSeries = settings.showSeriesTab,
-                                    showCollections = settings.showCollectionsTab
+                                    showCollections = settings.showCollectionsTab,
+                                    tabOrder = settings.tabOrder.split(",").map { it.trim() }
                                 )
                             }
                         }
