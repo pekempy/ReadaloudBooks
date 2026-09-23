@@ -240,12 +240,16 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
             }
             return
         }
-        // Switching to a genuinely different book: clear the previous book's stale
-        // position/duration/chapters/sync-state immediately so the UI doesn't render
-        // book A's data (or highlight book A's chapter) while book B loads in the background.
-        // Pausing here also stops the old player from keeping isPlaying=true (and the progress
-        // loop ticking) while book B's own load is still in flight.
-        player?.pause()
+        // Switching to a genuinely different book: fully stop the previous book's playback
+        // and force a final, atomically-captured progress save BEFORE touching any state for
+        // the new book. A bare pause() left the old player's media items/position intact and
+        // relied on the periodic autosave, which could be stale or race this very reset.
+        if (currentBook != null && currentBook?.id != bookId) {
+            saveBookProgress()
+            player?.pause()
+            player?.stop()
+            player?.clearMediaItems()
+        }
         isPlaying = false
         currentBook = null
         currentPosition = 0L

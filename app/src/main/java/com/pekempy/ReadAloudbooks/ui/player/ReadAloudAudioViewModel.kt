@@ -218,13 +218,19 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         }
 
         loadJob?.cancel()
-        // Switching to a genuinely different book: clear the previous book's stale
-        // position/chapter/highlight/sync-state immediately so the reader doesn't keep
-        // highlighting book A's element (or showing book A's cover/progress) while
-        // book B's SMIL/audio data loads in the background. Pausing here too closes the
-        // window where the old player keeps physically playing book A's audio (and the
-        // progress loop keeps ticking isPlaying=true) for the seconds it takes book B to load.
-        player?.pause()
+        // Switching to a genuinely different book: fully stop the previous book's playback
+        // and force a final, atomically-captured progress save BEFORE touching any state for
+        // the new book. A bare pause() left the old ExoPlayer media items/position intact and
+        // relied on the periodic 5s autosave, which could be stale by up to 5s or race this
+        // very reset. saveBookProgress() reads currentBook/currentPosition/etc synchronously,
+        // so calling it here - before any of those fields are reset - guarantees book A's last
+        // known position is persisted before we ever start loading book B.
+        if (currentBook != null && currentBook?.id != bookId) {
+            saveBookProgress()
+            player?.pause()
+            player?.stop()
+            player?.clearMediaItems()
+        }
         isPlaying = false
         currentBook = null
         currentPosition = 0L
