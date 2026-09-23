@@ -194,49 +194,6 @@ class ViewModelFactory<T : ViewModel>(
                     }
                 }
 
-                var updateRelease by remember { mutableStateOf<com.pekempy.ReadAloudbooks.util.UpdateChecker.GitHubRelease?>(null) }
-                val context = androidx.compose.ui.platform.LocalContext.current
-                
-                LaunchedEffect(Unit) {
-                    val isPlayStore = com.pekempy.ReadAloudbooks.util.UpdateChecker.isInstalledFromPlayStore(context)
-                    android.util.Log.d("MainActivity", "Is installed from Play Store: $isPlayStore")
-                    if (!isPlayStore) {
-                        val currentVersion = BuildConfig.VERSION_NAME
-                        android.util.Log.d("MainActivity", "Current version: $currentVersion. Checking GitHub for updates...")
-                        val newRelease = com.pekempy.ReadAloudbooks.util.UpdateChecker.checkForUpdate(currentVersion)
-                        if (newRelease != null) {
-                            android.util.Log.i("MainActivity", "Found new release: ${newRelease.tag_name}")
-                            updateRelease = newRelease
-                        } else {
-                            android.util.Log.d("MainActivity", "No new release found or update check failed")
-                        }
-                    }
-                }
-
-                if (updateRelease != null) {
-                    AlertDialog(
-                        onDismissRequest = { updateRelease = null },
-                        title = { Text("Update Available") },
-                        text = { Text("A new version (${updateRelease?.tag_name}) is available. would you like to update?") },
-                        confirmButton = {
-                            TextButton(
-                                onClick = {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(updateRelease?.html_url))
-                                    context.startActivity(intent)
-                                    updateRelease = null
-                                }
-                            ) {
-                                Text("Update")
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { updateRelease = null }) {
-                                Text("Later")
-                            }
-                        }
-                    )
-                }
-
                 LaunchedEffect(Unit) {
                     val lastBook = repository.lastActiveBook.first()
                     val bookId = lastBook.first

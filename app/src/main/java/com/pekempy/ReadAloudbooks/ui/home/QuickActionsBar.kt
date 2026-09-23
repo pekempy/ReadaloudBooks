@@ -69,8 +69,7 @@ private fun QuickActionButton(
                 .fillMaxSize()
                 .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
         ) {
             Icon(
                 painter = painterResource(action.icon),
