@@ -218,26 +218,8 @@ fun BookItem(
                     }
                 }
             }
-            }
             
             // Book info
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = book.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = book.author,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            
-            // Original text info
             Column(modifier = Modifier.padding(12.dp)) {
                 Text(
                     text = book.title,

@@ -404,7 +404,7 @@ fun BookDetailScreen(
                             ) {
                                 when {
                                     allDownloaded && book.hasEbook -> {
-                                        // All downloaded: Read (50%) + Play (50%)
+                                        // All 3 downloaded: Read (50%) + Play (50%)
                                         Button(
                                             onClick = { onRead(book.id, book.hasReadAloud) },
                                             modifier = Modifier.weight(1f).height(56.dp),
@@ -443,8 +443,80 @@ fun BookDetailScreen(
                                             Text("Play", style = MaterialTheme.typography.titleMedium)
                                         }
                                     }
+                                    downloadedCount == 2 -> {
+                                        // 2 out of 3 downloaded: Read (1/3) + Play (1/3) + Download (1/3)
+                                        Button(
+                                            onClick = { 
+                                                if (book.isEbookDownloaded) {
+                                                    onRead(book.id, book.isReadAloudDownloaded)
+                                                } else {
+                                                    // No ebook, use play
+                                                    if (book.isReadAloudDownloaded) {
+                                                        onRead(book.id, true)
+                                                    } else {
+                                                        onPlay(book)
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f).height(56.dp),
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.ic_book),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Read", style = MaterialTheme.typography.labelLarge)
+                                        }
+                                        
+                                        Button(
+                                            onClick = {
+                                                if (book.isReadAloudDownloaded) {
+                                                    onRead(book.id, true)
+                                                } else if (book.isAudiobookDownloaded) {
+                                                    onPlay(book)
+                                                } else {
+                                                    // Fallback shouldn't happen
+                                                    onRead(book.id, false)
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f).height(56.dp),
+                                            shape = RoundedCornerShape(16.dp)
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.ic_play_arrow),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Play", style = MaterialTheme.typography.labelLarge)
+                                        }
+                                        
+                                        Button(
+                                            onClick = { showDownloadDialog = true },
+                                            modifier = Modifier.weight(1f).height(56.dp),
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.ic_download),
+                                                contentDescription = "Download",
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Get", style = MaterialTheme.typography.labelLarge)
+                                        }
+                                    }
                                     book.isEbookDownloaded && !book.isAudiobookDownloaded && !book.isReadAloudDownloaded -> {
-                                        // Only ebook downloaded: Read button (75%)
+                                        // Only ebook: Read (75%) + Download (25%)
                                         Button(
                                             onClick = { onRead(book.id, false) },
                                             modifier = Modifier.weight(3f).height(56.dp),
@@ -464,7 +536,7 @@ fun BookDetailScreen(
                                         }
                                     }
                                     book.isAudiobookDownloaded || book.isReadAloudDownloaded -> {
-                                        // Audio/ReadAloud downloaded: Play button (75%)
+                                        // Only audio/readaloud: Play (75%) + Download (25%)
                                         Button(
                                             onClick = {
                                                 if (book.isReadAloudDownloaded) {

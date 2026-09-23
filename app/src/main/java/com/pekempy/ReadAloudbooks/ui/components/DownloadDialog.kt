@@ -37,6 +37,7 @@ data class DownloadOption(
     val subtitle: String,
     val icon: Int,
     val available: Boolean,
+    val downloaded: Boolean = false,
     val sizeEstimate: String? = null
 )
 
@@ -65,6 +66,7 @@ fun DownloadDialog(
                     subtitle = "Full narration audio files",
                     icon = R.drawable.ic_headphones,
                     available = true,
+                    downloaded = book.isAudiobookDownloaded,
                     sizeEstimate = estimateSize(book, DownloadType.AUDIOBOOK)
                 ))
             }
@@ -75,6 +77,7 @@ fun DownloadDialog(
                     subtitle = "Text version for reading",
                     icon = R.drawable.ic_book,
                     available = true,
+                    downloaded = book.isEbookDownloaded,
                     sizeEstimate = estimateSize(book, DownloadType.EBOOK)
                 ))
             }
@@ -85,18 +88,21 @@ fun DownloadDialog(
                     subtitle = "Synchronized audiobook + ebook highlighting",
                     icon = R.drawable.ic_play_arrow,
                     available = true,
+                    downloaded = book.isReadAloudDownloaded,
                     sizeEstimate = estimateSize(book, DownloadType.READALOUD)
                 ))
             }
             
-            // Only show "All" if multiple formats available
-            if (size > 1) {
+            // Only show "All" if multiple formats available and not all downloaded
+            val allDownloaded = book.isAudiobookDownloaded && book.isEbookDownloaded && book.isReadAloudDownloaded
+            if (size > 1 && !allDownloaded) {
                 add(DownloadOption(
                     type = DownloadType.ALL,
                     title = "Download All",
                     subtitle = "All available formats",
                     icon = R.drawable.ic_download,
                     available = true,
+                    downloaded = false,
                     sizeEstimate = "Combined: ${estimateTotalSize(book)}"
                 ))
             }
@@ -288,8 +294,33 @@ private fun DownloadOptionCard(
                 }
             }
             
-            // Arrow icon
-            if (option.available) {
+            // Downloaded checkmark or arrow
+            if (option.downloaded) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF4CAF50).copy(alpha = 0.15f),
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_check_circle),
+                            contentDescription = "Downloaded",
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "Downloaded",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF4CAF50),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            } else if (option.available) {
                 Icon(
                     painter = painterResource(R.drawable.ic_keyboard_arrow_right),
                     contentDescription = null,
