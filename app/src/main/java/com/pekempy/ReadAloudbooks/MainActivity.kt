@@ -57,15 +57,15 @@ class MainActivity : ComponentActivity() {
     private lateinit var sharedAudiobookViewModel: AudiobookViewModel
     private lateinit var readAloudAudioViewModel: com.pekempy.ReadAloudbooks.ui.player.ReadAloudAudioViewModel
 
-// Type-safe ViewModel factory helper
-class ViewModelFactory<T : ViewModel>(
-    private val creator: () -> T
-) : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        @Suppress("UNCHECKED_CAST")
-        return creator() as T
+    // Type-safe ViewModel factory helper
+    class ViewModelFactory<T : ViewModel>(
+        private val creator: () -> T
+    ) : ViewModelProvider.Factory {
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            @Suppress("UNCHECKED_CAST")
+            return creator() as T
+        }
     }
-}
     private lateinit var readerViewModel: ReaderViewModel
     private lateinit var libraryViewModel: LibraryViewModel
     private var navigateToBookOnStart: Pair<String, String>? = null
