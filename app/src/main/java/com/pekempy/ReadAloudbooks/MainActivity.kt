@@ -411,7 +411,10 @@ class ViewModelFactory<T : ViewModel>(
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
                             factory = object : ViewModelProvider.Factory {
                                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
+                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel::class.java)) {
+                                        return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
+                                    }
+                                    throw IllegalArgumentException("Unknown ViewModel class")
                                 }
                             }
                         )
@@ -436,7 +439,10 @@ class ViewModelFactory<T : ViewModel>(
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
                             factory = object : ViewModelProvider.Factory {
                                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
+                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel::class.java)) {
+                                        return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
+                                    }
+                                    throw IllegalArgumentException("Unknown ViewModel class")
                                 }
                             }
                         )
@@ -455,7 +461,10 @@ class ViewModelFactory<T : ViewModel>(
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
                             factory = object : ViewModelProvider.Factory {
                                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
+                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel::class.java)) {
+                                        return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
+                                    }
+                                    throw IllegalArgumentException("Unknown ViewModel class")
                                 }
                             }
                         )
@@ -474,7 +483,10 @@ class ViewModelFactory<T : ViewModel>(
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
                             factory = object : ViewModelProvider.Factory {
                                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
+                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel::class.java)) {
+                                        return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
+                                    }
+                                    throw IllegalArgumentException("Unknown ViewModel class")
                                 }
                             }
                         )
