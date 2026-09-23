@@ -56,32 +56,67 @@ fun ReadAloudBooksTheme(
             // Book-cover/custom colours can land anywhere in brightness; guarantee they still
             // read clearly as a button fill (and that the text drawn on top of them is legible)
             // instead of trusting Material3's default onPrimary/onSecondary/onTertiary (fixed
-            // white/black tokens that assume a mid-tone seed).
+            // white/black tokens that assume a mid-tone seed). Container roles (used by cards
+            // like the home "Your Progress" widget) are derived from the same seed rather than
+            // left at Material3's unrelated lavender baseline, so they stay visually consistent
+            // with the rest of the custom theme and keep readable contrast.
+            fun blend(a: androidx.compose.ui.graphics.Color, b: androidx.compose.ui.graphics.Color, ratio: Float): androidx.compose.ui.graphics.Color {
+                val r = ratio.coerceIn(0f, 1f)
+                return androidx.compose.ui.graphics.Color(
+                    red = a.red + (b.red - a.red) * r,
+                    green = a.green + (b.green - a.green) * r,
+                    blue = a.blue + (b.blue - a.blue) * r,
+                    alpha = 1f
+                )
+            }
+
             if (darkTheme) {
+                val bg = androidx.compose.ui.graphics.Color(0xFF1C1B1F)
                 val safeSeed = com.pekempy.ReadAloudbooks.util.ContrastUtils.ensureContrast(
-                    seedColor, androidx.compose.ui.graphics.Color(0xFF1C1B1F), minContrast = 3.5f
+                    seedColor, bg, minContrast = 3.5f
                 )
                 val onSeed = com.pekempy.ReadAloudbooks.util.ContrastUtils.readableOn(safeSeed)
+                val container = com.pekempy.ReadAloudbooks.util.ContrastUtils.ensureContrast(
+                    blend(safeSeed, bg, 0.55f), bg, minContrast = 1.5f
+                )
+                val onContainer = com.pekempy.ReadAloudbooks.util.ContrastUtils.readableOn(container)
                 darkColorScheme(
                     primary = safeSeed,
                     onPrimary = onSeed,
                     secondary = safeSeed,
                     onSecondary = onSeed,
                     tertiary = safeSeed,
-                    onTertiary = onSeed
+                    onTertiary = onSeed,
+                    primaryContainer = container,
+                    onPrimaryContainer = onContainer,
+                    secondaryContainer = container,
+                    onSecondaryContainer = onContainer,
+                    tertiaryContainer = container,
+                    onTertiaryContainer = onContainer
                 )
             } else {
+                val bg = androidx.compose.ui.graphics.Color(0xFFFFFBFE)
                 val safeSeed = com.pekempy.ReadAloudbooks.util.ContrastUtils.ensureContrast(
-                    seedColor, androidx.compose.ui.graphics.Color(0xFFFFFBFE), minContrast = 3.5f
+                    seedColor, bg, minContrast = 3.5f
                 )
                 val onSeed = com.pekempy.ReadAloudbooks.util.ContrastUtils.readableOn(safeSeed)
+                val container = com.pekempy.ReadAloudbooks.util.ContrastUtils.ensureContrast(
+                    blend(safeSeed, bg, 0.75f), bg, minContrast = 1.5f
+                )
+                val onContainer = com.pekempy.ReadAloudbooks.util.ContrastUtils.readableOn(container)
                 lightColorScheme(
                     primary = safeSeed,
                     onPrimary = onSeed,
                     secondary = safeSeed,
                     onSecondary = onSeed,
                     tertiary = safeSeed,
-                    onTertiary = onSeed
+                    onTertiary = onSeed,
+                    primaryContainer = container,
+                    onPrimaryContainer = onContainer,
+                    secondaryContainer = container,
+                    onSecondaryContainer = onContainer,
+                    tertiaryContainer = container,
+                    onTertiaryContainer = onContainer
                 )
             }
         }

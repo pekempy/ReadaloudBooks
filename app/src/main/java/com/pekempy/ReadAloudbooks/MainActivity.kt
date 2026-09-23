@@ -326,6 +326,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onEditBook = { book ->
                                 navController.navigate("edit/${book.id}")
+                            },
+                            onNavigateToAnalytics = {
+                                navController.navigate("analytics")
                             }
                         )
                     }
@@ -374,7 +377,8 @@ class MainActivity : ComponentActivity() {
                         )
                         com.pekempy.ReadAloudbooks.ui.settings.SettingsTheming(
                             viewModel = settingsViewModel,
-                            onBack = { navController.popBackStack() }
+                            onBack = { navController.popBackStack() },
+                            onTabOrdering = { navController.navigate("settings/tabs") }
                         )
                     }
                     composable(
@@ -388,21 +392,6 @@ class MainActivity : ComponentActivity() {
                             factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) }
                         )
                         com.pekempy.ReadAloudbooks.ui.settings.SettingsAudio(
-                            viewModel = settingsViewModel,
-                            onBack = { navController.popBackStack() }
-                        )
-                    }
-                    composable(
-                        route = "settings/ebook",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
-                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
-                    ) {
-                        val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
-                            factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) }
-                        )
-                        com.pekempy.ReadAloudbooks.ui.settings.SettingsEbook(
                             viewModel = settingsViewModel,
                             onBack = { navController.popBackStack() }
                         )
@@ -449,17 +438,6 @@ class MainActivity : ComponentActivity() {
                         exitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
                     ) {
                         com.pekempy.ReadAloudbooks.ui.settings.SettingsBackupScreen(
-                            onBack = { navController.popBackStack() }
-                        )
-                    }
-                    
-                    // Advanced Settings  
-                    composable(
-                        route = "settings/advanced",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
-                    ) {
-                        com.pekempy.ReadAloudbooks.ui.settings.AdvancedSettingsScreen(
                             onBack = { navController.popBackStack() }
                         )
                     }

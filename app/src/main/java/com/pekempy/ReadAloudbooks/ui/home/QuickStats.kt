@@ -37,7 +37,8 @@ fun QuickStatsWidget(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
         )
     ) {
         Column(
@@ -114,7 +115,7 @@ private fun QuickStatItem(
     ) {
         Surface(
             shape = CircleShape,
-            color = color.copy(alpha = 0.15f),
+            color = color.copy(alpha = 0.22f),
             modifier = Modifier.size(56.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {

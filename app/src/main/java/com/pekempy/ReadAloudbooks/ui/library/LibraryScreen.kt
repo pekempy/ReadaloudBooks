@@ -58,7 +58,8 @@ fun LibraryScreen(
     onPlayAudiobook: (Book) -> Unit,
     onSettingsClick: () -> Unit,
     onLogout: () -> Unit,
-    onEditBook: (Book) -> Unit
+    onEditBook: (Book) -> Unit,
+    onNavigateToAnalytics: () -> Unit = {}
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
     var showFilterMenu by remember { mutableStateOf(false) }
@@ -379,7 +380,7 @@ fun LibraryScreen(
                                         hoursListened = 0f,
                                         weeklyGoalProgress = 0.5f
                                     ),
-                                    onViewAllClick = { /* TODO: Navigate to analytics */ },
+                                    onViewAllClick = onNavigateToAnalytics,
                                     modifier = Modifier.padding(horizontal = 16.dp)
                                 )
                                 

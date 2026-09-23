@@ -1,5 +1,6 @@
 package com.pekempy.ReadAloudbooks.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,66 +17,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.LinearProgressIndicator
 
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AdvancedSettingsScreen(
-    onBack: () -> Unit
-) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Advanced Settings") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                )
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                painterResource(R.drawable.ic_settings),
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "Advanced Settings",
-                style = MaterialTheme.typography.headlineSmall
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Power user options\n\nComing in v0.11.1",
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReadingAnalyticsScreen(
     onBack: () -> Unit
 ) {
-    val viewModel: com.pekempy.ReadAloudbooks.ui.analytics.ReadingAnalyticsViewModel = 
+    val viewModel: com.pekempy.ReadAloudbooks.ui.analytics.ReadingAnalyticsViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel()
     val stats by viewModel.stats.collectAsState(initial = null)
+    val resolvedBooks by viewModel.resolvedBooks.collectAsState(initial = emptyList())
     val isLoading by viewModel.isLoading.collectAsState(initial = false)
     
     Scaffold(
@@ -194,22 +144,24 @@ fun ReadingAnalyticsScreen(
                 }
                 
                 // Books Read
-                if (s.readingByBook.isNotEmpty()) {
+                if (resolvedBooks.isNotEmpty()) {
                     Text(
                         "Reading by Book",
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
-                    
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        s.readingByBook.take(5).forEach { book ->
+                        resolvedBooks.take(5).forEach { entry ->
                             BookReadCard(
-                                title = book.title.ifEmpty { book.bookId },
-                                totalTime = book.totalTimeMs
+                                title = entry.book?.title?.takeIf { it.isNotBlank() } ?: "Unknown book",
+                                author = entry.book?.author,
+                                coverUrl = entry.book?.ebookCoverUrl ?: entry.book?.audiobookCoverUrl ?: entry.book?.coverUrl,
+                                totalTime = entry.stat.totalTimeMs
                             )
                         }
                     }
@@ -260,6 +212,8 @@ private fun StatCard(
 private fun BookReadCard(
     title: String,
     totalTime: Long,
+    author: String? = null,
+    coverUrl: String? = null,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -270,15 +224,32 @@ private fun BookReadCard(
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            coil.compose.AsyncImage(
+                model = coverUrl,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     title,
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 2
                 )
+                if (!author.isNullOrBlank()) {
+                    Text(
+                        author,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
                 Text(
                     formatDuration(totalTime),

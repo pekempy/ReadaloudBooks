@@ -68,31 +68,19 @@ fun SettingsHome(
             
             HorizontalDivider(thickness = 8.dp, color = Color.Transparent)
             
-            // APPEARANCE
+            // APPEARANCE & LIBRARY
             SettingsNavItem(
-                title = "Appearance",
-                subtitle = "Theme, colors, and visual style",
+                title = "Appearance & Library",
+                subtitle = "Theme, colors, tabs, and organization",
                 iconRes = R.drawable.ic_palette
             ) { onNavigateTo("settings/theming") }
-            
-            SettingsNavItem(
-                title = "Library",
-                subtitle = "Tabs, layout, and organization",
-                iconRes = R.drawable.ic_list
-            ) { onNavigateTo("settings/library") }
             
             HorizontalDivider(thickness = 8.dp, color = Color.Transparent)
             
             // READING & LISTENING
             SettingsNavItem(
-                title = "Reader",
-                subtitle = "eBook font, theme, and display",
-                iconRes = R.drawable.ic_book
-            ) { onNavigateTo("settings/ebook") }
-            
-            SettingsNavItem(
-                title = "Audio Playback",
-                subtitle = "Sleep timer and playback speed",
+                title = "Reading & Listening",
+                subtitle = "eBook display, sleep timer, and playback speed",
                 iconRes = R.drawable.ic_headphones
             ) { onNavigateTo("settings/audio") }
             
@@ -382,12 +370,13 @@ fun SettingsConnections(
 @Composable
 fun SettingsTheming(
     viewModel: SettingsViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onTabOrdering: () -> Unit
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Theming") },
+                title = { Text("Appearance & Library") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
@@ -456,41 +445,7 @@ fun SettingsTheming(
                     )
                 }
              }
-        }
-    }
-}
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SettingsLibrary(
-    viewModel: SettingsViewModel,
-    onBack: () -> Unit,
-    onTabOrdering: () -> Unit
-) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Library") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent
-                )
-            )
-        }
-    ) { padding ->
-        Column(
-             modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
              SettingsSection("Navigation Tabs") {
                  Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                      Text(
@@ -541,7 +496,7 @@ fun SettingsAudio(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Audio Playback") },
+                title = { Text("Reading & Listening") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
@@ -558,90 +513,6 @@ fun SettingsAudio(
              modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            SettingsSection("Sleep Timer") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(), 
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf(0, 15, 30, 45, 60).forEach { mins ->
-                        FilterChip(
-                            selected = viewModel.sleepTimerMinutes == mins,
-                            onClick = { viewModel.setSleepTimer(mins) },
-                            label = { Text(if (mins == 0) "Off" else "$mins m") },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-                
-                Spacer(Modifier.height(8.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Play until end of chapter")
-                    Switch(
-                        checked = viewModel.sleepTimerFinishChapter,
-                        onCheckedChange = { viewModel.updateSleepTimerFinishChapter(it) }
-                    )
-                }
-            }
-
-            SettingsSection("Playback Speed") {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Default Speed: ${"%.2f".format(viewModel.playbackSpeed)}x")
-                    }
-                    Slider(
-                        value = viewModel.playbackSpeed,
-                        onValueChange = { 
-                            val rounded = (it * 20).roundToInt() / 20f
-                            viewModel.updatePlaybackSpeed(rounded) 
-                        },
-                        valueRange = 0.5f..2.0f,
-                        steps = 29
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SettingsEbook(
-    viewModel: SettingsViewModel,
-    onBack: () -> Unit
-) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("eBook") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent
-                )
-            )
-        }
-    ) { padding ->
-        Column(
-             modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -708,6 +579,57 @@ fun SettingsEbook(
                     Switch(
                         checked = viewModel.readerHidePlayerWithControls,
                         onCheckedChange = { viewModel.updateReaderHidePlayerWithControls(it) }
+                    )
+                }
+            }
+
+            SettingsSection("Sleep Timer") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(), 
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(0, 15, 30, 45, 60).forEach { mins ->
+                        FilterChip(
+                            selected = viewModel.sleepTimerMinutes == mins,
+                            onClick = { viewModel.setSleepTimer(mins) },
+                            label = { Text(if (mins == 0) "Off" else "$mins m") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+                
+                Spacer(Modifier.height(8.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Play until end of chapter")
+                    Switch(
+                        checked = viewModel.sleepTimerFinishChapter,
+                        onCheckedChange = { viewModel.updateSleepTimerFinishChapter(it) }
+                    )
+                }
+            }
+
+            SettingsSection("Playback Speed") {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Default Speed: ${"%.2f".format(viewModel.playbackSpeed)}x")
+                    }
+                    Slider(
+                        value = viewModel.playbackSpeed,
+                        onValueChange = { 
+                            val rounded = (it * 20).roundToInt() / 20f
+                            viewModel.updatePlaybackSpeed(rounded) 
+                        },
+                        valueRange = 0.5f..2.0f,
+                        steps = 29
                     )
                 }
             }
