@@ -1,5 +1,6 @@
 package com.pekempy.ReadAloudbooks.ui.reader
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,10 +35,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -384,20 +389,61 @@ fun EpubReaderContent(
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = true
-            ) { pageIndex ->
-                ChapterPageView(
-                    layout = chapterLayout,
-                    page = chapterLayout.pages[pageIndex],
-                    highlightId = if (isReadAloud) highlightId else null,
-                    highlightStyle = highlightStyle,
-                    highlightColor = highlightColor,
-                    highlightRounded = highlightRounded,
-                    horizontalPaddingPx = horizontalPaddingPx,
-                    verticalPaddingPx = verticalPaddingPx,
-                    onSentenceLongPress = onSentenceLongPress,
-                    onBlankTap = onCenterTap
+                userScrollEnabled = true,
+                flingBehavior = PagerDefaults.flingBehavior(
+                    state = pagerState,
+                    snapAnimationSpec = tween(220)
                 )
+            ) { pageIndex ->
+                val pageOffset = ((pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            // Subtle "page lift" as it turns: a light rotation around the
+                            // trailing vertical edge plus a small scale-down, evoking a page
+                            // turn without the cost/complexity of a full 3D curl.
+                            val clamped = pageOffset.coerceIn(-1f, 1f)
+                            cameraDistance = 24f * this.density
+                            transformOrigin = TransformOrigin(if (clamped < 0f) 0f else 1f, 0.5f)
+                            rotationY = -clamped * 14f
+                            val scale = 1f - (kotlin.math.abs(clamped) * 0.04f)
+                            scaleX = scale
+                            scaleY = scale
+                            alpha = 1f - (kotlin.math.abs(clamped) * 0.06f)
+                        }
+                ) {
+                    ChapterPageView(
+                        layout = chapterLayout,
+                        page = chapterLayout.pages[pageIndex],
+                        highlightId = if (isReadAloud) highlightId else null,
+                        highlightStyle = highlightStyle,
+                        highlightColor = highlightColor,
+                        highlightRounded = highlightRounded,
+                        horizontalPaddingPx = horizontalPaddingPx,
+                        verticalPaddingPx = verticalPaddingPx,
+                        onSentenceLongPress = onSentenceLongPress,
+                        onBlankTap = onCenterTap
+                    )
+                    // Shadow that deepens toward the turning edge, giving the page a sense of
+                    // depth as it lifts away from (or settles onto) the stack beneath it.
+                    val shadowAlpha = (kotlin.math.abs(pageOffset).coerceIn(0f, 1f)) * 0.22f
+                    if (shadowAlpha > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = if (pageOffset < 0f) {
+                                            listOf(Color.Black.copy(alpha = shadowAlpha), Color.Transparent)
+                                        } else {
+                                            listOf(Color.Transparent, Color.Black.copy(alpha = shadowAlpha))
+                                        }
+                                    )
+                                )
+                        )
+                    }
+                }
             }
 
             // Invisible left/right edge zones turn pages with the pager's own animation; the
@@ -410,7 +456,7 @@ fun EpubReaderContent(
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             isFollowing = false
                             scope.launch {
-                                if (pagerState.currentPage > 0) pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                                if (pagerState.currentPage > 0) pagerState.animateScrollToPage(pagerState.currentPage - 1, animationSpec = tween(240))
                                 else onPrevChapter()
                             }
                         }
@@ -423,7 +469,7 @@ fun EpubReaderContent(
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             isFollowing = false
                             scope.launch {
-                                if (pagerState.currentPage < pageCount - 1) pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                                if (pagerState.currentPage < pageCount - 1) pagerState.animateScrollToPage(pagerState.currentPage + 1, animationSpec = tween(240))
                                 else onNextChapter()
                             }
                         }
@@ -435,7 +481,7 @@ fun EpubReaderContent(
             FilledTonalButton(
                 onClick = {
                     isFollowing = true
-                    scope.launch { pagerState.animateScrollToPage(highlightParagraphPage) }
+                    scope.launch { pagerState.animateScrollToPage(highlightParagraphPage, animationSpec = tween(240)) }
                 },
                 shape = RoundedCornerShape(50),
                 modifier = Modifier

@@ -8,6 +8,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pekempy.ReadAloudbooks.ui.theme.ReadAloudBooksTheme
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -51,6 +59,39 @@ import kotlinx.coroutines.launch
 import androidx.navigation.compose.currentBackStackEntryAsState
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+
+/**
+ * Single source of truth for screen-to-screen navigation motion so every route feels the
+ * same: forward pushes slide the new screen in from the right (with a partial parallax slide
+ * + fade on the outgoing screen), back navigation reverses it. Kept short (240ms) so it reads
+ * as snappy rather than sluggish.
+ */
+private const val NAV_ANIM_MS = 240
+
+private val navForwardEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
+    slideInHorizontally(
+        animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
+        initialOffsetX = { it }
+    ) + fadeIn(tween(NAV_ANIM_MS))
+}
+private val navForwardExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
+    slideOutHorizontally(
+        animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
+        targetOffsetX = { -it / 4 }
+    ) + fadeOut(tween(NAV_ANIM_MS))
+}
+private val navBackEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
+    slideInHorizontally(
+        animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
+        initialOffsetX = { -it / 4 }
+    ) + fadeIn(tween(NAV_ANIM_MS))
+}
+private val navBackExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
+    slideOutHorizontally(
+        animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
+        targetOffsetX = { it }
+    ) + fadeOut(tween(NAV_ANIM_MS))
+}
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: UserPreferencesRepository
@@ -243,7 +284,11 @@ class MainActivity : ComponentActivity() {
                     NavHost(
                         navController = navController,
                         startDestination = if (initialIsLoggedIn) "library" else "login",
-                        modifier = Modifier.padding(paddingValues)
+                        modifier = Modifier.padding(paddingValues),
+                        enterTransition = navForwardEnter,
+                        exitTransition = navForwardExit,
+                        popEnterTransition = navBackEnter,
+                        popExitTransition = navBackExit
                     ) {
                     composable("login") {
                         val loginViewModel = viewModel<LoginViewModel>(
@@ -263,21 +308,7 @@ class MainActivity : ComponentActivity() {
                         arguments = listOf(
                             androidx.navigation.navArgument("viewMode") { nullable = true },
                             androidx.navigation.navArgument("filter") { nullable = true }
-                        ),
-                        exitTransition = {
-                            if (targetState.destination.route?.startsWith("settings") == true) {
-                                slideOutHorizontally(targetOffsetX = { -it })
-                            } else {
-                                slideOutHorizontally(targetOffsetX = { it })
-                            }
-                        },
-                        popEnterTransition = {
-                            if (initialState.destination.route?.startsWith("settings") == true) {
-                                slideInHorizontally(initialOffsetX = { -it })
-                            } else {
-                                slideInHorizontally(initialOffsetX = { it })
-                            }
-                        }
+                        )
                     ) { backStackEntry ->
                         val viewModeStr = backStackEntry.arguments?.getString("viewMode")
                         val filter = backStackEntry.arguments?.getString("filter")
@@ -332,25 +363,13 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-                    composable(
-                        route = "settings",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
-                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
-                    ) {
+                    composable(route = "settings") {
                         com.pekempy.ReadAloudbooks.ui.settings.SettingsHome(
                             onBack = { navController.popBackStack() },
                             onNavigateTo = { route -> navController.navigate(route) }
                         )
                     }
-                    composable(
-                        route = "settings/connections",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
-                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
-                    ) {
+                    composable(route = "settings/connections") {
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
                             factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) }
                         )
@@ -365,13 +384,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-                    composable(
-                        route = "settings/theming",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
-                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
-                    ) {
+                    composable(route = "settings/theming") {
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
                             factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) }
                         )
@@ -381,13 +394,7 @@ class MainActivity : ComponentActivity() {
                             onTabOrdering = { navController.navigate("settings/tabs") }
                         )
                     }
-                    composable(
-                        route = "settings/audio",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
-                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
-                    ) {
+                    composable(route = "settings/audio") {
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
                             factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) }
                         )
@@ -396,13 +403,7 @@ class MainActivity : ComponentActivity() {
                             onBack = { navController.popBackStack() }
                         )
                     }
-                    composable(
-                        route = "settings/support",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
-                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
-                    ) {
+                    composable(route = "settings/support") {
                         com.pekempy.ReadAloudbooks.ui.settings.SettingsSupport(
                             onBack = { navController.popBackStack() },
                             onOpenUrl = { url ->
@@ -415,13 +416,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-                    composable(
-                        route = "storage",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
-                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
-                    ) {
+                    composable(route = "storage") {
                         val storageViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.StorageManagementViewModel>(
                             factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.StorageManagementViewModel(repository) }
                         )
@@ -432,24 +427,14 @@ class MainActivity : ComponentActivity() {
                     }
                     
                     // Backup & Restore
-                    composable(
-                        route = "settings/backup",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
-                    ) {
+                    composable(route = "settings/backup") {
                         com.pekempy.ReadAloudbooks.ui.settings.SettingsBackupScreen(
                             onBack = { navController.popBackStack() }
                         )
                     }
                     
                     // Tab Ordering
-                    composable(
-                        route = "settings/tabs",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
-                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
-                    ) {
+                    composable(route = "settings/tabs") {
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
                             factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) }
                         )
@@ -460,21 +445,12 @@ class MainActivity : ComponentActivity() {
                     }
                     
                     // Reading Analytics
-                    composable(
-                        route = "analytics",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
-                    ) {
+                    composable(route = "analytics") {
                         com.pekempy.ReadAloudbooks.ui.settings.ReadingAnalyticsScreen(
                             onBack = { navController.popBackStack() }
                         )
                     }
-                    composable("detail/{bookId}",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { -it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
-                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        popExitTransition = { slideOutHorizontally(targetOffsetX = { -it }) }
-                    ) { backStackEntry ->
+                    composable("detail/{bookId}") { backStackEntry ->
                         val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
                         val detailViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.detail.BookDetailViewModel>(
                             factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.detail.BookDetailViewModel(repository) }
@@ -510,12 +486,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-                    composable("edit/{bookId}",
-                        enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
-                        popEnterTransition = { slideInHorizontally(initialOffsetX = { -it }) },
-                        popExitTransition = { slideOutHorizontally(targetOffsetX = { -it }) }
-                    ) { backStackEntry ->
+                    composable("edit/{bookId}") { backStackEntry ->
                         val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
                         val editViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.edit.EditBookViewModel>(
                             factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.edit.EditBookViewModel(repository) }
@@ -538,11 +509,7 @@ class MainActivity : ComponentActivity() {
                                 type = androidx.navigation.NavType.BoolType
                                 defaultValue = false 
                             }
-                        ),
-                        enterTransition = { slideInHorizontally(initialOffsetX = { -it }) },
-                        exitTransition = { slideOutHorizontally(targetOffsetX = { it }) },
-                        popEnterTransition = { slideInHorizontally(initialOffsetX = { it }) },
-                        popExitTransition = { slideOutHorizontally(targetOffsetX = { -it }) }
+                        )
                     ) { backStackEntry ->
                         val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
                         val isReadAloud = backStackEntry.arguments?.getBoolean("isReadAloud") ?: false
@@ -566,10 +533,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     composable("player/{bookId}",
-                        enterTransition = { slideInVertically(initialOffsetY = { it }) },
-                        exitTransition = { slideOutVertically(targetOffsetY = { it }) },
-                        popEnterTransition = { slideInVertically(initialOffsetY = { it }) },
-                        popExitTransition = { slideOutVertically(targetOffsetY = { it }) }
+                        enterTransition = { slideInVertically(animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing), initialOffsetY = { it }) + fadeIn(tween(NAV_ANIM_MS)) },
+                        exitTransition = { slideOutVertically(animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing), targetOffsetY = { it }) + fadeOut(tween(NAV_ANIM_MS)) },
+                        popEnterTransition = { slideInVertically(animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing), initialOffsetY = { it }) + fadeIn(tween(NAV_ANIM_MS)) },
+                        popExitTransition = { slideOutVertically(animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing), targetOffsetY = { it }) + fadeOut(tween(NAV_ANIM_MS)) }
                     ) { backStackEntry ->
                         val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
                         AudiobookPlayerScreen(
