@@ -108,7 +108,7 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
     }
     
     fun selectAllBooks() {
-        selectedBooks = displayedBooks.map { it.id }.toSet()
+        selectedBooks = books.map { it.id }.toSet()
     }
     
     fun clearSelection() {
