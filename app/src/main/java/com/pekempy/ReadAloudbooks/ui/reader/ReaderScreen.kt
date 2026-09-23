@@ -1045,7 +1045,8 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                              console.error("Highlight error", e);
                          }
                      } else if (retryCount < 5) {
-                         setTimeout(() => findAndHighlight(text, retryCount + 1, matchIndex), 100);
+                        setTimeout(() => findAndHighlight(text, retryCount + 1, matchIndex), 100);
+                    }
                 }
                 
                 // ERROR HANDLER
