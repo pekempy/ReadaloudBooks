@@ -251,7 +251,7 @@ fun ReadAloudPlayerScreen(
         )
     }
 
-    if (userSettings != null && readerViewModel.lazyBook != null) {
+    if (userSettings != null && readerViewModel.totalChapters > 0) {
         val theme = getReaderTheme(userSettings.readerTheme)
         val accentColor = MaterialTheme.colorScheme.primary
         val accentHex = String.format("#%06X", (0xFFFFFF and accentColor.toArgb()))
@@ -261,8 +261,18 @@ fun ReadAloudPlayerScreen(
                 .fillMaxSize()
                 .background(Color(theme.bgInt))
         ) {
-            // Controls overlays (these are tested for touches before WebView)
-            // When AnimatedVisibility visible=false, they should not intercept
+            EpubWebView(
+                html = readerViewModel.getCurrentChapterHtml() ?: "",
+                userSettings = userSettings,
+                viewModel = readerViewModel,
+                accentHex = accentHex,
+                highlightId = if (readerViewModel.activeSearchHighlight == null) readerViewModel.currentHighlightId else null,
+                syncTrigger = readerViewModel.syncTrigger,
+                activeSearch = readerViewModel.activeSearchHighlight,
+                activeSearchMatchIndex = readerViewModel.activeSearchMatchIndex,
+                pendingAnchor = readerViewModel.pendingAnchorId.value,
+                onTap = { readerViewModel.showControls = !readerViewModel.showControls }
+            )
             
             AnimatedVisibility(
                 visible = readerViewModel.showControls,
@@ -385,21 +395,6 @@ fun ReadAloudPlayerScreen(
                     onShowSleep = { showSleepTimerSheet = true }
                 )
             }
-            
-            // WebView placed LAST in Box children = hit-tested FIRST for touches
-            // This ensures epub receives touch events before overlays
-            EpubWebView(
-                html = readerViewModel.getCurrentChapterHtml() ?: "",
-                userSettings = userSettings,
-                viewModel = readerViewModel,
-                accentHex = accentHex,
-                highlightId = if (readerViewModel.activeSearchHighlight == null) readerViewModel.currentHighlightId else null,
-                syncTrigger = readerViewModel.syncTrigger,
-                activeSearch = readerViewModel.activeSearchHighlight,
-                activeSearchMatchIndex = readerViewModel.activeSearchMatchIndex,
-                pendingAnchor = readerViewModel.pendingAnchorId.value,
-                onTap = { readerViewModel.showControls = !readerViewModel.showControls }
-            )
         }
 
         if (showSpeedSheet) {
