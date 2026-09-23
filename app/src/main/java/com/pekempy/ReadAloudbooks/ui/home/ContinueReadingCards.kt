@@ -133,7 +133,7 @@ private fun ContinueReadingCard(
             ) {
                 // Progress bar
                 LinearProgressIndicator(
-                    progress = progress,
+                    progress = { progress },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(4.dp)
@@ -317,7 +317,7 @@ private fun CompactBookCard(
                 Spacer(Modifier.weight(1f))
                 
                 LinearProgressIndicator(
-                    progress = progress,
+                    progress = { progress },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(3.dp)

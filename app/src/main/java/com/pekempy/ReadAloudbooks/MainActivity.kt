@@ -132,40 +132,20 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
         val initialIsLoggedIn = runBlocking { repository.isLoggedIn.first() }
 
-        sharedAudiobookViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
-            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                if (modelClass.isAssignableFrom(AudiobookViewModel::class.java)) {
-                    return AudiobookViewModel(repository) as T
-                }
-                throw IllegalArgumentException("Unknown ViewModel class")
-            }
+        sharedAudiobookViewModel = ViewModelProvider(this, ViewModelFactory {
+            AudiobookViewModel(repository)
         })[AudiobookViewModel::class.java]
 
-        readAloudAudioViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
-            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.player.ReadAloudAudioViewModel::class.java)) {
-                    return com.pekempy.ReadAloudbooks.ui.player.ReadAloudAudioViewModel(repository) as T
-                }
-                throw IllegalArgumentException("Unknown ViewModel class")
-            }
+        readAloudAudioViewModel = ViewModelProvider(this, ViewModelFactory {
+            com.pekempy.ReadAloudbooks.ui.player.ReadAloudAudioViewModel(repository)
         })[com.pekempy.ReadAloudbooks.ui.player.ReadAloudAudioViewModel::class.java]
 
-        readerViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
-            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                if (modelClass.isAssignableFrom(ReaderViewModel::class.java)) {
-                    return ReaderViewModel(repository) as T
-                }
-                throw IllegalArgumentException("Unknown ViewModel class")
-            }
+        readerViewModel = ViewModelProvider(this, ViewModelFactory {
+            ReaderViewModel(repository)
         })[ReaderViewModel::class.java]
 
-        libraryViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
-            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                if (modelClass.isAssignableFrom(LibraryViewModel::class.java)) {
-                    return LibraryViewModel(repository) as T
-                }
-                throw IllegalArgumentException("Unknown ViewModel class")
-            }
+        libraryViewModel = ViewModelProvider(this, ViewModelFactory {
+            LibraryViewModel(repository)
         })[LibraryViewModel::class.java]
 
         setContent {
@@ -267,14 +247,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                     composable("login") {
                         val loginViewModel = viewModel<LoginViewModel>(
-                            factory = object : ViewModelProvider.Factory {
-                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                if (modelClass.isAssignableFrom(LoginViewModel::class.java)) {
-                                    return LoginViewModel(repository) as T
-                                }
-                                throw IllegalArgumentException("Unknown ViewModel class")
-                                }
-                            }
+                            factory = ViewModelFactory { LoginViewModel(repository) }
                         )
                         LoginScreen(
                             viewModel = loginViewModel,
@@ -376,14 +349,7 @@ class MainActivity : ComponentActivity() {
                         popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
                     ) {
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
-                            factory = object : ViewModelProvider.Factory {
-                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel::class.java)) {
-                                        return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
-                                    }
-                                    throw IllegalArgumentException("Unknown ViewModel class")
-                                }
-                            }
+                            factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) }
                         )
                         com.pekempy.ReadAloudbooks.ui.settings.SettingsConnections(
                             viewModel = settingsViewModel,
@@ -404,14 +370,7 @@ class MainActivity : ComponentActivity() {
                         popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
                     ) {
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
-                            factory = object : ViewModelProvider.Factory {
-                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel::class.java)) {
-                                        return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
-                                    }
-                                    throw IllegalArgumentException("Unknown ViewModel class")
-                                }
-                            }
+                            factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) }
                         )
                         com.pekempy.ReadAloudbooks.ui.settings.SettingsTheming(
                             viewModel = settingsViewModel,
@@ -426,14 +385,7 @@ class MainActivity : ComponentActivity() {
                         popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
                     ) {
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
-                            factory = object : ViewModelProvider.Factory {
-                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel::class.java)) {
-                                        return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
-                                    }
-                                    throw IllegalArgumentException("Unknown ViewModel class")
-                                }
-                            }
+                            factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) }
                         )
                         com.pekempy.ReadAloudbooks.ui.settings.SettingsAudio(
                             viewModel = settingsViewModel,
@@ -448,14 +400,7 @@ class MainActivity : ComponentActivity() {
                         popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
                     ) {
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
-                            factory = object : ViewModelProvider.Factory {
-                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel::class.java)) {
-                                        return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
-                                    }
-                                    throw IllegalArgumentException("Unknown ViewModel class")
-                                }
-                            }
+                            factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) }
                         )
                         com.pekempy.ReadAloudbooks.ui.settings.SettingsEbook(
                             viewModel = settingsViewModel,
@@ -489,14 +434,7 @@ class MainActivity : ComponentActivity() {
                         popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
                     ) {
                         val storageViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.StorageManagementViewModel>(
-                            factory = object : ViewModelProvider.Factory {
-                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.settings.StorageManagementViewModel::class.java)) {
-                                        return com.pekempy.ReadAloudbooks.ui.settings.StorageManagementViewModel(repository) as T
-                                    }
-                                    throw IllegalArgumentException("Unknown ViewModel class")
-                                }
-                            }
+                            factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.StorageManagementViewModel(repository) }
                         )
                         com.pekempy.ReadAloudbooks.ui.settings.StorageManagementScreen(
                             viewModel = storageViewModel,
@@ -535,14 +473,7 @@ class MainActivity : ComponentActivity() {
                         popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
                     ) {
                         val settingsViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel>(
-                            factory = object : ViewModelProvider.Factory {
-                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel::class.java)) {
-                                        return com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) as T
-                                    }
-                                    throw IllegalArgumentException("Unknown ViewModel class")
-                                }
-                            }
+                            factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.settings.SettingsViewModel(repository) }
                         )
                         com.pekempy.ReadAloudbooks.ui.settings.TabOrderingScreen(
                             viewModel = settingsViewModel,
@@ -568,14 +499,7 @@ class MainActivity : ComponentActivity() {
                     ) { backStackEntry ->
                         val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
                         val detailViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.detail.BookDetailViewModel>(
-                            factory = object : ViewModelProvider.Factory {
-                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.detail.BookDetailViewModel::class.java)) {
-                                        return com.pekempy.ReadAloudbooks.ui.detail.BookDetailViewModel(repository) as T
-                                    }
-                                    throw IllegalArgumentException("Unknown ViewModel class")
-                                }
-                            }
+                            factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.detail.BookDetailViewModel(repository) }
                         )
                         
                         com.pekempy.ReadAloudbooks.ui.detail.BookDetailScreen(
@@ -616,14 +540,7 @@ class MainActivity : ComponentActivity() {
                     ) { backStackEntry ->
                         val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
                         val editViewModel = viewModel<com.pekempy.ReadAloudbooks.ui.edit.EditBookViewModel>(
-                            factory = object : ViewModelProvider.Factory {
-                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    if (modelClass.isAssignableFrom(com.pekempy.ReadAloudbooks.ui.edit.EditBookViewModel::class.java)) {
-                                        return com.pekempy.ReadAloudbooks.ui.edit.EditBookViewModel(repository) as T
-                                    }
-                                    throw IllegalArgumentException("Unknown ViewModel class")
-                                }
-                            }
+                            factory = ViewModelFactory { com.pekempy.ReadAloudbooks.ui.edit.EditBookViewModel(repository) }
                         )
                         com.pekempy.ReadAloudbooks.ui.edit.EditBookScreen(
                             viewModel = editViewModel,
@@ -688,14 +605,7 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(route = "settings/advanced") {
                         val settingsViewModel = viewModel<SettingsViewModel>(
-                            factory = object : ViewModelProvider.Factory {
-                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                    if (modelClass.isAssignableFrom(SettingsViewModel::class.java)) {
-                                        return SettingsViewModel(repository) as T
-                                    }
-                                    throw IllegalArgumentException("Unknown ViewModel class")
-                                }
-                            }
+                            factory = ViewModelFactory { SettingsViewModel(repository) }
                         )
                         AdvancedSettingsScreen(
                             viewModel = settingsViewModel,

@@ -113,7 +113,7 @@ fun MotivationalCard(
                 
                 val progress = currentStreak.toFloat() / nextMilestone
                 LinearProgressIndicator(
-                    progress = progress.coerceIn(0f, 1f),
+                    progress = { progress.coerceIn(0f, 1f) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
