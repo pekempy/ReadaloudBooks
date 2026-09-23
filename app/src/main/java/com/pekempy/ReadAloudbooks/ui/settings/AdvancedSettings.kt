@@ -192,8 +192,8 @@ fun AdvancedSettingsScreen(
                     .padding(16.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = TextFieldDefaults.colors(
-                    focusedIndicatorColor = MaterialTheme.colorScheme.transparent,
-                    unfocusedIndicatorColor = MaterialTheme.colorScheme.transparent
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent
                 )
             )
             
