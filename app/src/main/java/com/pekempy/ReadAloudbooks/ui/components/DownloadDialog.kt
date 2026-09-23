@@ -226,16 +226,16 @@ private fun DownloadOptionCard(
             .fillMaxWidth()
             .scale(scale)
             .alpha(alpha)
-            .clickable(enabled = option.available) { onClick() },
+            .clickable(enabled = option.available && !option.downloaded) { onClick() },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = if (option.downloaded) {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
             disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp,
-            pressedElevation = 8.dp
-        )
     ) {
         Row(
             modifier = Modifier
@@ -267,7 +267,9 @@ private fun DownloadOptionCard(
                     text = option.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (option.available) {
+                    color = if (option.downloaded) {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    } else if (option.available) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
                         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
@@ -277,7 +279,9 @@ private fun DownloadOptionCard(
                 Text(
                     text = option.subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (option.available) {
+                    color = if (option.downloaded) {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    } else if (option.available) {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
