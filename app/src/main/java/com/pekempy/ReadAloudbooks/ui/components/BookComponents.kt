@@ -42,14 +42,13 @@ fun BookItem(
     onSelectionToggle: (() -> Unit)? = null
 ) {
     val isDownloading = downloadProgress != null
-    Box {
-        Card(
-            modifier = modifier
-                .clip(RoundedCornerShape(12.dp))
-                .combinedClickable(
-                    onClick = if (isSelectionMode && onSelectionToggle != null) onSelectionToggle else onClick,
-                    onLongClick = if (!isSelectionMode) onLongClick else null
-                ),
+    Card(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(
+                onClick = if (isSelectionMode && onSelectionToggle != null) onSelectionToggle else onClick,
+                onLongClick = if (!isSelectionMode) onLongClick else null
+            ),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
