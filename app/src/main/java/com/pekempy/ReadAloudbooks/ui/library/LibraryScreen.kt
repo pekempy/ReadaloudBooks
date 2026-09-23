@@ -65,11 +65,11 @@ fun LibraryScreen(
     var isSearchMode by remember { mutableStateOf(false) }
     val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
     var selectedBookForMenu by remember { mutableStateOf<Book?>(null) }
+    var selectedBookForDownload by remember { mutableStateOf<Book?>(null) }
     var selectedSeriesForMenu by remember { mutableStateOf<String?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     var showSeriesMenu by remember { mutableStateOf(false) }
     var bookToDelete by remember { mutableStateOf<Book?>(null) }
-
     LaunchedEffect(isSearchMode) {
         if (isSearchMode) {
             focusRequester.requestFocus()
@@ -569,7 +569,9 @@ fun LibraryScreen(
                                             selectedBookForMenu = book
                                             showMenu = true
                                         },
-                                        onDownloadClick = { viewModel.downloadBook(book) },
+                                        onDownloadClick = { 
+                                            selectedBookForDownload = book
+                                        },
                                         isOfflineMode = viewModel.isOfflineMode,
                                         isSelectionMode = viewModel.selectionMode,
                                         isSelected = viewModel.selectedBooks.contains(book.id),

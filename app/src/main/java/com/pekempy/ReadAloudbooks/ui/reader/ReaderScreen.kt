@@ -462,10 +462,10 @@ fun EpubWebView(
 
 fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, initialScrollPercent: Float, accentColor: String, initialHighlightId: String? = null, isReadAloud: Boolean = false): String {
     val fontFamily = when(userSettings.readerFontFamily) {
-        "serif" -> "Georgia, 'Times New Roman', serif"
-        "sans-serif" -> "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-        "monospace" -> "'Courier New', Consolas, Monaco, monospace"
-        else -> "Georgia, 'Times New Roman', serif"
+        "serif" -> "serif"
+        "sans-serif" -> "sans-serif"
+        "monospace" -> "monospace"
+        else -> "serif"
     }
     
     return """
@@ -479,10 +479,10 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     --text-color: ${theme.text};
                     --font-size: ${userSettings.readerFontSize}px;
                     --font-family: $fontFamily;
-                    --padding-left: max(24px, env(safe-area-inset-left));
-                    --padding-right: max(24px, env(safe-area-inset-right));
-                    --top-padding: max(60px, env(safe-area-inset-top));
-                    --bottom-padding: ${if (isReadAloud) "max(100px, env(safe-area-inset-bottom))" else "max(60px, env(safe-area-inset-bottom))"};
+                    --padding-left: 24px;
+                    --padding-right: 24px;
+                    --top-padding: 60px;
+                    --bottom-padding: ${if (isReadAloud) "100px" else "60px"};
                     --accent-color: $accentColor;
                 }
                 
@@ -540,11 +540,6 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                     overflow: hidden;
                     position: relative;
                     flex-shrink: 0;
-                }
-                
-                .page > * {
-                    max-width: 100%;
-                    box-sizing: border-box;
                 }
                 
                 #content-container {
