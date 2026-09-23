@@ -488,6 +488,11 @@ class ViewModelFactory<T : ViewModel>(
                                 }
                             }
                         )
+                        com.pekempy.ReadAloudbooks.ui.settings.StorageManagementScreen(
+                            viewModel = storageViewModel,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
                     
                     // Backup & Restore
                     composable(
@@ -500,7 +505,7 @@ class ViewModelFactory<T : ViewModel>(
                         )
                     }
                     
-                    // Advanced Settings
+                    // Advanced Settings  
                     composable(
                         route = "settings/advanced",
                         enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
@@ -518,11 +523,6 @@ class ViewModelFactory<T : ViewModel>(
                         exitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
                     ) {
                         com.pekempy.ReadAloudbooks.ui.settings.ReadingAnalyticsScreen(
-                            onBack = { navController.popBackStack() }
-                        )
-                    }
-                        com.pekempy.ReadAloudbooks.ui.settings.StorageManagementScreen(
-                            viewModel = storageViewModel,
                             onBack = { navController.popBackStack() }
                         )
                     }
