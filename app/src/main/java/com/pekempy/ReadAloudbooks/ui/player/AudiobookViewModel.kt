@@ -243,6 +243,10 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
         // Switching to a genuinely different book: clear the previous book's stale
         // position/duration/chapters/sync-state immediately so the UI doesn't render
         // book A's data (or highlight book A's chapter) while book B loads in the background.
+        // Pausing here also stops the old player from keeping isPlaying=true (and the progress
+        // loop ticking) while book B's own load is still in flight.
+        player?.pause()
+        isPlaying = false
         currentBook = null
         currentPosition = 0L
         duration = 0L
@@ -819,23 +823,30 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
 
     internal fun saveBookProgress() {
         if (disableAutoSave) return
+        // Capture everything synchronously before launching (see the matching comment in
+        // ReadAloudAudioViewModel.saveBookProgress): reading chapters/currentChapterIndex from
+        // inside the launched coroutine lets a concurrent loadBook() for a *different* book
+        // land its own chapter list before this coroutine runs, saving book A's position
+        // stamped with book B's chapter data.
         val bookId = currentBook?.id ?: ""
         val pos = currentPosition
         val dur = duration
         if (bookId.isEmpty() || dur <= 0) return
+        val chaptersSnapshot = chapters
+        val currentChapter = currentChapterIndex.coerceAtLeast(0)
+
+        val chapterCount = if (chaptersSnapshot.isNotEmpty()) chaptersSnapshot.size else 1
+        val chapterProgress = if (chaptersSnapshot.isNotEmpty() && currentChapter in chaptersSnapshot.indices) {
+            val chapter = chaptersSnapshot[currentChapter]
+            if (chapter.duration > 0) {
+                (pos - chapter.startOffset).toFloat() / chapter.duration
+            } else 0f
+        } else {
+            pos.toFloat() / dur
+        }
+        val href = chaptersSnapshot.getOrNull(currentChapter)?.title ?: "chapter_$currentChapter"
 
         viewModelScope.launch {
-            val chapterCount = if (chapters.isNotEmpty()) chapters.size else 1
-            val currentChapter = currentChapterIndex.coerceAtLeast(0)
-            val chapterProgress = if (chapters.isNotEmpty() && currentChapter in chapters.indices) {
-                val chapter = chapters[currentChapter]
-                if (chapter.duration > 0) {
-                    (pos - chapter.startOffset).toFloat() / chapter.duration
-                } else 0f
-            } else {
-                pos.toFloat() / dur
-            }
-
             val progress = UnifiedProgress(
                 chapterIndex = currentChapter,
                 elementId = null,
@@ -844,7 +855,7 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
                 lastUpdated = System.currentTimeMillis(),
                 totalChapters = chapterCount.coerceAtLeast(1),
                 totalDurationMs = dur,
-                href = chapters.getOrNull(currentChapter)?.title ?: "chapter_$currentChapter",
+                href = href,
                 mediaType = "audio/mpeg"
             )
             repository.saveBookProgress(bookId, progress.toString())

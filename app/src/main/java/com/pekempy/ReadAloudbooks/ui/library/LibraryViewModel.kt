@@ -238,7 +238,14 @@ class LibraryViewModel(private val repository: UserPreferencesRepository) : View
                         }
                     }
                 }
-                kotlinx.coroutines.delay(5000)
+                // getServerProcessingBooks() has to fetch and map the entire book catalog (no
+                // server-side "processing only" endpoint exists), which is expensive enough that
+                // polling it every 5s unconditionally for the app's whole lifetime competes for
+                // network/IO-dispatcher throughput with things like a readaloud book's own
+                // SMIL/audio load, visibly slowing it down. Only poll that aggressively while the
+                // user is actually looking at the Processing tab; otherwise fall back to a much
+                // cheaper cadence that still keeps the nav-bar processing badge reasonably fresh.
+                kotlinx.coroutines.delay(if (currentViewMode == ViewMode.Processing) 5000L else 30_000L)
             }
         }
     }

@@ -338,8 +338,18 @@ class ReaderViewModel(
                             val entryName = resourcesMap[href] ?: return@async
                             val chapterEntry = zip.getEntry(entryName) ?: return@async
                             try {
-                                val rawHtml = zip.getInputStream(chapterEntry).bufferedReader().readText()
-                                val paragraphs = EpubContentParser.parse(rawHtml)
+                                // Only the first ~8 paragraphs are ever inspected for a title
+                                // (see extractChapterTitle), so reading/parsing the full chapter
+                                // body with Jsoup here is wasted work multiplied across every
+                                // chapter in the book. A generous head-of-stream slice covers
+                                // real-world chapter openings while cutting this from an
+                                // O(book length) cost to a near-constant one per chapter.
+                                val headHtml = zip.getInputStream(chapterEntry).bufferedReader().use { reader ->
+                                    val buf = CharArray(8000)
+                                    val read = reader.read(buf)
+                                    if (read > 0) String(buf, 0, read) else ""
+                                }
+                                val paragraphs = EpubContentParser.parse(headHtml)
                                 EpubContentParser.extractChapterTitle(paragraphs)?.let { title ->
                                     derivedTitles[href] = title
                                 }
