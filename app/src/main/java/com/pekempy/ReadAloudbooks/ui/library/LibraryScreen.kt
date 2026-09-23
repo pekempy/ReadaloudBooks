@@ -391,8 +391,8 @@ fun LibraryScreen(
                                     actions = com.pekempy.ReadAloudbooks.ui.home.QuickActions.getDefaultActions(
                                         onSearchClick = { isSearchMode = true },
                                         onDownloadsClick = { viewModel.setViewMode(LibraryViewModel.ViewMode.Downloads) },
-                                        onTagsClick = { /* TODO */ },
-                                        onStatsClick = { /* TODO */ }
+                                        onCollectionsClick = { viewModel.setViewMode(LibraryViewModel.ViewMode.Collections) },
+                                        onStatsClick = onNavigateToAnalytics
                                     ),
                                     modifier = Modifier.padding(horizontal = 16.dp)
                                 )

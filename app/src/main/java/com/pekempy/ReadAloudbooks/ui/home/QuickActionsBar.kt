@@ -95,7 +95,7 @@ object QuickActions {
     fun getDefaultActions(
         onSearchClick: () -> Unit,
         onDownloadsClick: () -> Unit,
-        onTagsClick: () -> Unit,
+        onCollectionsClick: () -> Unit,
         onStatsClick: () -> Unit
     ): List<QuickAction> = listOf(
         QuickAction(
@@ -111,10 +111,10 @@ object QuickActions {
             onClick = onDownloadsClick
         ),
         QuickAction(
-            id = "tags",
-            label = "Tags",
-            icon = R.drawable.ic_book,
-            onClick = onTagsClick
+            id = "collections",
+            label = "Collections",
+            icon = R.drawable.ic_list,
+            onClick = onCollectionsClick
         ),
         QuickAction(
             id = "stats",
