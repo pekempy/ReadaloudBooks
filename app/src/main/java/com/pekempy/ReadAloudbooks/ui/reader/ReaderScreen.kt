@@ -1047,8 +1047,22 @@ fun wrapHtml(html: String, userSettings: UserSettings, theme: ReaderThemeData, i
                      } else if (retryCount < 5) {
                          setTimeout(() => findAndHighlight(text, retryCount + 1, matchIndex), 100);
                      }
-                }
-
+                
+                // ERROR HANDLER
+                window.onerror = function(msg, url, lineNo, columnNo, error) {
+                    console.error("JavaScript Error: " + msg + " at line " + lineNo + ":" + columnNo);
+                    return false;
+                };
+                
+                console.log("=== JAVASCRIPT INITIALIZATION ===");
+                console.log("pageCount: " + pageCount);
+                console.log("currentPage: " + currentPage);
+                console.log("typeof pageLeft: " + typeof pageLeft);
+                console.log("typeof pageRight: " + typeof pageRight);
+                console.log("typeof highlightElement: " + typeof highlightElement);
+                console.log("typeof gotoPage: " + typeof gotoPage);
+                console.log("window.Android exists: " + (window.Android ? "YES" : "NO"));
+                console.log("=== ADDING TOUCH LISTENERS ===");
                 let touchStartX = 0;
                 let touchStartTime = 0;
                 
