@@ -13,7 +13,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.pekempy.ReadAloudbooks.R
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.LinearProgressIndicator
 
@@ -26,6 +28,8 @@ fun ReadingAnalyticsScreen(
         androidx.lifecycle.viewmodel.compose.viewModel()
     val stats by viewModel.stats.collectAsState(initial = null)
     val resolvedBooks by viewModel.resolvedBooks.collectAsState(initial = emptyList())
+    val favoriteBook by viewModel.favoriteBook.collectAsState(initial = null)
+    val favoriteAuthor by viewModel.favoriteAuthor.collectAsState(initial = null)
     val isLoading by viewModel.isLoading.collectAsState(initial = false)
     
     Scaffold(
@@ -90,7 +94,40 @@ fun ReadingAnalyticsScreen(
                         .fillMaxWidth()
                         .padding(bottom = 24.dp)
                 )
-                
+
+                // Favourites
+                if (favoriteBook != null || favoriteAuthor != null) {
+                    Text(
+                        "Favourites",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        favoriteBook?.let { fav ->
+                            FavoriteCard(
+                                label = "Favourite Book",
+                                title = fav.book?.title?.takeIf { it.isNotBlank() } ?: "Unknown book",
+                                subtitle = formatDuration(fav.stat.totalTimeMs),
+                                coverUrl = fav.book?.ebookCoverUrl ?: fav.book?.audiobookCoverUrl ?: fav.book?.coverUrl,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        favoriteAuthor?.let { fav ->
+                            FavoriteCard(
+                                label = "Favourite Author",
+                                title = fav.author,
+                                subtitle = "${formatDuration(fav.totalTimeMs)} · ${fav.bookCount} book${if (fav.bookCount != 1) "s" else ""}",
+                                coverUrl = null,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
                 // Weekly Progress
                 if (s.readingByDay.isNotEmpty()) {
                     Text(
@@ -186,8 +223,9 @@ private fun StatCard(
 ) {
     Surface(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp)),
-        color = MaterialTheme.colorScheme.surfaceVariant
+            .clip(RoundedCornerShape(16.dp)),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -196,14 +234,79 @@ private fun StatCard(
             Text(
                 title,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
             )
             Spacer(Modifier.height(8.dp))
             Text(
                 value,
                 style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.primary
+                fontWeight = FontWeight.Bold
             )
+        }
+    }
+}
+
+@Composable
+private fun FavoriteCard(
+    label: String,
+    title: String,
+    subtitle: String,
+    coverUrl: String?,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.clip(RoundedCornerShape(16.dp)),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (coverUrl != null) {
+                    coil.compose.AsyncImage(
+                        model = coverUrl,
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.ic_book),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Column {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2
+                    )
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+            }
         }
     }
 }
@@ -219,8 +322,8 @@ private fun BookReadCard(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp)),
-        color = MaterialTheme.colorScheme.surfaceVariant
+            .clip(RoundedCornerShape(16.dp)),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
         Row(
             modifier = Modifier.padding(16.dp),

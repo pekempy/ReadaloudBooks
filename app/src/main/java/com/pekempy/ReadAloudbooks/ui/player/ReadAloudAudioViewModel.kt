@@ -215,9 +215,24 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
         }
 
         loadJob?.cancel()
+        // Switching to a genuinely different book: clear the previous book's stale
+        // position/chapter/highlight/sync-state immediately so the reader doesn't keep
+        // highlighting book A's element (or showing book A's cover/progress) while
+        // book B's SMIL/audio data loads in the background.
+        currentBook = null
+        currentPosition = 0L
+        duration = 0L
+        chapters = emptyList()
+        currentChapterIndex = -1
+        currentElementId = null
+        syncConfirmation = null
+        error = null
+        clipSegments.clear()
+        extractedAudioFiles.clear()
+        loadedSpineHrefs = emptyList()
+        audioChapterOffsets = emptyMap()
         loadJob = viewModelScope.launch(Dispatchers.IO) {
             isLoading = true
-            error = null
             
             try {
                 val apiManager = AppContainer.apiClientManager

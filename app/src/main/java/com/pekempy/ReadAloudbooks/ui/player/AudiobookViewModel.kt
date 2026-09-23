@@ -240,6 +240,18 @@ class AudiobookViewModel(private val repository: UserPreferencesRepository) : Vi
             }
             return
         }
+        // Switching to a genuinely different book: clear the previous book's stale
+        // position/duration/chapters/sync-state immediately so the UI doesn't render
+        // book A's data (or highlight book A's chapter) while book B loads in the background.
+        currentBook = null
+        currentPosition = 0L
+        duration = 0L
+        chapters = emptyList()
+        currentChapterIndex = -1
+        syncConfirmation = null
+        error = null
+        probedDurationMs = 0L
+        pendingResumeMs = null
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             withContext(kotlinx.coroutines.Dispatchers.Main) {
                 isLoading = true
