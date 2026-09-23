@@ -75,7 +75,7 @@ fun ContinueReadingSection(
                 items(books, key = { it.id }) { book ->
                     ContinueReadingCard(
                         book = book,
-                        progress = 0.35f, // TODO: Get actual progress
+                        progress = book.progress ?: 0f,
                         onClick = {
                             haptic(HapticFeedback.FeedbackType.MEDIUM)
                             onBookClick(book)
@@ -248,7 +248,7 @@ fun ContinueReadingGrid(
                 rowBooks.forEach { book ->
                     CompactBookCard(
                         book = book,
-                        progress = 0.35f, // TODO: Get actual progress
+                        progress = book.progress ?: 0f,
                         onClick = {
                             haptic(HapticFeedback.FeedbackType.MEDIUM)
                             onBookClick(book)
