@@ -277,7 +277,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                         
                         if (metadata.chapters.isNotEmpty()) {
                             android.util.Log.i("ReadAloudAudioVM", "Found ${metadata.chapters.size} chapters in M4B metadata")
-                            metadata.chapters.map { probedChapter ->
+                            metadata.chapters.mapIndexed { index, probedChapter ->
                                 Chapter(
                                     title = probedChapter.title,
                                     startOffset = probedChapter.startMs,
