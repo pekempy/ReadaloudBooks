@@ -251,7 +251,7 @@ fun ReadAloudPlayerScreen(
         )
     }
 
-    if (userSettings != null && readerViewModel.totalChapters > 0) {
+    if (userSettings != null && readerViewModel.lazyBook != null) {
         val theme = getReaderTheme(userSettings.readerTheme)
         val accentColor = MaterialTheme.colorScheme.primary
         val accentHex = String.format("#%06X", (0xFFFFFF and accentColor.toArgb()))
