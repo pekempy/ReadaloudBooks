@@ -27,12 +27,6 @@ import kotlin.math.roundToInt
  * Visual indicators showing chapter boundaries with tap-to-seek
  */
 
-data class Chapter(
-    val title: String,
-    val startOffset: Long, // milliseconds
-    val duration: Long,    // milliseconds
-    val index: Int
-)
 
 @Composable
 fun ChapterProgressBar(
