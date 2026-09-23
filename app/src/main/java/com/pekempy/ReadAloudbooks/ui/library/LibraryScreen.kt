@@ -170,6 +170,11 @@ fun LibraryScreen(
                     }
                     
                     Row {
+                        if (viewModel.currentViewMode == LibraryViewModel.ViewMode.Library && !viewModel.selectionMode) {
+                            IconButton(onClick = { viewModel.toggleSelectionMode() }) {
+                                Icon(painterResource(R.drawable.ic_check_circle), contentDescription = "Select", modifier = Modifier.size(20.dp))
+                            }
+                        }
                         if (viewModel.currentViewMode != LibraryViewModel.ViewMode.Downloads && viewModel.currentViewMode != LibraryViewModel.ViewMode.Home) {
                             IconButton(onClick = { isSearchMode = true }) {
                                 Icon(painterResource(R.drawable.ic_search), contentDescription = "Search", modifier = Modifier.size(20.dp))
