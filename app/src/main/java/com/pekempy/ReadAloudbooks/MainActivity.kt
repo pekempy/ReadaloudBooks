@@ -47,6 +47,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.navigation.compose.currentBackStackEntryAsState
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: UserPreferencesRepository
@@ -84,6 +86,37 @@ class MainActivity : ComponentActivity() {
             com.pekempy.ReadAloudbooks.data.SyncWorker.schedule(applicationContext, initialSettings.syncFrequencyBackground)
         }
         
+        // Set up auto re-login callback for 401 errors
+        com.pekempy.ReadAloudbooks.data.api.AppContainer.apiClientManager.onAuthFailure = {
+            try {
+                val credentials = repository.userCredentials.first()
+                if (credentials != null && !credentials.password.isNullOrBlank()) {
+                    val apiManager = com.pekempy.ReadAloudbooks.data.api.AppContainer.apiClientManager
+                    val usernamePart = credentials.username.toRequestBody("text/plain".toMediaTypeOrNull())
+                    val passwordPart = credentials.password.toRequestBody("text/plain".toMediaTypeOrNull())
+                    
+                    val response = apiManager.getApi().login(usernamePart, passwordPart)
+                    
+                    repository.saveCredentials(
+                        url = credentials.url,
+                        localUrl = credentials.localUrl,
+                        username = credentials.username,
+                        password = credentials.password,
+                        token = response.accessToken,
+                        useLocalOnWifi = credentials.useLocalOnWifi,
+                        wifiSsid = credentials.wifiSsid
+                    )
+                    
+                    apiManager.updateConfig(credentials.url, response.accessToken)
+                    true
+                } else {
+                    false
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Auto re-login failed: ${e.message}")
+                false
+            }
+        }
         handleIntent(intent)
         val initialIsLoggedIn = runBlocking { repository.isLoggedIn.first() }
 

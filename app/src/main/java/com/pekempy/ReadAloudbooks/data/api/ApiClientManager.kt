@@ -18,6 +18,9 @@ class ApiClientManager {
     
     var downloadClient: OkHttpClient? = null
         private set
+    
+    var onAuthFailure: (suspend () -> Boolean)? = null
+    private var isRefreshing = false
 
     fun updateConfig(url: String, authToken: String?) {
         val cleanUrl = url.let { 
@@ -55,10 +58,38 @@ class ApiClientManager {
         }
 
         val authInterceptor = Interceptor { chain ->
-            val request = chain.request().newBuilder().apply {
+            val originalRequest = chain.request()
+            val request = originalRequest.newBuilder().apply {
                 token?.let { addHeader("Authorization", "Bearer $it") }
             }.build()
-            chain.proceed(request)
+            
+            val response = chain.proceed(request)
+            
+            // Handle 401 - try to re-authenticate once
+            if (response.code == 401 && onAuthFailure != null && !isRefreshing) {
+                response.close()
+                isRefreshing = true
+                
+                return@Interceptor try {
+                    val reAuthSuccess = kotlinx.coroutines.runBlocking {
+                        onAuthFailure?.invoke() ?: false
+                    }
+                    
+                    if (reAuthSuccess) {
+                        // Retry with new token
+                        val newRequest = originalRequest.newBuilder().apply {
+                            token?.let { addHeader("Authorization", "Bearer $it") }
+                        }.build()
+                        chain.proceed(newRequest)
+                    } else {
+                        response
+                    }
+                } finally {
+                    isRefreshing = false
+                }
+            }
+            
+            response
         }
 
         val client = OkHttpClient.Builder()

@@ -24,6 +24,7 @@ class ReaderViewModel(
 ) : ViewModel() {
     private var lastSyncedProgress: com.pekempy.ReadAloudbooks.data.UnifiedProgress? = null
     private var readerInitialized = false
+    private val progressDebouncer = com.pekempy.ReadAloudbooks.util.Debouncer(2000L)
     
     fun markReady() {
         readerInitialized = true
@@ -107,7 +108,7 @@ class ReaderViewModel(
     fun loadEpub(bookId: String, isReadAloud: Boolean) {
         if (currentBookId == bookId && isReadAloudMode == isReadAloud) {
             if (lazyBook != null && !isReadAloud) {
-                viewModelScope.launch {
+                viewModelScope.launch(Dispatchers.IO) {
                     val progressStr = repository.getBookProgress(bookId).first()
                     val progress = UnifiedProgress.fromString(progressStr)
                     if (progress != null) {
@@ -131,15 +132,17 @@ class ReaderViewModel(
                                         val localPercent = (localUnified.getOverallProgress() * 100).coerceIn(0f, 100f)
                                         
                                         if (kotlin.math.abs(serverPercent - localPercent) > 5f) {
-                                            syncConfirmation = SyncConfirmation(
-                                                newChapterIndex = serverProgress.chapterIndex,
-                                                newScrollPercent = serverProgress.scrollPercent,
-                                                newAudioMs = serverProgress.audioTimestampMs,
-                                                newElementId = serverProgress.elementId,
-                                                progressPercent = serverPercent,
-                                                localProgressPercent = localPercent,
-                                                source = "Storyteller Server"
-                                            )
+                                            withContext(Dispatchers.Main) {
+                                                syncConfirmation = SyncConfirmation(
+                                                    newChapterIndex = serverProgress.chapterIndex,
+                                                    newScrollPercent = serverProgress.scrollPercent,
+                                                    newAudioMs = serverProgress.audioTimestampMs,
+                                                    newElementId = serverProgress.elementId,
+                                                    progressPercent = serverPercent,
+                                                    localProgressPercent = localPercent,
+                                                    source = "Storyteller Server"
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -464,8 +467,8 @@ class ReaderViewModel(
             currentAudioPos = audioPosMs
         }
         
-        viewModelScope.launch {
-            val bookId = currentBookId ?: return@launch
+        progressDebouncer.debounce(viewModelScope) {
+            val bookId = currentBookId ?: return@debounce
             
             val href = lazyBook?.spineHrefs?.getOrNull(chapterIndex) ?: ""
             
@@ -515,7 +518,7 @@ class ReaderViewModel(
                 val old = lastSyncedProgress!!
                 if (old.chapterIndex == chapterIndex && old.audioTimestampMs > 5000) {
                     android.util.Log.d("ReaderSync", "Blocking reset to 0 for chapter $chapterIndex")
-                    return@launch
+                    return@debounce
                 }
             }
             
@@ -526,7 +529,7 @@ class ReaderViewModel(
                     progress.elementId == old.elementId && 
                     timeDiff < 1000 &&
                     kotlin.math.abs(progress.scrollPercent - old.scrollPercent) < 0.01) {
-                    return@launch
+                    return@debounce
                 }
             }
             lastSyncedProgress = progress
@@ -873,6 +876,7 @@ class ReaderViewModel(
 
     override fun onCleared() {
         super.onCleared()
+        progressDebouncer.cancel()
         try {
             currentZipFile?.close()
         } catch (e: Exception) {}

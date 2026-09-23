@@ -13,6 +13,7 @@ data class UserCredentials(
     val url: String,
     val localUrl: String,
     val username: String,
+    val password: String? = null,
     val token: String? = null,
     val useLocalOnWifi: Boolean = false,
     val wifiSsid: String = ""
@@ -27,6 +28,7 @@ class UserPreferencesRepository(private val context: Context) {
         val WIFI_SSID = stringPreferencesKey("wifi_ssid")
         
         val USERNAME = stringPreferencesKey("username")
+        val PASSWORD = stringPreferencesKey("password")
         val TOKEN = stringPreferencesKey("auth_token")
         val IS_LOGGED_IN = booleanPreferencesKey("is_logged_in")
         
@@ -67,6 +69,7 @@ class UserPreferencesRepository(private val context: Context) {
                 url = url ?: "",
                 localUrl = localUrl ?: "",
                 username = username,
+                password = preferences[PASSWORD],
                 token = preferences[TOKEN],
                 useLocalOnWifi = preferences[USE_LOCAL_ON_WIFI] ?: false,
                 wifiSsid = preferences[WIFI_SSID] ?: ""
@@ -102,11 +105,11 @@ class UserPreferencesRepository(private val context: Context) {
             ignoredSeries = preferences[IGNORED_SERIES] ?: emptySet()
         )
     }
-
     suspend fun saveCredentials(
         url: String, 
         localUrl: String,
-        username: String, 
+        username: String,
+        password: String? = null,
         token: String?,
         useLocalOnWifi: Boolean,
         wifiSsid: String
@@ -116,6 +119,7 @@ class UserPreferencesRepository(private val context: Context) {
             if (localUrl.isNotEmpty()) preferences[LOCAL_URL] = localUrl else preferences.remove(LOCAL_URL)
             
             preferences[USERNAME] = username
+            if (password != null) preferences[PASSWORD] = password
             if (token != null) preferences[TOKEN] = token
             
             preferences[USE_LOCAL_ON_WIFI] = useLocalOnWifi

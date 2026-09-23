@@ -45,6 +45,7 @@ class LoginViewModel(private val repository: UserPreferencesRepository) : ViewMo
                     url = connectedUrl,
                     localUrl = if (isLocal) connectedUrl else "",
                     username = username,
+                    password = password,
                     token = response.accessToken,
                     useLocalOnWifi = isLocal && ssid != null,
                     wifiSsid = ssid ?: ""

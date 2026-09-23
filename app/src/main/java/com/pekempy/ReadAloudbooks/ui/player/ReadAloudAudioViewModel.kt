@@ -157,7 +157,7 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
             }
             android.util.Log.d("ReadAloudAudioVM", "Book $bookId already loaded. Checking for external progress updates...")
             lastSyncCheckTime = System.currentTimeMillis()
-            viewModelScope.launch(Dispatchers.Main) {
+            viewModelScope.launch(Dispatchers.IO) {
                 val progressStr = repository.getBookProgress(bookId).first()
                 val progress = com.pekempy.ReadAloudbooks.data.UnifiedProgress.fromString(progressStr)
                 
@@ -343,13 +343,14 @@ class ReadAloudAudioViewModel(private val repository: UserPreferencesRepository)
                 
                 android.util.Log.d("ReadAloudAudioVM", "Built ${mediaItems.size} media items, setting to player...")
                 
-                var connectionWaitTime = 0
-                while (player == null && connectionWaitTime < 100) { 
-                    delay(100)
-                    connectionWaitTime++
-                }
+                val playerReady = kotlinx.coroutines.withTimeoutOrNull(10000L) {
+                    while (player == null) {
+                        delay(50)
+                    }
+                    true
+                } ?: false
                 
-                if (player == null) {
+                if (!playerReady || player == null) {
                     throw Exception("Timed out waiting for audio service connection")
                 }
                 
