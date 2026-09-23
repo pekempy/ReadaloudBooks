@@ -169,6 +169,13 @@ class ViewModelFactory<T : ViewModel>(
         })[LibraryViewModel::class.java]
 
         setContent {
+            var updateInfo by remember { mutableStateOf<com.pekempy.ReadAloudbooks.util.UpdateInfo?>(null) }
+            
+            // Check for updates on launch
+            com.pekempy.ReadAloudbooks.util.LaunchUpdateChecker { info ->
+                updateInfo = info
+            }
+            
             val settings by repository.userSettings.collectAsState(initial = com.pekempy.ReadAloudbooks.data.UserSettings(0, true, 0, 0, 0, false, 18f, 0, "serif", 1.0f, false, true, true, true, true, 0, 0, 0L, false, "shelf,books,authors,series,collections", emptySet()))
             
             val isDarkTheme = when (settings.themeMode) {
@@ -697,6 +704,20 @@ class ViewModelFactory<T : ViewModel>(
                     }
                     }
                 }
+            }
+            
+            // Update prompt dialog
+            updateInfo?.let { info ->
+                com.pekempy.ReadAloudbooks.util.UpdatePromptDialog(
+                    updateInfo = info,
+                    onDismiss = { updateInfo = null },
+                    onDownload = {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(info.downloadUrl))
+                        startActivity(intent)
+                        updateInfo = null
+                    },
+                    onSkip = { updateInfo = null }
+                )
             }
         }
     }
