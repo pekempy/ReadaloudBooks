@@ -324,7 +324,11 @@ fun EpubReaderContent(
 
     val horizontalPaddingPx = with(density) { 24.dp.roundToPx() }
     val topPaddingPx = with(density) { 48.dp.roundToPx() }
-    val bottomPaddingPx = topPaddingPx + extraBottomPaddingPx
+    // Clamp defensively: an overlay height measurement glitch must never be allowed to starve
+    // pagination of room for text — that would force a line onto a page it can't fit in, which
+    // then gets clipped instead of flowing to the next page.
+    val maxBottomPaddingPx = topPaddingPx + (viewportSize.height * 0.35f).toInt()
+    val bottomPaddingPx = (topPaddingPx + extraBottomPaddingPx).coerceAtMost(maxBottomPaddingPx.coerceAtLeast(topPaddingPx))
     val contentWidthPx = (viewportSize.width - horizontalPaddingPx * 2)
     val contentHeightPx = (viewportSize.height - topPaddingPx - bottomPaddingPx)
 

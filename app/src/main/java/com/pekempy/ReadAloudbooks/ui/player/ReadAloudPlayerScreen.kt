@@ -342,9 +342,8 @@ fun ReadAloudPlayerScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .onSizeChanged { bottomOverlayHeightPx = it.height }
             ) {
-                Column {
+                Column(modifier = Modifier.onSizeChanged { bottomOverlayHeightPx = it.height }) {
                     AnimatedVisibility(
                         visible = readerViewModel.showControls,
                         enter = slideInVertically { it },
