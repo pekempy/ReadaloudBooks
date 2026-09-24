@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -54,6 +55,7 @@ fun ReadAloudPlayerScreen(
     }
     val userSettings = readerViewModel.settings
     var isPlayerExpanded by remember { mutableStateOf(initiallyExpanded) }
+    var bottomOverlayHeightPx by remember { mutableStateOf(0) }
     var showSleepTimerSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showChaptersSheet by remember { mutableStateOf(false) }
@@ -262,6 +264,7 @@ fun ReadAloudPlayerScreen(
                 searchQuery = readerViewModel.activeSearchHighlight,
                 materialYouColor = materialYouColor,
                 bookThemeColor = bookThemeColor,
+                extraBottomPaddingPx = bottomOverlayHeightPx,
                 onTap = { readerViewModel.showControls = !readerViewModel.showControls }
             )
 
@@ -339,6 +342,7 @@ fun ReadAloudPlayerScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .onSizeChanged { bottomOverlayHeightPx = it.height }
             ) {
                 Column {
                     AnimatedVisibility(

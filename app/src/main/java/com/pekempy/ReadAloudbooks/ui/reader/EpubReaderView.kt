@@ -184,6 +184,30 @@ private data class ChapterPage(val startOffset: Int, val endOffset: Int, val top
 
 private class ChapterLayout(val flow: ChapterFlow, val textLayout: TextLayoutResult, val pages: List<ChapterPage>)
 
+/**
+ * The page a sentence should be considered "on" for auto page-turn purposes: whichever page
+ * contains the larger share of the sentence's characters. A sentence that straddles a page
+ * break only pulls the view to the next page once more than half of it has moved there —
+ * matching how a reader's eye would follow it — rather than jumping the instant a single
+ * trailing character spills onto the next page.
+ */
+private fun majorityPageForSentence(sentence: FlowSentence, pages: List<ChapterPage>): Int {
+    val start = sentence.range.first
+    val endExclusive = sentence.range.last + 1
+    var bestPage = 0
+    var bestOverlap = -1
+    pages.forEachIndexed { index, page ->
+        val overlapStart = maxOf(start, page.startOffset)
+        val overlapEnd = minOf(endExclusive, page.endOffset)
+        val overlap = overlapEnd - overlapStart
+        if (overlap > bestOverlap) {
+            bestOverlap = overlap
+            bestPage = index
+        }
+    }
+    return bestPage
+}
+
 private fun buildChapterFlow(paragraphs: List<ReaderParagraph>, theme: ReaderTheme, fontSize: Float): ChapterFlow {
     val sentences = mutableListOf<FlowSentence>()
     val annotated = buildAnnotatedString {
@@ -290,6 +314,8 @@ fun EpubReaderContent(
     onCenterTap: () -> Unit,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    /** Extra bottom inset (px), e.g. to keep the last line clear of an overlaid mini-player card. */
+    extraBottomPaddingPx: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -297,9 +323,10 @@ fun EpubReaderContent(
     var viewportSize by remember(paragraphs) { mutableStateOf(IntSize.Zero) }
 
     val horizontalPaddingPx = with(density) { 24.dp.roundToPx() }
-    val verticalPaddingPx = with(density) { 48.dp.roundToPx() }
+    val topPaddingPx = with(density) { 48.dp.roundToPx() }
+    val bottomPaddingPx = topPaddingPx + extraBottomPaddingPx
     val contentWidthPx = (viewportSize.width - horizontalPaddingPx * 2)
-    val contentHeightPx = (viewportSize.height - verticalPaddingPx * 2)
+    val contentHeightPx = (viewportSize.height - topPaddingPx - bottomPaddingPx)
 
     val chapterLayout = rememberChapterLayout(paragraphs, theme, fontFamily, fontSize, contentWidthPx, contentHeightPx)
     val pageCount = chapterLayout?.pages?.size ?: 1
@@ -345,7 +372,7 @@ fun EpubReaderContent(
         else {
             val sentence = layout.flow.sentences.firstOrNull { it.id == highlightId }
             if (sentence == null) -1
-            else layout.pages.indexOfLast { sentence.range.first >= it.startOffset }.coerceAtLeast(0)
+            else majorityPageForSentence(sentence, layout.pages)
         }
     }
 
@@ -359,9 +386,23 @@ fun EpubReaderContent(
         if (!appliedInitialPosition || highlightId == null) return@LaunchedEffect
         val layout = latestChapterLayout ?: return@LaunchedEffect
         val sentence = layout.flow.sentences.firstOrNull { it.id == highlightId } ?: return@LaunchedEffect
-        val targetPage = layout.pages.indexOfLast { sentence.range.first >= it.startOffset }.coerceAtLeast(0)
+        val targetPage = majorityPageForSentence(sentence, layout.pages)
         if (latestIsFollowing && targetPage != pagerState.currentPage) {
             pagerState.animateScrollToPage(targetPage)
+        }
+    }
+
+    // Re-pagination (e.g. a font-size change) shifts every page boundary, so the page that used
+    // to hold the current highlight may no longer — resync instantly (no animation) whenever the
+    // layout itself changes, independent of highlightId changing.
+    LaunchedEffect(chapterLayout, appliedInitialPosition) {
+        if (!appliedInitialPosition) return@LaunchedEffect
+        val layout = chapterLayout ?: return@LaunchedEffect
+        val id = highlightId ?: return@LaunchedEffect
+        val sentence = layout.flow.sentences.firstOrNull { it.id == id } ?: return@LaunchedEffect
+        val targetPage = majorityPageForSentence(sentence, layout.pages)
+        if (latestIsFollowing && targetPage != pagerState.currentPage) {
+            pagerState.scrollToPage(targetPage)
         }
     }
 
@@ -421,7 +462,8 @@ fun EpubReaderContent(
                         highlightColor = highlightColor,
                         highlightRounded = highlightRounded,
                         horizontalPaddingPx = horizontalPaddingPx,
-                        verticalPaddingPx = verticalPaddingPx,
+                        topPaddingPx = topPaddingPx,
+                        bottomPaddingPx = bottomPaddingPx,
                         onSentenceLongPress = onSentenceLongPress,
                         onBlankTap = onCenterTap
                     )
@@ -504,7 +546,8 @@ private fun ChapterPageView(
     highlightColor: Color,
     highlightRounded: Boolean,
     horizontalPaddingPx: Int,
-    verticalPaddingPx: Int,
+    topPaddingPx: Int,
+    bottomPaddingPx: Int,
     onSentenceLongPress: (String) -> Unit,
     onBlankTap: () -> Unit
 ) {
@@ -527,7 +570,8 @@ private fun ChapterPageView(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = with(density) { horizontalPaddingPx.toDp() }, vertical = with(density) { verticalPaddingPx.toDp() })
+            .padding(horizontal = with(density) { horizontalPaddingPx.toDp() })
+            .padding(top = with(density) { topPaddingPx.toDp() }, bottom = with(density) { bottomPaddingPx.toDp() })
             .clipToBounds()
             .drawWithContent {
                 drawText(layout.textLayout, topLeft = Offset(0f, -page.topPx))

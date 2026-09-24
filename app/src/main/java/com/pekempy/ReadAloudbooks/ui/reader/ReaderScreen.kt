@@ -262,6 +262,7 @@ fun ReaderBody(
     searchQuery: String? = null,
     materialYouColor: Color? = null,
     bookThemeColor: Color? = null,
+    extraBottomPaddingPx: Int = 0,
     onTap: () -> Unit
 ) {
     val chapterIndex = viewModel.currentChapterIndex
@@ -300,7 +301,8 @@ fun ReaderBody(
         onNextChapter = {
             if (chapterIndex < viewModel.totalChapters - 1) viewModel.changeChapter(chapterIndex + 1)
         },
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize(),
+        extraBottomPaddingPx = extraBottomPaddingPx
     )
 }
 
